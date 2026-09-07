@@ -90,7 +90,10 @@ pub fn assemble(root: &Path, project: &Project) -> Result<serde_json::Value> {
         let from = (s.trim_start * 48000.0).round() as usize;
         let end = (duration * 48000.0).round() as usize - (s.trim_end * 48000.0).round() as usize;
         let gap = (s.gap * 48000.0).round() as usize;
-        entries.push(serde_json::json!({"segment":s.id,"take":t.id,"hash":t.hash,"file":t.file,"source_start":from,"source_end":end,"gap":gap,"start_frame":total,"end_frame":total+(end-from) as u64}));
+        if !s.gain_db.is_finite() || !(-36.0..=24.0).contains(&s.gain_db) {
+            return Err("音量が不正です".into());
+        }
+        entries.push(serde_json::json!({"segment":s.id,"take":t.id,"hash":t.hash,"file":t.file,"gain_db":s.gain_db,"source_start":from,"source_end":end,"gap":gap,"start_frame":total,"end_frame":total+(end-from) as u64}));
         total += (end - from + gap) as u64;
     }
     if entries.is_empty() {
@@ -120,6 +123,7 @@ pub fn assemble(root: &Path, project: &Project) -> Result<serde_json::Value> {
         let from = e["source_start"].as_u64().unwrap() as usize * 2;
         let end = e["source_end"].as_u64().unwrap() as usize * 2;
         for &v in s.get(from..end).ok_or("音声区間が不正です")? {
+            let v = v * 10f32.powf(e["gain_db"].as_f64().unwrap_or(0.0) as f32 / 20.0);
             if v.abs() > 1.0 {
                 clipped += 1
             }
@@ -175,6 +179,14 @@ mod tests {
         let mut r = hound::WavReader::open(root.join(result["file"].as_str().unwrap())).unwrap();
         let values: Vec<i16> = r.samples().map(|s| s.unwrap()).collect();
         assert!(values[0] > 0 && values[960] < 0);
+        p.segments[0].gain_db = 6.0206;
+        let adjusted = assemble(&root, &p).unwrap();
+        let mut r = hound::WavReader::open(root.join(adjusted["file"].as_str().unwrap())).unwrap();
+        assert!((r.samples::<i16>().next().unwrap().unwrap() - 2000).abs() <= 2);
+        assert_eq!(
+            hash_file(&root.join("a.wav")).unwrap(),
+            p.segments[0].takes[0].hash
+        );
         p.segments[0].selected = None;
         assert!(assemble(&root, &p).is_err());
         p.segments[0].selected = Some(p.segments[0].takes[0].id.clone());

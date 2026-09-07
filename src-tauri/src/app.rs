@@ -175,9 +175,34 @@ impl App {
         if action == "report" {
             return crate::speech::report(store);
         }
+        if action == "waveform" {
+            let file = string(&v, "file")?;
+            let path = safe(&store.root, &file)?;
+            if hash_file(&path)? != string(&v, "hash")? {
+                return Err("音声が変わっています".into());
+            }
+            return crate::editing::waveform(&path);
+        }
+        if action == "preview_edit" {
+            return crate::editing::preview(store, &v);
+        }
+        if action == "revision_preview" {
+            return crate::editing::revision_preview(&store.project, &string(&v, "text")?);
+        }
         let previous = store.project.clone();
         let result = (|| -> Result<()> {
             match action {
+                "split" | "merge" | "revise_script" | "restore_segment" => {
+                    crate::editing::edit_script(&mut store.project, action, &v)?
+                }
+                "gain" => {
+                    let s = segment(&mut store.project, &string(&v, "segment")?)?;
+                    let gain = v["gain_db"].as_f64().ok_or("音量が必要です")?;
+                    if !gain.is_finite() || !(-36.0..=24.0).contains(&gain) {
+                        return Err("音量は-36～24 dBです".into());
+                    }
+                    s.gain_db = gain;
+                }
                 "take_note" => {
                     let s = segment(&mut store.project, &string(&v, "segment")?)?;
                     let tid = string(&v, "take")?;

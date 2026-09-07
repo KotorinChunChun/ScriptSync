@@ -5,6 +5,7 @@ mod audio;
 #[cfg(test)]
 mod boundary_tests;
 mod domain;
+mod editing;
 mod media;
 mod speech;
 mod storage;

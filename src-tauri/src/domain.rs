@@ -136,6 +136,8 @@ pub struct TakeNote {
 }
 #[derive(Clone, Serialize, Deserialize, Debug)]
 pub struct Project {
+    #[serde(default)]
+    pub archived_segments: Vec<Segment>,
     pub version: u32,
     pub id: String,
     pub title: String,
@@ -145,6 +147,7 @@ pub struct Project {
 impl Project {
     pub fn new(title: String) -> Self {
         Self {
+            archived_segments: vec![],
             version: 1,
             id: id(),
             title,

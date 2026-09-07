@@ -86,7 +86,10 @@ fn validate_project(root: &Path, p: &Project) -> Result<()> {
     if p.segments.len() > 1000 {
         return Err("発話数の上限を超えています".into());
     }
-    for s in &p.segments {
+    for s in p.segments.iter().chain(&p.archived_segments) {
+        if !s.gain_db.is_finite() || !(-36.0..=24.0).contains(&s.gain_db) {
+            return Err("音量調整の範囲が不正です".into());
+        }
         check_id(&s.id)?;
         for t in &s.takes {
             check_id(&t.id)?;
