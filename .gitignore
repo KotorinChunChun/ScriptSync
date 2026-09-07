@@ -1,0 +1,17 @@
+/node_modules/
+/dist/
+/target/
+/src-tauri/target/
+/src-tauri/gen/schemas/
+/release/
+/output/
+/.env
+/.env.*
+!/\.env.example
+*.log
+*.sqlite
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.suo

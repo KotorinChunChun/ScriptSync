@@ -1,0 +1,25 @@
+:root {
+  font-family: "Yu Gothic UI", "Noto Sans JP", sans-serif;
+  color: #20262e;
+  background: #f3f5f4;
+  font-synthesis: none;
+}
+
+* { box-sizing: border-box; }
+
+body { margin: 0; min-width: 320px; min-height: 100vh; }
+
+.shell { width: min(880px, calc(100% - 48px)); margin: 0 auto; padding: 72px 0; }
+
+.eyebrow { color: #267063; font-weight: 700; letter-spacing: .08em; }
+
+h1 { margin: 8px 0 16px; font-size: clamp(2.5rem, 7vw, 5rem); line-height: 1; }
+
+header > p:last-child { max-width: 42rem; font-size: 1.1rem; line-height: 1.8; }
+
+.panel { margin-top: 48px; padding: 28px; border: 1px solid #d6dfdc; border-radius: 18px; background: #fff; box-shadow: 0 16px 40px rgb(32 38 46 / 8%); }
+
+.panel h2 { margin-top: 0; }
+
+#backend-status { color: #267063; font-weight: 700; }
+
