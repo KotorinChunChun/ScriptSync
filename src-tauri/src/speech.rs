@@ -117,6 +117,43 @@ impl App {
             }
         }
         let source_hash = hash_bytes(text.as_bytes());
+        let seed = if let Some(retry) = v["retry"].as_str() {
+            let old = s
+                .comparisons
+                .iter()
+                .find(|r| r.id == retry)
+                .ok_or("再試行する比較がありません")?;
+            if old.source_hash != source_hash
+                || old.reference_hash != reference_hash
+                || old.variants.iter().zip(&texts).any(|(a, b)| a.text != *b)
+            {
+                return Err(
+                    "原稿・正解・補正が変わっています。新しい比較を作成してください".into(),
+                );
+            }
+            let mut plan = old
+                .variants
+                .iter()
+                .find(|x| x.plan.is_object())
+                .ok_or("声条件が未作成です。新しく生成してください")?
+                .plan
+                .clone();
+            if let Some(actual) = old
+                .variants
+                .iter()
+                .find(|x| x.actual["voice_name"].is_string())
+                .map(|x| &x.actual)
+            {
+                plan["voice"] = json!({"voice_name":actual["voice_name"],"voice_version":actual["voice_version"]});
+            }
+            Some(plan)
+        } else if v["fixed"].as_bool() == Some(true) {
+            Some(
+                json!({"format":"amekoro.speech-plan","version":1,"text":text,"voice":null,"proposal":{"id":"speech","reading":text,"model_expression":"neutral","voice_expression":"neutral","reason":"利用者が選択した標準の固定声条件","tone_parameters":{"alp":0,"huskiness":0,"intonation":1,"pitch":0,"speed":1,"volume":0,"style":"","style_intensity":0}}}),
+            )
+        } else {
+            None
+        };
         let rid = id();
         let variants: Vec<_> = ["A", "B", "C"]
             .iter()
@@ -138,6 +175,8 @@ impl App {
         let mut order: Vec<_> = variants.iter().map(|v| v.id.clone()).collect();
         order.sort();
         s.comparisons.push(Comparison {
+            stale: false,
+            reference_kana: s.kana.clone(),
             id: rid.clone(),
             source_hash,
             reference_hash,
@@ -156,7 +195,7 @@ impl App {
         let app = self.clone();
         let result_id = rid.clone();
         std::thread::spawn(move || {
-            let result = run_comparison(&app, &root, &sid, &rid, &text, &stop);
+            let result = run_comparison(&app, &root, &sid, &rid, &text, &stop, seed);
             let mut a = app.0.lock().unwrap();
             a.busy = false;
             a.stop = None;
@@ -205,21 +244,26 @@ fn run_comparison(
     rid: &str,
     text: &str,
     stop: &AtomicBool,
+    seed: Option<Value>,
 ) -> Result<()> {
     let folder = safe(root, &format!("runs/{rid}"))?;
     std::fs::create_dir_all(&folder).map_err(|e| e.to_string())?;
     let input = folder.join("input.txt");
     write_new(&input, text.as_bytes())?;
     // original方針でも提案検証は必要。失敗は明示して手動固定plan経路で再試行可能にする。
-    let proposal = cli(
-        &[
-            "propose".into(),
-            "--text-file".into(),
-            input.to_string_lossy().into(),
-        ],
-        &folder.join("proposal"),
-        stop,
-    )?;
+    let proposal = if let Some(plan) = seed {
+        plan
+    } else {
+        cli(
+            &[
+                "propose".into(),
+                "--text-file".into(),
+                input.to_string_lossy().into(),
+            ],
+            &folder.join("proposal"),
+            stop,
+        )?
+    };
     json_new(&folder.join("proposal.json"), &proposal)?;
     let variants = {
         let a = app.0.lock().unwrap();

@@ -62,6 +62,10 @@ pub struct Variant {
 }
 #[derive(Clone, Serialize, Deserialize, Debug)]
 pub struct Comparison {
+    #[serde(default)]
+    pub stale: bool,
+    #[serde(default)]
+    pub reference_kana: String,
     pub id: String,
     pub source_hash: String,
     pub reference_hash: String,
@@ -72,6 +76,8 @@ pub struct Comparison {
 }
 #[derive(Clone, Serialize, Deserialize, Debug)]
 pub struct Segment {
+    #[serde(default)]
+    pub transcriptions: Vec<serde_json::Value>,
     pub id: String,
     pub text: String,
     pub revision: u64,
@@ -90,6 +96,7 @@ pub struct Segment {
 impl Segment {
     pub fn new(text: String) -> Self {
         Self {
+            transcriptions: vec![],
             id: id(),
             text,
             revision: 1,

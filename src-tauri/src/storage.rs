@@ -42,6 +42,9 @@ pub fn json_new<T: serde::Serialize>(path: &Path, value: &T) -> Result<()> {
     )
 }
 pub fn safe(root: &Path, relative: &str) -> Result<PathBuf> {
+    if relative.contains(':') {
+        return Err("代替データストリームは使用できません".into());
+    }
     let p = Path::new(relative);
     if p.as_os_str().is_empty()
         || p.components()
@@ -69,6 +72,71 @@ pub struct Store {
     pub project: Project,
     _lock: File,
 }
+fn validate_project(root: &Path, p: &Project) -> Result<()> {
+    let mut ids = std::collections::HashSet::new();
+    let mut check_id = |value: &str| -> Result<()> {
+        uuid::Uuid::parse_str(value).map_err(|_| "IDの形式が不正です")?;
+        if !ids.insert(value.to_owned()) {
+            return Err("IDが重複しています".into());
+        }
+        Ok(())
+    };
+    let hash_ok = |h: &str| h.len() == 64 && h.bytes().all(|c| c.is_ascii_hexdigit());
+    check_id(&p.id)?;
+    if p.segments.len() > 1000 {
+        return Err("発話数の上限を超えています".into());
+    }
+    for s in &p.segments {
+        check_id(&s.id)?;
+        for t in &s.takes {
+            check_id(&t.id)?;
+            safe(root, &t.file)?;
+            if (!t.hash.is_empty() && !hash_ok(&t.hash))
+                || !t.duration.is_finite()
+                || t.duration < 0.0
+                || !t.peak.is_finite()
+            {
+                return Err("音声メタデータが不正です".into());
+            }
+        }
+        if s.selected
+            .as_ref()
+            .is_some_and(|id| !s.takes.iter().any(|t| &t.id == id))
+        {
+            return Err("採用テイクが存在しません".into());
+        }
+        for c in &s.corrections {
+            check_id(&c.id)?;
+            slice(&s.text, c.start, c.end)?;
+        }
+        corrected(s)?;
+        for r in &s.comparisons {
+            check_id(&r.id)?;
+            for v in &r.variants {
+                check_id(&v.id)?;
+                if !v.file.is_empty() {
+                    safe(root, &v.file)?;
+                }
+                if !v.hash.is_empty() && !hash_ok(&v.hash) {
+                    return Err("比較音声ハッシュが不正です".into());
+                }
+            }
+            if r.order.len() != r.variants.len()
+                || r.order
+                    .iter()
+                    .collect::<std::collections::HashSet<_>>()
+                    .len()
+                    != r.order.len()
+                || r.order
+                    .iter()
+                    .any(|id| !r.variants.iter().any(|v| &v.id == id))
+            {
+                return Err("比較の提示順が不正です".into());
+            }
+        }
+    }
+    Ok(())
+}
 impl Store {
     pub fn open(root: PathBuf, create: bool) -> Result<Self> {
         fs::create_dir_all(&root).map_err(|e| e.to_string())?;
@@ -77,11 +145,11 @@ impl Store {
             .write(true)
             .create(true)
             .truncate(false)
-            .open(root.join(".scriptsync.lock"))
+            .open(safe(&root, ".scriptsync.lock")?)
             .map_err(|e| e.to_string())?;
         lock.try_lock_exclusive()
             .map_err(|_| "別のウィンドウがこのプロジェクトを開いています")?;
-        let revisions = root.join("revisions");
+        let revisions = safe(&root, "revisions")?;
         fs::create_dir_all(&revisions).map_err(|e| e.to_string())?;
         let mut files: Vec<_> = fs::read_dir(&revisions)
             .map_err(|e| e.to_string())?
@@ -107,12 +175,22 @@ impl Store {
         if project.version != 1 {
             return Err("未対応のプロジェクト版です".into());
         }
+        validate_project(&root, &project)?;
         let mut s = Self {
             root,
             project,
             _lock: lock,
         };
         for seg in &mut s.project.segments {
+            for run in &mut seg.comparisons {
+                for variant in &mut run.variants {
+                    if variant.status == "running" || variant.status == "pending" {
+                        variant.status = "failed".into();
+                        variant.error =
+                            "前回の処理が中断しました。保存済み条件で再試行できます".into();
+                    }
+                }
+            }
             for take in &mut seg.takes {
                 if take.status == "recording" {
                     take.status = "interrupted".into();
@@ -133,9 +211,14 @@ impl Store {
         json_new(&temp, &snapshot)?;
         fs::rename(&temp, &rev).map_err(|e| e.to_string())?;
         self.project.generation = generation;
-        let index = self.root.join(format!("project-{}.tmp", id()));
-        json_new(&index, &snapshot)?;
-        fs::rename(index, self.root.join("project.json")).map_err(|e| e.to_string())?;
+        // 世代は既に確定済み。閲覧用索引の失敗でメモリを旧世代へ戻さない。
+        if let Ok(index) = safe(&self.root, &format!("project-{}.tmp", id())) {
+            if json_new(&index, &snapshot).is_ok() {
+                if let Ok(destination) = safe(&self.root, "project.json") {
+                    let _ = fs::rename(index, destination);
+                }
+            }
+        }
         Ok(())
     }
 }

@@ -11,6 +11,7 @@ use std::sync::{
 
 #[derive(Default)]
 pub struct Inner {
+    pub media: std::collections::HashMap<String, std::path::PathBuf>,
     pub store: Option<Store>,
     pub busy: bool,
     pub job: String,
@@ -72,6 +73,45 @@ impl App {
         if action == "state" {
             return self.snapshot();
         }
+        if action == "diff" {
+            let expected = string(&v, "expected")?;
+            let observed = string(&v, "observed")?;
+            let mut result = json!(crate::alignment::differences(&expected, &observed)?);
+            let normalized: Vec<char> = normalize(&expected).chars().collect();
+            let a = self.0.lock().map_err(|e| e.to_string())?;
+            if let Some(s) = a.store.as_ref().and_then(|store| {
+                store
+                    .project
+                    .segments
+                    .iter()
+                    .find(|s| Some(s.id.as_str()) == v["segment"].as_str())
+            }) {
+                for row in result.as_array_mut().unwrap() {
+                    let start = row["expected_start"].as_u64().unwrap() as usize;
+                    let end = row["expected_end"].as_u64().unwrap() as usize;
+                    let mut candidates = Vec::new();
+                    for m in &s.mappings {
+                        let kana: Vec<char> = normalize(&m.kana).chars().collect();
+                        if kana.is_empty() {
+                            continue;
+                        }
+                        let hits: Vec<_> = normalized
+                            .windows(kana.len())
+                            .enumerate()
+                            .filter(|(_, w)| *w == kana.as_slice())
+                            .map(|(i, _)| i)
+                            .collect();
+                        if hits.iter().any(|&i| {
+                            i <= start && start < i + kana.len() || i < end && end <= i + kana.len()
+                        }) {
+                            candidates.push(json!({"start":m.start,"end":m.end,"original":slice(&s.text,m.start,m.end)?,"kana":m.kana,"ambiguous":hits.len()!=1}));
+                        }
+                    }
+                    row["source_candidates"] = json!(candidates);
+                }
+            }
+            return Ok(result);
+        }
         if action == "stop" {
             let a = self.0.lock().map_err(|e| e.to_string())?;
             if let Some(s) = &a.stop {
@@ -89,6 +129,9 @@ impl App {
         }
         if action == "compare" {
             return self.compare(v);
+        }
+        if action == "asr" {
+            return self.transcribe(v);
         }
         let mut a = self.0.lock().map_err(|e| e.to_string())?;
         if a.busy {
@@ -118,14 +161,11 @@ impl App {
         if action == "audio" {
             let file = string(&v, "file")?;
             let hash = string(&v, "hash")?;
-            let path = safe(&store.root, &file)?;
-            if hash_file(&path)? != hash {
-                return Err("音声が差し替えられています".into());
-            }
-            use base64::Engine;
-            return Ok(json!(
-                base64::engine::general_purpose::STANDARD.encode(audio::preview(&path)?)
-            ));
+            let path = crate::media::prepared(&store.root, &file, &hash)?;
+            let token = id();
+            a.media.clear();
+            a.media.insert(token.clone(), path);
+            return Ok(json!(format!("http://scriptsync-audio.localhost/{token}")));
         }
         if action == "export" {
             let result = audio::assemble(&store.root, &store.project)?;
@@ -190,6 +230,7 @@ impl App {
                         s.mappings.clear();
                         s.corrections.clear();
                         s.kana.clear();
+                        s.selected = None;
                     }
                     s.skip = v["skip"].as_bool().unwrap_or(false);
                     for key in ["trim_start", "trim_end", "gap"] {
@@ -241,6 +282,26 @@ impl App {
                     s.mappings.sort_by_key(|m| m.start);
                     validate_reference(s)?;
                     s.confirmed = true;
+                }
+                "mapping" => {
+                    let s = segment(&mut store.project, &string(&v, "segment")?)?;
+                    let start = v["start"].as_u64().ok_or("開始位置が必要です")? as usize;
+                    let end = v["end"].as_u64().ok_or("終了位置が必要です")? as usize;
+                    slice(&s.text, start, end)?;
+                    let kana = string(&v, "replacement")?;
+                    if kana.trim().is_empty()
+                        || s.mappings.iter().any(|m| start < m.end && end > m.start)
+                    {
+                        return Err("読みが空または範囲が重複しています".into());
+                    }
+                    s.mappings.push(Mapping { start, end, kana });
+                    s.mappings.sort_by_key(|m| m.start);
+                    s.confirmed = false;
+                }
+                "clear_mappings" => {
+                    let s = segment(&mut store.project, &string(&v, "segment")?)?;
+                    s.mappings.clear();
+                    s.confirmed = false;
                 }
                 "correction" => {
                     let s = segment(&mut store.project, &string(&v, "segment")?)?;
@@ -335,6 +396,19 @@ impl App {
                 }
                 _ => return Err("未対応の操作です".into()),
             }
+            for s in &mut store.project.segments {
+                let source = hash_bytes(s.text.as_bytes());
+                let reference = s
+                    .selected_take()
+                    .map(|t| hash_bytes(format!("{}:{}", t.hash, s.kana).as_bytes()))
+                    .unwrap_or_default();
+                let c = corrected(s).unwrap_or_default();
+                for r in &mut s.comparisons {
+                    r.stale = r.source_hash != source
+                        || r.reference_hash != reference
+                        || r.variants.iter().any(|v| v.label == "C" && v.text != c);
+                }
+            }
             store.save()
         })();
         if let Err(e) = result {
@@ -375,7 +449,7 @@ impl App {
         a.message = "録音準備中…停止すると保存します".into();
         let app = self.clone();
         std::thread::spawn(move || {
-            let request = MicrophoneRecordingRequest::new(endpoint, path.clone(), 10 * 60 * 1000);
+            let request = MicrophoneRecordingRequest::new(endpoint, path.clone(), 5 * 60 * 1000);
             let result =
                 record_microphone_to_wav_controlled(&request, &stop, |peak, _, elapsed| {
                     if let Ok(mut a) = app.0.lock() {
