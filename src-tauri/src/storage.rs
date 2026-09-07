@@ -184,6 +184,14 @@ impl Store {
             project,
             _lock: lock,
         };
+        for batch in &mut s.project.batches {
+            for item in &mut batch.items {
+                if item.status == "running" || item.status == "pending" {
+                    item.status = "interrupted".into();
+                    item.error = "前回の一括処理が中断しました".into();
+                }
+            }
+        }
         for seg in &mut s.project.segments {
             for record in &mut seg.transcriptions {
                 if record["status"] == "running" {

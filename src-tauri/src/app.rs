@@ -11,6 +11,7 @@ use std::sync::{
 
 #[derive(Default)]
 pub struct Inner {
+    pub queue_stop: Option<Arc<AtomicBool>>,
     pub media: std::collections::HashMap<String, std::path::PathBuf>,
     pub store: Option<Store>,
     pub busy: bool,
@@ -66,7 +67,7 @@ impl App {
     pub fn snapshot(&self) -> Result<Value> {
         let a = self.0.lock().map_err(|e| e.to_string())?;
         Ok(
-            json!({"project":a.store.as_ref().map(|s|&s.project),"root":a.store.as_ref().map(|s|s.root.to_string_lossy()),"busy":a.busy,"job":a.job,"message":a.message,"peak":a.peak,"elapsed":a.elapsed}),
+            json!({"project":a.store.as_ref().map(|s|&s.project),"root":a.store.as_ref().map(|s|s.root.to_string_lossy()),"busy":a.busy||a.queue_stop.is_some(),"job":a.job,"message":a.message,"peak":a.peak,"elapsed":a.elapsed}),
         )
     }
     pub fn dispatch(&self, action: &str, v: Value) -> Result<Value> {
@@ -114,6 +115,9 @@ impl App {
         }
         if action == "stop" {
             let a = self.0.lock().map_err(|e| e.to_string())?;
+            if let Some(s) = &a.queue_stop {
+                s.store(true, Ordering::Release);
+            }
             if let Some(s) = &a.stop {
                 s.store(true, Ordering::Release);
             }
@@ -123,6 +127,18 @@ impl App {
             return list_devices(DeviceDirection::Capture)
                 .map(|d| json!(d))
                 .map_err(|e| e.to_string());
+        }
+        if self
+            .0
+            .lock()
+            .map_err(|e| e.to_string())?
+            .queue_stop
+            .is_some()
+        {
+            return Err("一括処理中です。停止または完了を待ってください".into());
+        }
+        if action == "batch" {
+            return self.batch(v);
         }
         if action == "record" {
             return self.record(v);

@@ -7,6 +7,7 @@ mod boundary_tests;
 mod domain;
 mod editing;
 mod media;
+mod queue;
 mod speech;
 mod storage;
 #[cfg(test)]

@@ -137,6 +137,8 @@ pub struct TakeNote {
 #[derive(Clone, Serialize, Deserialize, Debug)]
 pub struct Project {
     #[serde(default)]
+    pub batches: Vec<Batch>,
+    #[serde(default)]
     pub archived_segments: Vec<Segment>,
     pub version: u32,
     pub id: String,
@@ -147,6 +149,7 @@ pub struct Project {
 impl Project {
     pub fn new(title: String) -> Self {
         Self {
+            batches: vec![],
             archived_segments: vec![],
             version: 1,
             id: id(),
@@ -155,6 +158,20 @@ impl Project {
             segments: vec![],
         }
     }
+}
+#[derive(Clone, Serialize, Deserialize, Debug)]
+pub struct Batch {
+    pub id: String,
+    pub items: Vec<BatchItem>,
+}
+#[derive(Clone, Serialize, Deserialize, Debug)]
+pub struct BatchItem {
+    pub action: String,
+    pub payload: serde_json::Value,
+    pub status: String,
+    pub error: String,
+    pub result_id: Option<String>,
+    pub source_hash: String,
 }
 pub fn slice(text: &str, start: usize, end: usize) -> Result<String> {
     let chars: Vec<char> = text.chars().collect();
