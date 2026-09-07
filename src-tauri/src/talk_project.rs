@@ -47,6 +47,13 @@ impl Node {
             c.find(name, out);
         }
     }
+    fn tsml(&self) -> Option<String> {
+        self.children
+            .iter()
+            .find(|n| n.name == "SynthesisData")
+            .and_then(|n| n.value("data").ok())
+            .or_else(|| self.value("tsml").ok())
+    }
 }
 fn integer(out: &mut Vec<u8>, mut n: usize) {
     if n == 0 {
@@ -220,7 +227,7 @@ fn build(v: &Variant) -> Result<Node> {
     }
     let utterance = Node::new("Utterance")
         .text("text", &v.text)
-        .text("tsml", tsml)
+        .child(Node::new("SynthesisData").text("data", &format!("<tsml>{tsml}</tsml>")))
         .text("start", "0.000")
         .text("export_name", "ScriptSync_1")
         .child(Node::new("FrameStyle").text("values", &style_text))
@@ -238,16 +245,17 @@ fn build(v: &Variant) -> Result<Node> {
         .child(param("LogF0Scale", num("intonation")?));
     let track = Node::new("Track")
         .text("name", "ScriptSync")
+        .text("lang", "ja_JP")
         .child(
             Node::new("Voice")
                 .text("speaker", "Tanaka San")
                 .text("name", "techno-sp_ja_JP_f701_tts.tsnvoice")
                 .text("version", version),
         )
-        .child(Node::new("Contents").child(utterance));
+        .child(Node::new("Clips").child(utterance));
     let mut root = Node::new("TSTalker").child(Node::new("Tracks").child(track));
     root.props
-        .push(("format_version".into(), vec![1, 6, 0, 0, 0]));
+        .push(("format_version".into(), vec![1, 7, 0, 0, 0]));
     Ok(root)
 }
 pub fn export(store: &Store, payload: &Value) -> Result<Value> {
@@ -284,10 +292,10 @@ pub fn export(store: &Store, payload: &Value) -> Result<Value> {
     write_new(&file, &bytes)?;
     json_new(
         &folder.join("source.json"),
-        &json!({"run":r.id,"variant":v,"project_file_hash":hash_bytes(&bytes),"verification":"binary-roundtrip-only","limitations":"Talk画面での読込・編集保存・再合成は未検証。田中さん、ハスキー0に限定。"}),
+        &json!({"run":r.id,"variant":v,"project_file_hash":hash_bytes(&bytes),"verification":"binary-roundtrip-only","limitations":"Talk 1.3.8.2・田中さん2.0.1の既定条件で編集保存・再起動・再合成を確認。他の版や非既定パラメーターは未検証。ハスキー0に限定。"}),
     )?;
     Ok(
-        json!({"path":file,"warning":"Talk実画面での往復は未検証です。生成条件はsource.jsonに保存しました。"}),
+        json!({"path":file,"warning":"Talk 1.3.8.2・田中さん2.0.1の既定条件で往復確認済みです。生成条件はsource.jsonに保存しました。"}),
     )
 }
 pub fn inspect_file(path: &Path) -> Result<Value> {
@@ -301,12 +309,61 @@ pub fn inspect_file(path: &Path) -> Result<Value> {
     let mut voices = vec![];
     tree.find("Voice", &mut voices);
     Ok(
-        json!({"path":path,"hash":hash_bytes(&bytes),"voices":voices.iter().map(|v|json!({"speaker":v.value("speaker").ok(),"name":v.value("name").ok(),"version":v.value("version").ok()})).collect::<Vec<_>>(),"utterances":utterances.iter().map(|u|json!({"text":u.value("text").ok(),"tsml":u.value("tsml").ok(),"start":u.value("start").ok(),"parameters":u.children.iter().map(|c|json!({"name":c.name,"values":c.value("values").ok()})).collect::<Vec<_>>()})).collect::<Vec<_>>()}),
+        json!({"path":path,"hash":hash_bytes(&bytes),"voices":voices.iter().map(|v|json!({"speaker":v.value("speaker").ok(),"name":v.value("name").ok(),"version":v.value("version").ok()})).collect::<Vec<_>>(),"utterances":utterances.iter().map(|u|json!({"text":u.value("text").ok(),"tsml":u.tsml(),"start":u.value("start").ok(),"parameters":u.children.iter().map(|c|json!({"name":c.name,"values":c.value("values").ok()})).collect::<Vec<_>>()})).collect::<Vec<_>>()}),
     )
 }
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn format7_matches_gui_verified_fixture_and_reads_saved_edits() {
+        let actual: Value =
+            serde_json::from_str(include_str!("../../tests/fixtures/talk/actual.json")).unwrap();
+        let v = Variant {
+            id: String::new(),
+            label: "C".into(),
+            text: "いちばへ行きます。".into(),
+            file: String::new(),
+            hash: String::new(),
+            status: "succeeded".into(),
+            error: String::new(),
+            plan: Value::Null,
+            actual,
+            transcript: String::new(),
+            rating: None,
+        };
+        let expected = decode(include_bytes!(
+            "../../tests/fixtures/talk/generated-format7.tstprj"
+        ))
+        .unwrap();
+        assert_eq!(build(&v).unwrap(), expected);
+        let saved = decode(include_bytes!(
+            "../../tests/fixtures/talk/saved-by-talk-1.3.8.2.tstprj"
+        ))
+        .unwrap();
+        let mut utterances = vec![];
+        saved.find("Utterance", &mut utterances);
+        assert_eq!(utterances.len(), 1);
+        let u = utterances[0];
+        assert_eq!(u.value("text").unwrap(), v.text);
+        assert_eq!(u.value("start").unwrap(), "0.100");
+        let tsml = u.tsml().unwrap();
+        assert!(tsml.contains("pronunciation=\"イチ\""));
+        assert!(tsml.starts_with("<tsml><acoustic_phrase><word chain=\"0\" hl=\"lh\""));
+        assert!(!tsml.contains("pronunciation=\"イチバ\""));
+        let mut voices = vec![];
+        saved.find("Voice", &mut voices);
+        assert_eq!(voices[0].value("version").unwrap(), "2.0.1");
+        let inspected = inspect_file(
+            &Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("../tests/fixtures/talk/saved-by-talk-1.3.8.2.tstprj"),
+        )
+        .unwrap();
+        assert_eq!(inspected["utterances"][0]["tsml"], tsml);
+        assert_eq!(inspected["utterances"][0]["start"], "0.100");
+        let legacy = Node::new("Utterance").text("tsml", "旧形式の読み");
+        assert_eq!(legacy.tsml().as_deref(), Some("旧形式の読み"));
+    }
     #[test]
     fn binary_roundtrip_and_malformed_lengths() {
         let root = Node::new("TSTalker").text("text", &"市場😀".repeat(100));

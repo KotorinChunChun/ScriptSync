@@ -1,0 +1,56 @@
+{
+  "analyzed_text": "<tsml><acoustic_phrase><word chain=\"0\" hl=\"hll\" original=\"いちば\" phoneme=\"i|ch,i|b,a\" pos=\"名詞\" pos_group1=\"一般\" pronunciation=\"イチバ\">いちば</word><word chain=\"1\" hl=\"l\" original=\"へ\" phoneme=\"e\" pos=\"助詞\" pos_group1=\"格助詞\" pos_group2=\"一般\" pronunciation=\"エ\">へ</word><word cform=\"連用形\" chain=\"0\" ctype=\"五段・カ行促音便\" hl=\"lh\" original=\"行く\" phoneme=\"i|k,i\" pos=\"動詞\" pos_group1=\"自立\" pronunciation=\"イキ\">行き</word><word cform=\"基本形\" chain=\"1\" ctype=\"特殊・マス\" hl=\"hl\" original=\"ます\" phoneme=\"m,a|s,U\" pos=\"助動詞\" pronunciation=\"マス’\">ます</word><word chain=\"1\" original=\"。\" phoneme=\"\" pos=\"記号\" pos_group1=\"句点\" pronunciation=\"\">。</word></acoustic_phrase></tsml>",
+  "duration": 1.425,
+  "global_parameters": {
+    "alp": 0.0,
+    "huskiness": 0.0,
+    "intonation": 1.0,
+    "pitch": 0.0,
+    "speed": 1.0,
+    "style_weights": [
+      1.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0
+    ],
+    "volume": 0.0
+  },
+  "language": "ja_JP",
+  "phoneme_durations": [
+    0.005,
+    0.105,
+    0.1,
+    0.055,
+    0.07,
+    0.105,
+    0.075,
+    0.09,
+    0.105,
+    0.045,
+    0.065,
+    0.09,
+    0.17,
+    0.225,
+    0.12
+  ],
+  "phonemes": [
+    "sil",
+    "i",
+    "ch",
+    "i",
+    "b",
+    "a",
+    "e",
+    "i",
+    "k",
+    "i",
+    "m",
+    "a",
+    "s",
+    "U",
+    "sil"
+  ],
+  "voice_name": "tanaka-san_ja_JP",
+  "voice_version": "2.0.1"
+}
