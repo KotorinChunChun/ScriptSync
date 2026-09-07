@@ -32,7 +32,19 @@ impl App {
                     i.error.clear();
                     if i.action == "compare" {
                         if let Some(r) = &i.result_id {
-                            i.payload["retry"] = json!(r);
+                            if store
+                                .project
+                                .segments
+                                .iter()
+                                .flat_map(|s| &s.comparisons)
+                                .any(|run| {
+                                    run.id == *r && run.variants.iter().any(|v| v.plan.is_object())
+                                })
+                            {
+                                i.payload["retry"] = json!(r);
+                            } else if let Some(obj) = i.payload.as_object_mut() {
+                                obj.remove("retry");
+                            }
                         }
                     }
                     i

@@ -175,7 +175,7 @@ impl Store {
         } else {
             return Err("ScriptSyncプロジェクトではありません".into());
         };
-        if project.version != 1 {
+        if project.version != 1 && project.version != 2 {
             return Err("未対応のプロジェクト版です".into());
         }
         validate_project(&root, &project)?;
@@ -223,12 +223,14 @@ impl Store {
     pub fn save(&mut self) -> Result<()> {
         let generation = self.project.generation + 1;
         let mut snapshot = self.project.clone();
+        snapshot.version = 2;
         snapshot.generation = generation;
         let rev = safe(&self.root, &format!("revisions/{generation:020}.json"))?;
         let temp = rev.with_extension(format!("{}.tmp", id()));
         json_new(&temp, &snapshot)?;
         fs::rename(&temp, &rev).map_err(|e| e.to_string())?;
         self.project.generation = generation;
+        self.project.version = 2;
         // 世代は既に確定済み。閲覧用索引の失敗でメモリを旧世代へ戻さない。
         if let Ok(index) = safe(&self.root, &format!("project-{}.tmp", id())) {
             if json_new(&index, &snapshot).is_ok() {

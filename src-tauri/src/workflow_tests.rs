@@ -125,6 +125,102 @@ fn synthetic_end_to_end() {
     assert!(export["frames"].as_u64().unwrap() > 0);
     assert_eq!(export["entries"].as_array().unwrap().len(), 2);
     app.dispatch("report", json!({})).unwrap();
+    app.dispatch("reference",json!({"segment":second,"kana":"ひとけのないみちでにんきのしょうひんをみました。","mappings":[]})).unwrap();
+    app.dispatch(
+        "batch",
+        json!({"kind":"compare","segments":[sid,second],"fixed":true}),
+    )
+    .unwrap();
+    wait(&app);
+    let snap = app.snapshot().unwrap();
+    assert!(
+        snap["project"]["batches"]
+            .as_array()
+            .unwrap()
+            .last()
+            .unwrap()["items"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|i| i["status"] == "succeeded"),
+        "{}",
+        snap["project"]["batches"]
+    );
+    let run = snap["project"]["segments"][0]["comparisons"]
+        .as_array()
+        .unwrap()
+        .last()
+        .unwrap();
+    let base = run["id"].as_str().unwrap();
+    let c = run["variants"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|v| v["label"] == "C")
+        .unwrap();
+    let talk = app
+        .dispatch(
+            "talk_export",
+            json!({"segment":sid,"run":base,"variant":c["id"]}),
+        )
+        .unwrap();
+    let inspected =
+        crate::talk_project::inspect_file(std::path::Path::new(talk["path"].as_str().unwrap()))
+            .unwrap();
+    assert_eq!(inspected["utterances"][0]["text"], "いちばへ行きます。");
+    app.dispatch(
+        "compare",
+        json!({"segment":sid,"base_run":base,"punctuation":"いちばへ、行きます。"}),
+    )
+    .unwrap();
+    wait(&app);
+    let snap = app.snapshot().unwrap();
+    let punctuation = snap["project"]["segments"][0]["comparisons"]
+        .as_array()
+        .unwrap()
+        .last()
+        .unwrap();
+    assert_eq!(punctuation["variants"].as_array().unwrap().len(), 2);
+    assert!(
+        punctuation["variants"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|v| v["status"] == "succeeded"),
+        "{}",
+        punctuation
+    );
+    app.dispatch("batch", json!({"kind":"asr","segments":[sid,second]}))
+        .unwrap();
+    wait(&app);
+    let snap = app.snapshot().unwrap();
+    assert!(
+        snap["project"]["batches"]
+            .as_array()
+            .unwrap()
+            .last()
+            .unwrap()["items"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|i| i["status"] == "succeeded"),
+        "{}",
+        snap["project"]["batches"]
+    );
+    let t = &snap["project"]["segments"][0]["takes"][0];
+    let wave = app
+        .dispatch("waveform", json!({"file":t["file"],"hash":t["hash"]}))
+        .unwrap();
+    assert!(wave["peaks"].as_array().unwrap().len() > 0);
+    let preview = app
+        .dispatch(
+            "preview_edit",
+            json!({"segment":sid,"seam":true,"gain_db":-3.0}),
+        )
+        .unwrap();
+    assert_eq!(preview["entries"].as_array().unwrap().len(), 2);
+    json_new(&root.join("feature-verification.json"),&json!({"batch_synthesis":true,"batch_asr":true,"punctuation_synthesis":true,"talk_binary_roundtrip":talk,"talk_gui_verified":false,"waveform":true,"seam_preview":preview})).unwrap();
+
     {
         let mut a = app.0.lock().unwrap();
         a.store.take();

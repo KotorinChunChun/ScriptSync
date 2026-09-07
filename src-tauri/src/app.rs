@@ -191,6 +191,21 @@ impl App {
         if action == "report" {
             return crate::speech::report(store);
         }
+        if action == "talk_export" {
+            return crate::talk_project::export(store, &v);
+        }
+        if action == "talk_inspect" {
+            let Some(path) = rfd::FileDialog::new()
+                .add_filter("Talkプロジェクト", &["tstprj"])
+                .pick_file()
+            else {
+                return Ok(Value::Null);
+            };
+            return crate::talk_project::inspect_file(&path);
+        }
+        if action == "rules_export" {
+            return crate::rules::export(store);
+        }
         if action == "waveform" {
             let file = string(&v, "file")?;
             let path = safe(&store.root, &file)?;
@@ -208,6 +223,9 @@ impl App {
         let previous = store.project.clone();
         let result = (|| -> Result<()> {
             match action {
+                "rule_create" | "rule_validate" | "rule_decide" => {
+                    crate::rules::mutate(store, action, &v)?
+                }
                 "split" | "merge" | "revise_script" | "restore_segment" => {
                     crate::editing::edit_script(&mut store.project, action, &v)?
                 }
@@ -463,7 +481,9 @@ impl App {
                 for r in &mut s.comparisons {
                     r.stale = r.source_hash != source
                         || r.reference_hash != reference
-                        || r.variants.iter().any(|v| v.label == "C" && v.text != c);
+                        || r.variants.iter().any(|v| v.label == "C" && v.text != c)
+                        || (!r.correction_hash.is_empty()
+                            && r.correction_hash != hash_bytes(c.as_bytes()));
                 }
             }
             store.save()

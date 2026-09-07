@@ -63,6 +63,10 @@ pub struct Variant {
 #[derive(Clone, Serialize, Deserialize, Debug)]
 pub struct Comparison {
     #[serde(default)]
+    pub kind: String,
+    #[serde(default)]
+    pub correction_hash: String,
+    #[serde(default)]
     pub stale: bool,
     #[serde(default)]
     pub reference_kana: String,
@@ -137,6 +141,8 @@ pub struct TakeNote {
 #[derive(Clone, Serialize, Deserialize, Debug)]
 pub struct Project {
     #[serde(default)]
+    pub rules: Vec<ReadingRule>,
+    #[serde(default)]
     pub batches: Vec<Batch>,
     #[serde(default)]
     pub archived_segments: Vec<Segment>,
@@ -149,15 +155,31 @@ pub struct Project {
 impl Project {
     pub fn new(title: String) -> Self {
         Self {
+            rules: vec![],
             batches: vec![],
             archived_segments: vec![],
-            version: 1,
+            version: 2,
             id: id(),
             title,
             generation: 0,
             segments: vec![],
         }
     }
+}
+#[derive(Clone, Serialize, Deserialize, Debug)]
+pub struct ReadingRule {
+    #[serde(default)]
+    pub known_source_hashes: Vec<String>,
+    pub id: String,
+    pub original: String,
+    pub reading: String,
+    pub context: String,
+    pub dictionary: String,
+    pub source: Comparison,
+    pub status: String,
+    pub validations: Vec<Comparison>,
+    pub history: Vec<serde_json::Value>,
+    pub created: u64,
 }
 #[derive(Clone, Serialize, Deserialize, Debug)]
 pub struct Batch {

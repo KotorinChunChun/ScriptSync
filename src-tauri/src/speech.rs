@@ -114,14 +114,43 @@ impl App {
         let reference_hash =
             hash_bytes(format!("{}:{}", s.selected_take()?.hash, s.kana).as_bytes());
         let text = s.text.clone();
-        let texts = [s.text.clone(), s.kana.clone(), corrected(s)?];
+        let base = corrected(s)?;
+        let punctuation = v["punctuation"].as_str().map(str::to_owned);
+        let (labels, texts) = if let Some(changed) = &punctuation {
+            validate_punctuation(&base, changed)?;
+            (vec!["P0", "P1"], vec![base.clone(), changed.clone()])
+        } else {
+            (
+                vec!["A", "B", "C"],
+                vec![s.text.clone(), s.kana.clone(), base.clone()],
+            )
+        };
         for t in &texts {
             if t.chars().count() > 500 {
                 return Err("各候補は500文字以内に分割してください".into());
             }
         }
         let source_hash = hash_bytes(text.as_bytes());
-        let seed = if let Some(retry) = v["retry"].as_str() {
+        let seed = if let Some(base_run) = v["base_run"].as_str() {
+            let old = s
+                .comparisons
+                .iter()
+                .find(|r| r.id == base_run && !r.stale)
+                .ok_or("現在の条件に合う比較がありません")?;
+            let c = old
+                .variants
+                .iter()
+                .find(|v| v.label == "C" && v.status == "succeeded" && v.text == base)
+                .ok_or("局所補正音声がありません")?;
+            if !c.actual["voice_name"].is_string() || !c.actual["voice_version"].is_string() {
+                return Err("実話者が不明です".into());
+            }
+            let mut plan = c.plan.clone();
+            plan["voice"] = json!({"voice_name":c.actual["voice_name"],"voice_version":c.actual["voice_version"]});
+            Some(plan)
+        } else if punctuation.is_some() && v["retry"].is_null() {
+            return Err("基準となる比較を選択してください".into());
+        } else if let Some(retry) = v["retry"].as_str() {
             let old = s
                 .comparisons
                 .iter()
@@ -159,7 +188,7 @@ impl App {
             None
         };
         let rid = id();
-        let variants: Vec<_> = ["A", "B", "C"]
+        let variants: Vec<_> = labels
             .iter()
             .zip(texts)
             .map(|(label, text)| Variant {
@@ -179,6 +208,13 @@ impl App {
         let mut order: Vec<_> = variants.iter().map(|v| v.id.clone()).collect();
         order.sort();
         s.comparisons.push(Comparison {
+            kind: if punctuation.is_some() {
+                "punctuation"
+            } else {
+                "reading"
+            }
+            .into(),
+            correction_hash: hash_bytes(base.as_bytes()),
             stale: false,
             reference_kana: s.kana.clone(),
             id: rid.clone(),
@@ -303,7 +339,7 @@ fn run_comparison(
         })?;
         {
             let mut a = app.0.lock().unwrap();
-            a.message = format!("音声 {} / 3 を生成中", variant.label);
+            a.message = format!("比較音声 {} を生成中", variant.label);
         }
         let wav = attempt.join("audio.wav");
         let result = cli(
@@ -352,11 +388,18 @@ fn run_comparison(
                     v.status = "failed".into();
                     v.error = e.clone();
                 })?;
-                if variant.label == "A" {
+                if reference_actual.is_none() {
                     return Err(e);
                 }
             }
         }
+    }
+    Ok(())
+}
+pub fn validate_punctuation(base: &str, changed: &str) -> Result<()> {
+    let without = |s: &str| s.chars().filter(|c| *c != '、').collect::<String>();
+    if base == changed || without(base) != without(changed) {
+        return Err("読点「、」の追加・削除・移動だけを指定してください".into());
     }
     Ok(())
 }

@@ -6,10 +6,14 @@ mod audio;
 mod boundary_tests;
 mod domain;
 mod editing;
+#[cfg(test)]
+mod feature_tests;
 mod media;
 mod queue;
+mod rules;
 mod speech;
 mod storage;
+mod talk_project;
 #[cfg(test)]
 mod workflow_tests;
 
