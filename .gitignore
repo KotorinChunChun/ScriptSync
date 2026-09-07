@@ -5,6 +5,8 @@
 /src-tauri/gen/schemas/
 /release/
 /output/
+**/target/
+/dev/private/
 /.env
 /.env.*
 !/\.env.example
