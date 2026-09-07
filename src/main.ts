@@ -1,37 +1,70 @@
 import { invoke } from "@tauri-apps/api/core";
 import "./style.css";
-
-const app = document.querySelector<HTMLElement>("#app");
-
-if (!app) {
-  throw new Error("アプリケーションの表示先が見つかりません。");
+type Take={id:string;file:string;hash:string;status:string;duration:number;peak:number;warning:string};
+type Correction={id:string;start:number;end:number;original:string;replacement:string;decision:string};
+type Variant={id:string;label:string;text:string;file:string;hash:string;status:string;error:string;transcript:string;rating:Record<string,number|string|null>|null};
+type Run={id:string;variants:Variant[];order:string[];revealed:boolean};
+type Segment={id:string;text:string;revision:number;takes:Take[];selected:string|null;kana:string;confirmed:boolean;mappings:{start:number;end:number;kana:string}[];corrections:Correction[];trim_start:number;trim_end:number;gap:number;skip:boolean;comparisons:Run[]};
+type Snapshot={project:{title:string;generation:number;segments:Segment[]}|null;root:string|null;busy:boolean;job:string;message:string;peak:number;elapsed:number};
+const root=document.querySelector<HTMLDivElement>("#app")!;
+let state:Snapshot={project:null,root:null,busy:false,job:"",message:"",peak:0,elapsed:0};
+let selected="",tab="recording",devices:{endpoint_id:string;friendly_name:string;is_default:boolean}[]=[],endpoint="",playingUrl="";
+let generation=-1;let busy=false;
+const esc=(s:unknown)=>String(s??"").replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]!));
+const value=(id:string)=>(document.getElementById(id) as HTMLInputElement)?.value??"";
+const num=(id:string)=>Number(value(id));
+const current=()=>state.project?.segments.find(s=>s.id===selected);
+async function rpc<T=unknown>(action:string,payload:unknown={}):Promise<T>{return invoke<T>("command",{action,payload});}
+function notice(message:string,error=false){const el=document.getElementById("notice");if(el){el.textContent=message;el.classList.toggle("error",error);}}
+async function act(action:string,payload:unknown={}){if(busy)return;busy=true;try{await rpc(action,payload);await refresh(true);}catch(e){notice(String(e),true);}finally{busy=false;}}
+function player(){return document.getElementById("player") as HTMLAudioElement;}
+async function play(file:string,hash:string){try{player().pause();notice("音声を読み込んでいます…");const data=await rpc<string>("audio",{file,hash});if(playingUrl)URL.revokeObjectURL(playingUrl);playingUrl=URL.createObjectURL(new Blob([Uint8Array.from(atob(data),c=>c.charCodeAt(0))],{type:"audio/wav"}));player().src=playingUrl;await player().play();notice("再生中");}catch(e){notice(String(e),true);}}
+const statusName=(s:string)=>({ready:"録音済み",recording:"録音中",failed:"失敗",interrupted:"中断",pending:"待機",running:"生成中",succeeded:"生成済み"}[s]??s);
+const button=(action:string,label:string,attrs="")=>`<button data-action="${action}" ${attrs}>${label}</button>`;
+function render(){
+ const s=current();const p=state.project;
+ root.innerHTML=`<header><div><span class="brand">ScriptSync <small>v0.0.1</small></span><h1>読みあわせ</h1></div><div class="toolbar">${button("new","新規プロジェクト")}${button("open","開く")}</div></header>
+ <div class="statusbar"><span id="notice" role="status">${esc(state.message||"台本を録音してつなぐ。読みを確認して整える。")}</span><span id="meter"></span></div>
+ <div class="layout"><aside><h2>${esc(p?.title??"プロジェクト")}</h2><p class="muted">${p?`${p.segments.filter(s=>s.selected).length} / ${p.segments.length} 発話を採用`:"作業フォルダに原稿と音声を保存します"}</p><nav aria-label="発話一覧">${p?.segments.map((line,i)=>`<button class="segment ${line.id===selected?"selected":""}" data-segment="${line.id}"><span>${String(i+1).padStart(2,"0")} ${line.skip?"対象外":line.selected?"●":"○"}</span>${esc(line.text)}</button>`).join("")??""}</nav>${p?`<details><summary>台本を追加</summary><label>1行を1発話として追加<textarea id="append" rows="5" placeholder="おはようございます。&#10;今日は市場へ行きます。"></textarea></label>${button("append","追加")}${button("import_script","TXT / Markdown取込")}</details>`:""}<p class="path">${esc(state.root??"")}</p></aside>
+ <main>${p?`<div class="tabs" role="tablist">${[["recording","台本・録音"],["reading","読み確認・補正"],["evaluation","比較・採点"],["export","結合・出力"]].map(([key,label])=>`<button role="tab" aria-selected="${tab===key}" data-tab="${key}">${label}</button>`).join("")}</div>${tab==="export"?exportView():s?segmentView(s):`<section class="empty"><h2>最初の発話を追加しましょう</h2><p>左の「台本を追加」から貼り付け、またはテキストファイルを取り込みます。</p></section>`}`:`<section class="empty"><p class="eyebrow">声から、台本を仕上げる</p><h2>一つずつ録って、<br>納得のいく読みへ。</h2><p>自分の声を発話ごとに録り直して、1本の音声に。<br>合成音声との読みあわせも、同じ原稿から始められます。</p>${button("new","新しいプロジェクトを作成",'class="primary"')}<p class="muted">録音・結合はローカルで動作します。<br>合成提案を実行すると原稿がCodexに送信されます。</p></section>`}</main></div>
+ <footer><label>試聴 <audio id="player" controls></audio></label><span>録音：Ctrl + R ／ 停止：Esc</span></footer>`;
+ bind();updateMeter();if(state.busy)root.querySelectorAll<HTMLButtonElement>("button[data-action]:not([data-action=stop])").forEach(b=>b.disabled=true);
 }
-
-app.innerHTML = `
-  <section class="shell">
-    <header>
-      <p class="eyebrow">ScriptSync v0.0.1</p>
-      <h1>読みあわせ</h1>
-      <p>人間の確認済み音声を基準に、合成音声の誤読候補を局所的に見つけます。</p>
-    </header>
-    <section class="panel" aria-labelledby="project-status-title">
-      <h2 id="project-status-title">開発基盤</h2>
-      <p id="backend-status" role="status">バックエンドを確認しています…</p>
-      <p>現在は初期構成のみです。音声取込・照合・補正画面は後続フェーズで実装します。</p>
-    </section>
-  </section>
-`;
-
-const status = document.querySelector<HTMLElement>("#backend-status");
-
-if ("__TAURI_INTERNALS__" in window) {
-  void invoke<string>("health_check")
-    .then((message) => {
-      if (status) status.textContent = message;
-    })
-    .catch((error: unknown) => {
-      if (status) status.textContent = `バックエンド接続失敗: ${String(error)}`;
-    });
-} else if (status) {
-  status.textContent = "ブラウザプレビューで表示しています。";
+function segmentView(s:Segment){
+ const base=`<div class="section-head"><h2>発話 ${state.project!.segments.indexOf(s)+1}</h2><span class="badge">${s.confirmed?"正解読み確定":"読み未確定"}</span></div>`;
+ if(tab==="recording")return base+`<label>原稿<textarea id="text" rows="3">${esc(s.text)}</textarea></label><div class="toolbar">${button("edit","原稿・設定を保存")}${button("up","↑ 前へ")}${button("down","↓ 後へ")}<label class="inline"><input id="skip" type="checkbox" ${s.skip?"checked":""}>結合対象外</label></div>
+ <section class="panel"><h3>録音</h3><label>入力マイク<select id="device">${devices.map(d=>`<option value="${esc(d.endpoint_id)}" ${endpoint===d.endpoint_id?"selected":""}>${esc(d.friendly_name)}${d.is_default?"（既定）":""}</option>`).join("")}</select></label><div class="toolbar">${button("record","● 録音開始",'class="primary"')}${button("stop","■ 停止して保存")}${button("devices","マイクを更新")}${button("import_audio","WAVを取り込む")}</div><p class="muted">録り直しは新しいテイクになります。試聴して使用するテイクを選んでください。1回の録音は最大10分です。</p></section>
+ <h3>テイク ${s.takes.length} 件</h3><div class="takes">${s.takes.map((t,i)=>`<article class="take ${s.selected===t.id?"chosen":""}"><div><strong>Take ${i+1} ${s.selected===t.id?"／採用中":""}</strong><p>${statusName(t.status)} · ${t.duration.toFixed(2)} 秒</p><p class="warning">${esc(t.warning)}</p></div><div>${t.status==="ready"?`${button("play","試聴",`data-file="${esc(t.file)}" data-hash="${t.hash}"`)}${button("select","採用",`data-id="${t.id}"`)}`:""}</div></article>`).join("")||`<p class="muted">まだ録音がありません。</p>`}</div>`;
+ if(tab==="reading")return base+`<p class="script">${esc(s.text)}</p><p class="muted">採用音声を聴いて、実際に発音した読みをひらがなで入力します。認識誤りや言い間違いは修正し、確認してから確定してください。</p>${s.selected?button("selected_audio","採用音声を試聴"):""}<label>正解の読み<textarea id="kana" rows="3">${esc(s.kana)}</textarea></label>${button("reference","この読みを正解として確定",'class="primary"')}<h3>原文の範囲を指定して補正</h3><p class="muted">原文欄で補正したい語を選択すると位置が入ります。同じ語も出現位置ごとに扱います。</p><textarea id="range-text" readonly rows="2">${esc(s.text)}</textarea><div class="fields"><label>開始（0始まり）<input id="start" type="number" min="0" value="0"></label><label>終了（含まない）<input id="end" type="number" min="1" value="${[...s.text].length}"></label><label>正しい読み<input id="replacement" placeholder="いちば"></label></div>${button("correction","補正候補を追加")}<div>${s.corrections.map(c=>`<article class="take"><div>${esc(c.original)} → <strong>${esc(c.replacement)}</strong><p class="muted">位置 ${c.start}–${c.end} ／ ${c.decision==="accepted"?"採用":c.decision==="rejected"?"却下":"保留"}</p></div><div>${button("accept","採用",`data-id="${c.id}"`)}${button("reject","却下",`data-id="${c.id}"`)}${button("hold","保留",`data-id="${c.id}"`)}</div></article>`).join("")}</div><p>合成後は「比較・採点」で各音声を試聴し、実際の読みとの違いを確認できます。</p>`;
+ return base+`<p class="script">${esc(s.text)}</p><p>原文・全文かな・採用した局所補正を、共通の声条件で生成します。</p><p class="muted">Codexへ原稿を送信します。VoiSona Talkを起動してAPIを有効にしてください。声は既定を使用します。</p>${button("compare","3種類の比較音声を生成",'class="primary"')}${button("stop","生成をキャンセル")}${s.comparisons.slice().reverse().map(r=>`<section class="panel"><h3>比較 ${esc(r.id.slice(0,8))}</h3>${button("reveal","候補名を開示",`data-run="${r.id}"`)}<div class="comparison">${r.order.map((vid,i)=>{const v=r.variants.find(x=>x.id===vid)!;return `<article><h4>${r.revealed?esc({A:"原文",B:"全文かな",C:"局所補正"}[v.label]??v.label):`音声 ${i+1}`}</h4><p>${statusName(v.status)}</p><p class="warning">${esc(v.error)}</p>${v.status==="succeeded"?`${button("play","試聴",`data-file="${esc(v.file)}" data-hash="${v.hash}"`)}<details><summary>実際の読みを確認</summary><label>聴こえた読み<textarea id="transcript-${v.id}">${esc(v.transcript)}</textarea></label>${button("transcript","読みを保存",`data-run="${r.id}" data-id="${v.id}"`)}<p>${v.transcript?diff(s.kana,v.transcript):"音声を聴いて読みを確認してください"}</p></details><div class="ratings">${[["accuracy","読みの正確さ"],["naturalness","自然さ"],["accent","アクセント"],["rhythm","抑揚・間"],["emotion","感情"]].map(([k,l])=>`<label>${l}<select id="${k}-${v.id}"><option value="">未採点</option>${[1,2,3,4,5].map(n=>`<option ${v.rating?.[k]===n?"selected":""}>${n}</option>`).join("")}</select></label>`).join("")}</div><label>所見<textarea id="comment-${v.id}">${esc(v.rating?.comment??"")}</textarea></label>${button("rate","採点を保存",`data-run="${r.id}" data-id="${v.id}"`)}`:""}</article>`;}).join("")}</div></section>`).join("")}`;
 }
+function diff(a:string,b:string){const normalize=(s:string)=>[...s].filter(c=>!/[\s。、！？,.!?「」]/u.test(c)).map(c=>c>='ァ'&&c<='ヶ'?String.fromCodePoint(c.codePointAt(0)!-0x60):c).join("");return normalize(a)===normalize(b)?"確認したかな列は一致しています。アクセントは試聴で評価してください。":`読みが異なります。正解：${esc(a)} ／ 実音声：${esc(b)}`;}
+function exportView(){return `<h2>台本を1本の音声に</h2><p>採用したテイクを発話順に結合します。未採用の発話がある場合は、その行へ戻って選択してください。</p><p class="muted">トリムと間は各発話を選び、この画面で指定します。原音は変更しません。</p>${current()?`<section class="panel"><h3>${esc(current()!.text)}</h3><div class="fields"><label>先頭を除く（秒）<input id="trim_start" type="number" min="0" step="0.01" value="${current()!.trim_start}"></label><label>末尾を除く（秒）<input id="trim_end" type="number" min="0" step="0.01" value="${current()!.trim_end}"></label><label>後ろに足す間（秒）<input id="gap" type="number" min="0" max="60" step="0.01" value="${current()!.gap}"></label></div>${button("trim","時間設定を保存")}</section>`:""}<div class="toolbar">${button("export","完成WAVを作成",'class="primary"')}${button("report","評価レポートを出力")}</div><p id="export-result"></p><p>出力：48 kHz / ステレオ / PCM16 WAV<br>作業フォルダの exports に、音声と結合順の記録を保存します。</p>`;}
+function bind(){root.querySelectorAll<HTMLButtonElement>("[data-segment]").forEach(b=>b.onclick=()=>{selected=b.dataset.segment!;render();});root.querySelectorAll<HTMLButtonElement>("[data-tab]").forEach(b=>b.onclick=()=>{tab=b.dataset.tab!;render();});const device=document.getElementById("device") as HTMLSelectElement|null;if(device)device.onchange=()=>endpoint=device.value;
+ const range=document.getElementById("range-text") as HTMLTextAreaElement|null;if(range)range.onselect=()=>{(document.getElementById("start")as HTMLInputElement).value=String([...range.value.slice(0,range.selectionStart)].length);(document.getElementById("end")as HTMLInputElement).value=String([...range.value.slice(0,range.selectionEnd)].length);};
+ root.querySelectorAll<HTMLButtonElement>("[data-action]").forEach(b=>b.onclick=async()=>{const action=b.dataset.action!;const s=current();const sid={segment:s?.id};switch(action){
+ case"new":case"open":case"stop":case"import_script":case"report":if(action==="report"){try{const r=await rpc<{path:string}>(action);notice(`レポート保存先：${r.path}`);}catch(e){notice(String(e),true)}}else await act(action);break;
+ case"devices":await loadDevices();render();break;
+ case"append":await act(action,{text:value("append")});break;
+ case"record":player().pause();await act(action,{...sid,endpoint});break;
+ case"import_audio":case"compare":player().pause();await act(action,sid);break;
+ case"select":await act(action,{...sid,take:b.dataset.id});break;
+ case"play":await play(b.dataset.file!,b.dataset.hash!);break;
+ case"selected_audio":{const t=s?.takes.find(t=>t.id===s.selected);if(t)await play(t.file,t.hash);break;}
+ case"edit":await act(action,{...sid,text:value("text"),skip:(document.getElementById("skip")as HTMLInputElement).checked,trim_start:s?.trim_start,trim_end:s?.trim_end,gap:s?.gap});break;
+ case"trim":await act("edit",{...sid,text:s?.text,skip:s?.skip,trim_start:num("trim_start"),trim_end:num("trim_end"),gap:num("gap")});break;
+ case"up":case"down":await act("move",{...sid,delta:action==="up"?-1:1});break;
+ case"reference":await act(action,{...sid,kana:value("kana"),mappings:s?.mappings??[]});break;
+ case"correction":await act(action,{...sid,start:num("start"),end:num("end"),replacement:value("replacement")});break;
+ case"accept":case"reject":case"hold":await act("decide",{...sid,id:b.dataset.id,decision:{accept:"accepted",reject:"rejected",hold:"pending"}[action]});break;
+ case"reveal":await act(action,{...sid,run:b.dataset.run});break;
+ case"transcript":await act(action,{...sid,run:b.dataset.run,variant:b.dataset.id,text:value(`transcript-${b.dataset.id}`)});break;
+ case"rate":{const rating:Record<string,unknown>={comment:value(`comment-${b.dataset.id}`),created:Math.floor(Date.now()/1000)};for(const key of ["accuracy","naturalness","accent","rhythm","emotion"]){rating[key]=value(`${key}-${b.dataset.id}`)?num(`${key}-${b.dataset.id}`):null;}await act(action,{...sid,run:b.dataset.run,variant:b.dataset.id,rating});break;}
+ case"export":try{notice("結合しています…");const r=await rpc<{file:string;hash:string;clipped_samples:number}>(action);notice(`保存しました：${r.file}${r.clipped_samples?" ／ 音量超過あり":""}`);await play(r.file,r.hash);}catch(e){notice(String(e),true)}break;
+ }});
+}
+function updateMeter(){const m=document.getElementById("meter");if(m)m.textContent=state.busy?`${state.job==="recording"?`${(state.elapsed/1000).toFixed(1)} 秒 ／ Peak ${(20*Math.log10(Math.max(state.peak,0.00001))).toFixed(0)} dB`:"処理中"}`:"自動保存";}
+async function refresh(force=false){try{const next=await rpc<Snapshot>("state");const needs=force||next.project?.generation!==generation||next.busy!==state.busy;state=next;if(!current())selected=state.project?.segments[0]?.id??"";generation=state.project?.generation??-1;if(needs)render();else{updateMeter();if(state.busy)notice(state.message);}}catch(e){notice(String(e),true)}}
+async function loadDevices(){try{devices=await rpc("devices");if(!devices.some(d=>d.endpoint_id===endpoint))endpoint=devices.find(d=>d.is_default)?.endpoint_id??devices[0]?.endpoint_id??"";}catch(e){notice(String(e),true)}}
+document.addEventListener("keydown",e=>{if(e.key==="Escape"){player()?.pause();void act("stop");}if(e.ctrlKey&&e.key.toLowerCase()==="r"&&!(e.target instanceof HTMLInputElement)&&!(e.target instanceof HTMLTextAreaElement)){e.preventDefault();if(current())void act("record",{segment:selected,endpoint});}});
+render();if("__TAURI_INTERNALS__"in window){void loadDevices().then(()=>refresh(true));setInterval(()=>{void refresh();},700);}else notice("画面プレビューです。録音・保存はデスクトップアプリで使用できます。");
