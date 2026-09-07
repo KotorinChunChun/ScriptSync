@@ -178,6 +178,20 @@ impl App {
         let previous = store.project.clone();
         let result = (|| -> Result<()> {
             match action {
+                "take_note" => {
+                    let s = segment(&mut store.project, &string(&v, "segment")?)?;
+                    let tid = string(&v, "take")?;
+                    if !s.takes.iter().any(|t| t.id == tid) {
+                        return Err("テイクがありません".into());
+                    }
+                    s.take_notes.insert(
+                        tid,
+                        TakeNote {
+                            memo: string(&v, "memo")?,
+                            favorite: v["favorite"].as_bool().unwrap_or(false),
+                        },
+                    );
+                }
                 "append" | "import_script" => {
                     let text = if action == "import_script" {
                         let Some(path) = rfd::FileDialog::new()
@@ -224,6 +238,7 @@ impl App {
                         return Err("原稿が空です".into());
                     }
                     if s.text != text {
+                        s.needs_review = true;
                         s.text = text;
                         s.revision += 1;
                         s.confirmed = false;
@@ -270,6 +285,7 @@ impl App {
                         return Err("音声が変わっています".into());
                     }
                     s.selected = Some(tid);
+                    s.needs_review = false;
                     s.confirmed = false;
                     s.trim_start = 0.0;
                     s.trim_end = 0.0;

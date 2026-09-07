@@ -77,6 +77,12 @@ pub struct Comparison {
 #[derive(Clone, Serialize, Deserialize, Debug)]
 pub struct Segment {
     #[serde(default)]
+    pub take_notes: std::collections::HashMap<String, TakeNote>,
+    #[serde(default)]
+    pub needs_review: bool,
+    #[serde(default)]
+    pub gain_db: f64,
+    #[serde(default)]
     pub transcriptions: Vec<serde_json::Value>,
     pub id: String,
     pub text: String,
@@ -96,6 +102,9 @@ pub struct Segment {
 impl Segment {
     pub fn new(text: String) -> Self {
         Self {
+            take_notes: Default::default(),
+            needs_review: false,
+            gain_db: 0.0,
             transcriptions: vec![],
             id: id(),
             text,
@@ -119,6 +128,11 @@ impl Segment {
             .find(|t| Some(&t.id) == self.selected.as_ref() && t.status == "ready")
             .ok_or_else(|| "採用済み音声がありません".into())
     }
+}
+#[derive(Clone, Default, Serialize, Deserialize, Debug)]
+pub struct TakeNote {
+    pub memo: String,
+    pub favorite: bool,
 }
 #[derive(Clone, Serialize, Deserialize, Debug)]
 pub struct Project {
