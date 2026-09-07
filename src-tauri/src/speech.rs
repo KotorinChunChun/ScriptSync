@@ -107,6 +107,10 @@ impl App {
             return Err("正解読みを確定してください".into());
         }
         validate_reference(s)?;
+        let take = s.selected_take()?;
+        if hash_file(&safe(&store.root, &take.file)?)? != take.hash {
+            return Err("正解音声が差し替えられています。再採用・再確認してください".into());
+        }
         let reference_hash =
             hash_bytes(format!("{}:{}", s.selected_take()?.hash, s.kana).as_bytes());
         let text = s.text.clone();

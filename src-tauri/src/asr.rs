@@ -49,6 +49,8 @@ impl App {
                 "ローカル認識の準備が必要です。dev/scripts/setup-asr.ps1を実行してください".into(),
             );
         }
+        segment(&mut store.project,&sid)?.transcriptions.push(json!({"id":run_id,"file":file,"audio_hash":expected,"status":"running","started":now(),"needs_review":true}));
+        store.save()?;
         let stop = Arc::new(AtomicBool::new(false));
         a.stop = Some(stop.clone());
         a.busy = true;
@@ -100,6 +102,7 @@ impl App {
                 result["audio_hash"] = expected.clone().into();
                 result["file"] = file.clone().into();
                 result["id"] = run_id.clone().into();
+                result["status"] = "succeeded".into();
                 Ok(result)
             })();
             let mut a = app.0.lock().unwrap();
@@ -108,14 +111,22 @@ impl App {
                 match result {
                     Ok(result) => {
                         if let Ok(s) = segment(&mut store.project, &sid) {
-                            s.transcriptions.push(result);
+                            if let Some(record) =
+                                s.transcriptions.iter_mut().find(|t| t["id"] == run_id)
+                            {
+                                *record = result;
+                            }
                         }
                         message =
                             "認識候補を保存しました。実音声を聴いて読みを確認してください".into();
                     }
                     Err(e) => {
                         if let Ok(s) = segment(&mut store.project, &sid) {
-                            s.transcriptions.push(json!({"id":run_id,"file":file,"audio_hash":expected,"error":e,"needs_review":true}));
+                            if let Some(record) =
+                                s.transcriptions.iter_mut().find(|t| t["id"] == run_id)
+                            {
+                                *record = json!({"id":run_id,"file":file,"audio_hash":expected,"error":e,"status":"failed","needs_review":true});
+                            }
                         }
                         message = format!("認識失敗: {e}");
                     }

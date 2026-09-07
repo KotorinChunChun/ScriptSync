@@ -182,6 +182,13 @@ impl Store {
             _lock: lock,
         };
         for seg in &mut s.project.segments {
+            for record in &mut seg.transcriptions {
+                if record["status"] == "running" {
+                    record["status"] = "interrupted".into();
+                    record["error"] =
+                        "前回の認識が中断しました。同じ音声で再実行してください".into();
+                }
+            }
             for run in &mut seg.comparisons {
                 for variant in &mut run.variants {
                     if variant.status == "running" || variant.status == "pending" {

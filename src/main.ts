@@ -11,6 +11,7 @@ const root=document.querySelector<HTMLDivElement>("#app")!;
 let state:Snapshot={project:null,root:null,busy:false,job:"",message:"",peak:0,elapsed:0};
 let selected="",tab="recording",devices:{endpoint_id:string;friendly_name:string;is_default:boolean}[]=[],endpoint="",playingUrl="";
 let generation=-1;let busy=false;
+const drafts=new Map<string,Record<string,string>>();let renderedKey="";
 const desktop="__TAURI_INTERNALS__"in window;
 const esc=(s:unknown)=>String(s??"").replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]!));
 const value=(id:string)=>(document.getElementById(id) as HTMLInputElement)?.value??"";
@@ -24,13 +25,15 @@ async function play(file:string,hash:string){try{player().pause();player().ontim
 const statusName=(s:string)=>({ready:"録音済み",recording:"録音中",failed:"失敗",interrupted:"中断",pending:"待機",running:"生成中",succeeded:"生成済み"}[s]??esc(s));
 const button=(action:string,label:string,attrs="")=>`<button data-action="${action}" ${attrs}>${label}</button>`;
 function render(){
+ if(renderedKey){const fields:Record<string,string>={};root.querySelectorAll<HTMLTextAreaElement>('textarea[id]').forEach(el=>fields[el.id]=el.value);drafts.set(renderedKey,fields);}
  const s=current();const p=state.project;
  root.innerHTML=`<header><div><span class="brand">ScriptSync <small>v0.0.1</small></span><h1>読みあわせ</h1></div><div class="toolbar">${button("new","新規プロジェクト")}${button("open","開く")}</div></header>
  <div class="statusbar"><span id="notice" role="status">${esc(state.message||"台本を録音してつなぐ。読みを確認して整える。")}</span><span id="meter"></span></div>
  <div class="layout"><aside><h2>${esc(p?.title??"プロジェクト")}</h2><p class="muted">${p?`${p.segments.filter(s=>s.selected).length} / ${p.segments.length} 発話を採用`:"作業フォルダに原稿と音声を保存します"}</p><nav aria-label="発話一覧">${p?.segments.map((line,i)=>`<button class="segment ${line.id===selected?"selected":""}" data-segment="${line.id}"><span>${String(i+1).padStart(2,"0")} ${line.skip?"対象外":line.selected?"●":"○"}</span>${esc(line.text)}</button>`).join("")??""}</nav>${p?`<details><summary>台本を追加</summary><label>1行を1発話として追加<textarea id="append" rows="5" placeholder="おはようございます。&#10;今日は市場へ行きます。"></textarea></label>${button("append","追加")}${button("import_script","TXT / Markdown取込")}</details>`:""}<p class="path">${esc(state.root??"")}</p></aside>
  <main>${p?`<div class="tabs" role="tablist">${[["recording","台本・録音"],["reading","読み確認・補正"],["evaluation","比較・採点"],["export","結合・出力"]].map(([key,label])=>`<button role="tab" aria-selected="${tab===key}" data-tab="${key}">${label}</button>`).join("")}</div>${tab==="export"?exportView():s?segmentView(s):`<section class="empty"><h2>最初の発話を追加しましょう</h2><p>左の「台本を追加」から貼り付け、またはテキストファイルを取り込みます。</p></section>`}`:`<section class="empty"><p class="eyebrow">声から、台本を仕上げる</p><h2>一つずつ録って、<br>納得のいく読みへ。</h2><p>自分の声を発話ごとに録り直して、1本の音声に。<br>合成音声との読みあわせも、同じ原稿から始められます。</p>${button("new","新しいプロジェクトを作成",'class="primary"')}<p class="muted">録音・結合はローカルで動作します。<br>合成提案を実行すると原稿がCodexに送信されます。</p></section>`}</main></div>
  <footer><label>試聴 <audio id="player" controls></audio></label><span>録音：Ctrl + R ／ 停止：Esc</span></footer>`;
- if(s)enhance(s);bind();updateMeter();if(state.busy)root.querySelectorAll<HTMLButtonElement>("button[data-action]:not([data-action=stop])").forEach(b=>b.disabled=true);
+ renderedKey=`${selected}:${tab}`;for(const [id,value]of Object.entries(drafts.get(renderedKey)??{})){const field=document.getElementById(id);if(field instanceof HTMLTextAreaElement)field.value=value;}
+ if(s)enhance(s);bind();updateMeter();if(state.busy){root.querySelectorAll<HTMLButtonElement>("button[data-action]:not([data-action=stop])").forEach(b=>b.disabled=true);root.querySelectorAll<HTMLInputElement>('input,textarea,select').forEach(field=>field.disabled=true);}
 }
 function segmentView(s:Segment){
  const base=`<div class="section-head"><h2>発話 ${state.project!.segments.indexOf(s)+1}</h2><span class="badge">${s.confirmed?"正解読み確定":"読み未確定"}</span></div>`;
