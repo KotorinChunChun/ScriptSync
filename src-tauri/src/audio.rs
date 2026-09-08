@@ -81,9 +81,29 @@ fn clean_recorded_samples(input: &[f32], channels: usize, rate: u32) -> Result<V
             last = Some(end);
         }
     }
-    let (Some(first), Some(last)) = (first, last) else {
+    let (Some(first_window), Some(last_window)) = (first, last) else {
         return Ok(filtered);
     };
+    // 10 ms窓で発話を安定して検出した後、その窓の内側だけをフレーム単位で
+    // 探し直す。これにより検出窓の端に含まれる余分な無音を残さない。
+    let first_window_end = (first_window + window).min(frames);
+    let first = (first_window..first_window_end)
+        .find(|frame| {
+            filtered[frame * channels..(frame + 1) * channels]
+                .iter()
+                .any(|sample| sample.abs() >= threshold)
+        })
+        .unwrap_or(first_window);
+    let last_window_start = last_window.saturating_sub(window);
+    let last = (last_window_start..last_window)
+        .rev()
+        .find(|frame| {
+            filtered[frame * channels..(frame + 1) * channels]
+                .iter()
+                .any(|sample| sample.abs() >= threshold)
+        })
+        .map(|frame| frame + 1)
+        .unwrap_or(last_window);
     let padding = (u64::from(rate) / 10) as usize; // 発話前後を各0.1秒保持
     let start = first.saturating_sub(padding);
     let end = (last + padding).min(frames);
@@ -166,6 +186,18 @@ mod recording_cleanup_tests {
         assert_eq!(cleaned.len() / 2, 400);
         assert!(cleaned.iter().all(|sample| sample.abs() <= 0.11));
         assert_eq!(cleaned[220 * 2], 0.0, "発話途中の無音は保持する");
+    }
+
+    #[test]
+    fn trims_window_remainder_and_keeps_exact_point_one_second_padding() {
+        let rate = 1000;
+        let mut samples = vec![0.0; 2000];
+        for frame in 503..697 {
+            samples[frame * 2] = 0.1;
+            samples[frame * 2 + 1] = 0.1;
+        }
+        let cleaned = clean_recorded_samples(&samples, 2, rate).unwrap();
+        assert_eq!(cleaned.len() / 2, 394);
     }
 }
 pub fn preview(path: &Path) -> Result<Vec<u8>> {
