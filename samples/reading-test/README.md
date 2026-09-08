@@ -11,7 +11,9 @@ cd C:\develop\ScriptSync
 npm run tauri dev
 ```
 
-旧dev.exeは使用せず、新規プロジェクトを作成してください。例えば `C:\develop\ScriptSync\output\user-tests` を親フォルダとして選びます（なければ先に作成）。既存の作業プロジェクトに混ぜないようにしてください。
+旧dev.exeは使用せず、「新規プロジェクト」を押して `C:\develop\ScriptSync\output\user-tests` を保存先の親フォルダーとして選びます。アプリがその中に `ScriptSync-英数字` というプロジェクトフォルダーを新しく作成します。
+
+後から「開く」を使う場合は、`output\user-tests` 自体ではなく、その中に作成された `ScriptSync-英数字` フォルダーを選んでください。正しいプロジェクトフォルダーには `revisions` があり、その中にJSON形式の保存世代があります。`01-recording.txt` や `02-reading.txt` は台本であり、プロジェクトとして「開く」対象ではありません。
 
 左側「読み上げテスト用の台本」で1を選び「テスト台本を下書きへ」→内容確認→「追加」。または「台本を追加」→「TXT / Markdown取込」で01-recording.txtを選択します。両方を行うと二重登録になるので、どちらか一方にします。TXTには見出しや番号を含めず、1行=1発話にしています。
 

@@ -15,7 +15,7 @@ const batchSelected=new Set<string>();const listenRanges=new Map<string,{start:n
 let revisionGeneration=-1, revisionText="";let wave:{duration:number;peaks:number[];suggested_gain:number;rms_db:number;peak_db:number}|null=null;
 let recordingSegment="";
 let filter="all", focusTake="", countdown=0, countdownToken=0, largeScript=false;
-let generation=-1;let busy=false;
+let generation=-1;let busy=false;let dialogAction="";
 const drafts=new Map<string,Record<string,string>>();let renderedKey="";
 const desktop="__TAURI_INTERNALS__"in window;
 const esc=(s:unknown)=>String(s??"").replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]!));
@@ -24,22 +24,23 @@ const num=(id:string)=>Number(value(id));
 const current=()=>state.project?.segments.find(s=>s.id===selected);
 async function rpc<T=unknown>(action:string,payload:unknown={}):Promise<T>{if(!desktop)throw new Error("閲覧プレビューです。保存・録音はデスクトップアプリで操作してください。");return invoke<T>("command",{action,payload});}
 function notice(message:string,error=false){const el=document.getElementById("notice");if(el){el.textContent=message;el.classList.toggle("error",error);}}
-async function act(action:string,payload:unknown={}){if(busy)return false;busy=true;try{await rpc(action,payload);await refresh(true);return true;}catch(e){notice(String(e),true);return false;}finally{busy=false;}}
+async function act(action:string,payload:unknown={}){if(busy)return false;busy=true;const dialog=({new:"新しい作業フォルダーを選択しています",open:"ScriptSyncプロジェクトを選択しています",import_script:"台本ファイルを選択しています",import_audio:"音声ファイルを選択しています",talk_inspect:"Talkプロジェクトを選択しています"}as Record<string,string>)[action]??"";if(dialog){dialogAction=dialog;render();}try{await rpc(action,payload);await refresh(true);return true;}catch(e){notice(String(e),true);return false;}finally{busy=false;if(dialog){dialogAction="";render();}}}
 function player(){return document.getElementById("player") as HTMLAudioElement;}
 async function play(file:string,hash:string){try{player().pause();player().ontimeupdate=null;player().loop=false;notice("音声を読み込んでいます…");playingUrl=await rpc<string>("audio",{file,hash});player().src=playingUrl;await player().play();notice("再生中");}catch(e){notice(String(e),true);}}
 const statusName=(s:string)=>({ready:"録音済み",recording:"録音中",failed:"失敗",interrupted:"中断",cancelled:"取消",pending:"待機",running:"生成中",succeeded:"生成済み"}[s]??esc(s));
 const button=(action:string,label:string,attrs="")=>`<button data-action="${action}" ${attrs}>${label}</button>`;
 function matches(s:Segment){return filter==="all"||filter==="unrecorded"&&!s.takes.some(t=>t.status==="ready")||filter==="unselected"&&!s.selected||filter==="unconfirmed"&&!s.confirmed||filter==="pending"&&s.corrections.some(c=>c.decision==="pending")||filter==="review"&&!!s.needs_review;}
 function render(){
+ root.removeAttribute("aria-busy");
  if(renderedKey){const fields:Record<string,string>={};root.querySelectorAll<HTMLTextAreaElement>('textarea[id]').forEach(el=>fields[el.id]=el.value);drafts.set(renderedKey,fields);}
  const s=current();const p=state.project;
  root.innerHTML=`<header><div><span class="brand">ScriptSync <small>v0.0.1</small></span><h1>読みあわせ</h1></div><div class="toolbar">${button("new","新規プロジェクト")}${button("open","開く")}</div></header>
  <div class="statusbar"><span id="notice" role="status">${esc(state.message||"台本を録音してつなぐ。読みを確認して整える。")}</span><span id="meter"></span></div>
  <div class="layout"><aside><h2>${esc(p?.title??"プロジェクト")}</h2><p class="muted">${p?`${p.segments.filter(s=>s.selected).length} / ${p.segments.length} 発話を採用`:"作業フォルダに原稿と音声を保存します"}</p>${p?`<label>要確認フィルター<select id="filter">${[["all","すべて"],["unrecorded","未収録"],["unselected","未採用"],["unconfirmed","読み未確定"],["pending","補正保留"],["review","原稿変更後の再確認"]].map(([v,l])=>`<option value="${v}" ${v===filter?"selected":""}>${l}</option>`).join("")}</select></label>${button("next_pending","次の対象へ")}`:""}<nav aria-label="発話一覧">${p?.segments.map((line,i)=>matches(line)?`<button class="segment ${line.id===selected?"selected":""}" data-segment="${line.id}"><span>${String(i+1).padStart(2,"0")} ${line.skip?"対象外":line.selected?"●":"○"}</span>${esc(line.text)}</button>`:"").join("")??""}</nav>${p?`<details><summary>台本を追加</summary><label>1行を1発話として追加<textarea id="append" rows="5" placeholder="おはようございます。&#10;今日は市場へ行きます。"></textarea></label>${button("append","追加")}${button("import_script","TXT / Markdown取込")}</details>`:""}<p class="path">${esc(state.root??"")}</p></aside>
  <main>${p?`<div class="tabs" role="tablist">${[["recording","台本・録音"],["reading","読み確認・補正"],["evaluation","比較・採点"],["export","結合・出力"]].map(([key,label])=>`<button role="tab" aria-selected="${tab===key}" data-tab="${key}">${label}</button>`).join("")}</div>${tab==="export"?exportView():s?segmentView(s):`<section class="empty"><h2>最初の発話を追加しましょう</h2><p>左の「台本を追加」から貼り付け、またはテキストファイルを取り込みます。</p></section>`}`:`<section class="empty"><p class="eyebrow">声から、台本を仕上げる</p><h2>一つずつ録って、<br>納得のいく読みへ。</h2><p>自分の声を発話ごとに録り直して、1本の音声に。<br>合成音声との読みあわせも、同じ原稿から始められます。</p>${button("new","新しいプロジェクトを作成",'class="primary"')}<p class="muted">録音・結合はローカルで動作します。<br>合成提案を実行すると原稿がCodexに送信されます。</p></section>`}</main></div>
- <footer><label>試聴 <audio id="player" controls></audio></label><span>録音：Ctrl + R ／ 停止：Esc</span></footer>`;
+ <footer><label>試聴 <audio id="player" controls></audio></label><span>録音：Ctrl + R ／ 停止：Esc</span></footer>${dialogAction?`<div id="dialog-modal" class="dialog-modal" role="dialog" aria-modal="true" aria-labelledby="dialog-modal-title"><div><strong id="dialog-modal-title">${esc(dialogAction)}</strong><p>選択画面を閉じるまで、この画面は操作できません。</p></div></div>`:""}`;
  renderedKey=`${selected}:${tab}`;for(const [id,value]of Object.entries(drafts.get(renderedKey)??{})){const field=document.getElementById(id);if(field instanceof HTMLTextAreaElement)field.value=value;}
- if(s){enhance(s);productionView(s);editingView(s);batchView();comparisonTools(s);ruleView(s);}testGuide();bind();bindBatch();bindWave();updateMeter();if(state.busy){root.querySelectorAll<HTMLButtonElement>("button[data-action]:not([data-action=stop])").forEach(b=>b.disabled=true);root.querySelectorAll<HTMLInputElement>('input,textarea,select').forEach(field=>field.disabled=true);}
+ if(s){enhance(s);productionView(s);editingView(s);batchView();comparisonTools(s);ruleView(s);}testGuide();bind();bindBatch();bindWave();updateMeter();if(state.busy||busy){root.setAttribute("aria-busy","true");root.querySelectorAll<HTMLButtonElement>("button[data-action]:not([data-action=stop])").forEach(b=>b.disabled=true);root.querySelectorAll<HTMLInputElement>('input,textarea,select').forEach(field=>field.disabled=true);}
 }
 function segmentView(s:Segment){
  const base=`<div class="section-head"><h2>発話 ${state.project!.segments.indexOf(s)+1}</h2><span class="badge">${s.confirmed?"正解読み確定":"読み未確定"}</span></div>`;
