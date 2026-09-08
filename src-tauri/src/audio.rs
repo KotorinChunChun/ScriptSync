@@ -40,6 +40,98 @@ pub fn inspect(path: &Path) -> Result<(f64, f32)> {
         s.iter().fold(0.0f32, |a, b| a.max(b.abs())),
     ))
 }
+fn clean_recorded_samples(input: &[f32], channels: usize, rate: u32) -> Result<Vec<f32>> {
+    if channels == 0 || rate == 0 || input.is_empty() || input.len() % channels != 0 {
+        return Err("録音音声の形式が不正です".into());
+    }
+    let mut filtered = input.to_vec();
+    // 前後の傾きに対して孤立して大きい1サンプルの変位だけを補間する。
+    // 連続する音声波形や発話中の無音区間は変更しない。
+    for _ in 0..2 {
+        let previous = filtered.clone();
+        for index in 1..previous.len() / channels - 1 {
+            for channel in 0..channels {
+                let at = index * channels + channel;
+                let before = previous[at - channels];
+                let after = previous[at + channels];
+                let baseline = (before + after) * 0.5;
+                let deviation = (previous[at] - baseline).abs();
+                let surrounding = (after - before).abs();
+                if deviation > 0.018 && deviation > surrounding * 6.0 {
+                    filtered[at] = baseline;
+                }
+            }
+        }
+    }
+    let frames = filtered.len() / channels;
+    let window = (rate as usize / 100).max(1); // 10 ms
+    let peak = filtered
+        .iter()
+        .fold(0.0f32, |p, sample| p.max(sample.abs()));
+    let threshold = (peak * 0.03).clamp(0.0025, 0.01);
+    let mut first = None;
+    let mut last = None;
+    for begin in (0..frames).step_by(window) {
+        let end = (begin + window).min(frames);
+        let slice = &filtered[begin * channels..end * channels];
+        let rms = (slice.iter().map(|v| f64::from(*v).powi(2)).sum::<f64>() / slice.len() as f64)
+            .sqrt() as f32;
+        if rms >= threshold {
+            first.get_or_insert(begin);
+            last = Some(end);
+        }
+    }
+    let (Some(first), Some(last)) = (first, last) else {
+        return Ok(filtered);
+    };
+    let padding = (u64::from(rate) / 10) as usize; // 発話前後を各0.1秒保持
+    let start = first.saturating_sub(padding);
+    let end = (last + padding).min(frames);
+    let mut output = filtered[start * channels..end * channels].to_vec();
+    // ファイル境界を5 msだけゼロへなじませ、再生開始・終了のクリックを防ぐ。
+    let fade = ((u64::from(rate) * 5 / 1000) as usize).min(output.len() / channels / 2);
+    for frame in 0..fade {
+        let gain = frame as f32 / fade.max(1) as f32;
+        let tail_gain = (fade - frame - 1) as f32 / fade.max(1) as f32;
+        for channel in 0..channels {
+            output[frame * channels + channel] *= gain;
+            let tail = output.len() - (frame + 1) * channels + channel;
+            output[tail] *= tail_gain;
+        }
+    }
+    Ok(output)
+}
+pub fn clean_recording(path: &Path) -> Result<(f64, f32)> {
+    let mut reader = hound::WavReader::open(path).map_err(|e| e.to_string())?;
+    let wav_spec = reader.spec();
+    if wav_spec.sample_format != hound::SampleFormat::Float || wav_spec.bits_per_sample != 32 {
+        return Err("録音WAVはFloat32である必要があります".into());
+    }
+    let input = reader
+        .samples::<f32>()
+        .collect::<std::result::Result<Vec<_>, _>>()
+        .map_err(|e| e.to_string())?;
+    drop(reader);
+    let output = clean_recorded_samples(&input, wav_spec.channels as usize, wav_spec.sample_rate)?;
+    let temporary = path.with_extension(format!("clean-{}.tmp", id()));
+    {
+        let mut writer =
+            hound::WavWriter::create(&temporary, wav_spec).map_err(|e| e.to_string())?;
+        for sample in &output {
+            writer.write_sample(*sample).map_err(|e| e.to_string())?;
+        }
+        writer.finalize().map_err(|e| e.to_string())?;
+    }
+    let backup = path.with_extension(format!("raw-{}.tmp", id()));
+    std::fs::rename(path, &backup).map_err(|e| e.to_string())?;
+    if let Err(error) = std::fs::rename(&temporary, path) {
+        let _ = std::fs::rename(&backup, path);
+        let _ = std::fs::remove_file(&temporary);
+        return Err(error.to_string());
+    }
+    let _ = std::fs::remove_file(backup);
+    inspect(path)
+}
 pub fn spec() -> hound::WavSpec {
     hound::WavSpec {
         channels: 2,
@@ -50,6 +142,31 @@ pub fn spec() -> hound::WavSpec {
 }
 fn pcm(x: f32) -> i16 {
     (x.clamp(-1.0, 1.0) * 32767.0).round() as i16
+}
+
+#[cfg(test)]
+mod recording_cleanup_tests {
+    use super::clean_recorded_samples;
+
+    #[test]
+    fn trims_only_edges_keeps_point_one_seconds_and_suppresses_isolated_click() {
+        let rate = 1000;
+        let mut samples = vec![0.0; 2000];
+        for frame in 500..700 {
+            samples[frame * 2] = 0.1;
+            samples[frame * 2 + 1] = 0.1;
+        }
+        samples[600 * 2] = 0.9;
+        samples[600 * 2 + 1] = 0.9;
+        for frame in 620..640 {
+            samples[frame * 2] = 0.0;
+            samples[frame * 2 + 1] = 0.0;
+        }
+        let cleaned = clean_recorded_samples(&samples, 2, rate).unwrap();
+        assert_eq!(cleaned.len() / 2, 400);
+        assert!(cleaned.iter().all(|sample| sample.abs() <= 0.11));
+        assert_eq!(cleaned[220 * 2], 0.0, "発話途中の無音は保持する");
+    }
 }
 pub fn preview(path: &Path) -> Result<Vec<u8>> {
     let s = samples(path)?;

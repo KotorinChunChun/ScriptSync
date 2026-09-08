@@ -20,6 +20,7 @@ pub struct Inner {
     pub peak: f32,
     pub elapsed: u64,
     pub stop: Option<Arc<AtomicBool>>,
+    pub cancel_recording: Option<Arc<AtomicBool>>,
 }
 #[derive(Clone, Default)]
 pub struct App(pub Arc<Mutex<Inner>>);
@@ -120,6 +121,19 @@ impl App {
             }
             if let Some(s) = &a.stop {
                 s.store(true, Ordering::Release);
+            }
+            return Ok(json!(null));
+        }
+        if action == "cancel_record" {
+            let a = self.0.lock().map_err(|e| e.to_string())?;
+            if !a.busy || a.job != "recording" {
+                return Err("録音中ではありません".into());
+            }
+            if let Some(cancel) = &a.cancel_recording {
+                cancel.store(true, Ordering::Release);
+            }
+            if let Some(stop) = &a.stop {
+                stop.store(true, Ordering::Release);
             }
             return Ok(json!(null));
         }
@@ -520,7 +534,9 @@ impl App {
         });
         store.save()?;
         let stop = Arc::new(AtomicBool::new(false));
+        let cancel = Arc::new(AtomicBool::new(false));
         a.stop = Some(stop.clone());
+        a.cancel_recording = Some(cancel.clone());
         a.busy = true;
         a.job = "recording".into();
         a.message = "録音準備中…停止すると保存します".into();
@@ -543,6 +559,18 @@ impl App {
             let mut a = app.0.lock().unwrap();
             let outcome = (|| -> Result<()> {
                 let store = a.store.as_mut().ok_or("保存先がありません")?;
+                if cancel.load(Ordering::Acquire) {
+                    let segment = segment(&mut store.project, &sid)?;
+                    segment.takes.retain(|take| take.id != tid);
+                    if segment.selected.as_deref() == Some(&tid) {
+                        segment.selected = None;
+                    }
+                    store.save()?;
+                    if let Some(folder) = path.parent() {
+                        let _ = std::fs::remove_dir_all(folder);
+                    }
+                    return Ok(());
+                }
                 let t = segment(&mut store.project, &sid)?
                     .takes
                     .iter_mut()
@@ -550,8 +578,9 @@ impl App {
                     .ok_or("テイクがありません")?;
                 match result {
                     Ok(report) => {
-                        t.duration = report.wav.audio_duration_ms as f64 / 1000.0;
-                        t.peak = report.wav.peak;
+                        let (duration, peak) = audio::clean_recording(&path)?;
+                        t.duration = duration;
+                        t.peak = peak;
                         t.hash = hash_file(&path)?;
                         t.status = "ready".into();
                         t.warning = if report.dropped_samples > 0 {
@@ -573,10 +602,19 @@ impl App {
             })();
             a.busy = false;
             a.stop = None;
+            let cancelled = a
+                .cancel_recording
+                .as_ref()
+                .is_some_and(|cancel| cancel.load(Ordering::Acquire));
+            a.cancel_recording = None;
             a.peak = 0.0;
-            a.message = outcome
-                .err()
-                .unwrap_or("録音処理が終了しました。テイクの状態を確認してください".into());
+            a.message = outcome.err().unwrap_or_else(|| {
+                if cancelled {
+                    "録音を取り消しました".into()
+                } else {
+                    "録音を保存しました。テイクの状態を確認してください".into()
+                }
+            });
         });
         Ok(json!(null))
     }
