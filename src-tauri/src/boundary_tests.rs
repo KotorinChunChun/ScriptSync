@@ -26,6 +26,49 @@ fn failed_mutation_rolls_back_and_edits_clear_selection() {
     std::fs::remove_dir_all(root).unwrap();
 }
 #[test]
+fn deleting_take_removes_audio_and_clears_selection() {
+    let root = std::env::temp_dir().join(id());
+    let mut store = Store::open(root.clone(), true).unwrap();
+    let mut s = Segment::new("削除試験".into());
+    let sid = s.id.clone();
+    let tid = id();
+    let relative = format!("takes/{tid}/audio.wav");
+    let path = safe(&root, &relative).unwrap();
+    std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+    std::fs::write(&path, b"test").unwrap();
+    s.takes.push(Take {
+        id: tid.clone(),
+        file: relative,
+        hash: "hash".into(),
+        status: "ready".into(),
+        duration: 1.0,
+        peak: 0.1,
+        warning: String::new(),
+        created: now(),
+        endpoint: String::new(),
+    });
+    s.selected = Some(tid.clone());
+    store.project.segments.push(s);
+    store.save().unwrap();
+    let app = App::default();
+    app.0.lock().unwrap().store = Some(store);
+    app.dispatch("delete_take", json!({"segment":sid,"take":tid}))
+        .unwrap();
+    assert!(
+        app.snapshot().unwrap()["project"]["segments"][0]["takes"]
+            .as_array()
+            .unwrap()
+            .is_empty()
+    );
+    assert_eq!(
+        app.snapshot().unwrap()["project"]["segments"][0]["selected"],
+        json!(null)
+    );
+    assert!(!path.exists());
+    drop(app);
+    std::fs::remove_dir_all(root).unwrap();
+}
+#[test]
 fn source_candidates_preserve_occurrence_ranges() {
     let root = std::env::temp_dir().join(id());
     let mut store = Store::open(root.clone(), true).unwrap();

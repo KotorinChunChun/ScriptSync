@@ -235,6 +235,7 @@ impl App {
             return crate::editing::revision_preview(&store.project, &string(&v, "text")?);
         }
         let previous = store.project.clone();
+        let mut deleted_take_folder = None;
         let result = (|| -> Result<()> {
             match action {
                 "rule_create" | "rule_validate" | "rule_decide" => {
@@ -264,6 +265,29 @@ impl App {
                             favorite: v["favorite"].as_bool().unwrap_or(false),
                         },
                     );
+                }
+                "delete_take" => {
+                    let sid = string(&v, "segment")?;
+                    let tid = string(&v, "take")?;
+                    let s = segment(&mut store.project, &sid)?;
+                    let index = s
+                        .takes
+                        .iter()
+                        .position(|take| take.id == tid)
+                        .ok_or("テイクがありません")?;
+                    let file = s.takes[index].file.clone();
+                    let folder = safe(&store.root, &file)?
+                        .parent()
+                        .ok_or("テイク保存先が不正です")?
+                        .to_path_buf();
+                    s.takes.remove(index);
+                    s.take_notes.remove(&tid);
+                    if s.selected.as_deref() == Some(&tid) {
+                        s.selected = None;
+                        s.needs_review = true;
+                        s.confirmed = false;
+                    }
+                    deleted_take_folder = Some(folder);
                 }
                 "append" | "import_script" => {
                     let text = if action == "import_script" {
@@ -505,6 +529,13 @@ impl App {
         if let Err(e) = result {
             store.project = previous;
             return Err(e);
+        }
+        if let Some(folder) = deleted_take_folder {
+            if let Err(error) = std::fs::remove_dir_all(folder) {
+                store.project = previous;
+                store.save()?;
+                return Err(format!("テイク音声を削除できません: {error}"));
+            }
         }
         a.message = "保存しました".into();
         Ok(json!(null))
