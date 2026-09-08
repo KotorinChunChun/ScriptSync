@@ -24,9 +24,24 @@ async fn command(
     payload: serde_json::Value,
 ) -> std::result::Result<serde_json::Value, String> {
     let app = state.inner().clone();
-    tauri::async_runtime::spawn_blocking(move || app.dispatch(&action, payload))
-        .await
-        .map_err(|e| e.to_string())?
+    // 音声デバイス列挙はMTAを使うため、STAが必要な選択画面にプールのスレッドを再利用しない。
+    tauri::async_runtime::spawn_blocking(move || {
+        if matches!(
+            action.as_str(),
+            "new" | "open" | "talk_inspect" | "import_script" | "import_audio"
+        ) {
+            std::thread::Builder::new()
+                .name("scriptsync-dialog".into())
+                .spawn(move || app.dispatch(&action, payload))
+                .map_err(|e| e.to_string())?
+                .join()
+                .map_err(|_| "ファイル選択処理が異常終了しました".to_string())?
+        } else {
+            app.dispatch(&action, payload)
+        }
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 #[tauri::command]
