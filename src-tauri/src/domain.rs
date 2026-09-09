@@ -105,6 +105,11 @@ pub struct Comparison {
 }
 #[derive(Clone, Serialize, Deserialize, Debug)]
 pub struct Segment {
+    /// v0.0.2以降の内容ベース照合で使う不変の行識別子。旧形式ではsegment IDを引き継ぐ。
+    #[serde(default)]
+    pub line_id: String,
+    #[serde(default)]
+    pub line_revisions: Vec<LineRevision>,
     #[serde(default)]
     pub source_line: Option<usize>,
     #[serde(default)]
@@ -136,9 +141,18 @@ pub struct Segment {
     pub skip: bool,
     pub comparisons: Vec<Comparison>,
 }
+#[derive(Clone, Serialize, Deserialize, Debug)]
+pub struct LineRevision {
+    pub id: String,
+    pub source_text: String,
+    pub source_markdown: String,
+    pub created: u64,
+}
 impl Segment {
     pub fn new(text: String) -> Self {
         Self {
+            line_id: id(),
+            line_revisions: vec![],
             source_line: None,
             source_text: text.clone(),
             kind: 0,
@@ -171,6 +185,13 @@ impl Segment {
     }
 }
 #[derive(Clone, Default, Serialize, Deserialize, Debug)]
+pub struct MergeDraft {
+    #[serde(default)] pub base_generation: u64,
+    #[serde(default)] pub input_markdown: String,
+    #[serde(default)] pub fixed_matches: Vec<serde_json::Value>,
+    #[serde(default)] pub proposed_order: Vec<String>,
+}
+#[derive(Clone, Default, Serialize, Deserialize, Debug)]
 pub struct TakeNote {
     #[serde(default)]
     pub score: Option<u8>,
@@ -191,6 +212,12 @@ pub struct Project {
     pub batches: Vec<Batch>,
     #[serde(default)]
     pub archived_segments: Vec<Segment>,
+    #[serde(default)]
+    pub merge_draft: Option<MergeDraft>,
+    #[serde(default)]
+    pub match_history: Vec<serde_json::Value>,
+    #[serde(default)]
+    pub deletion_records: Vec<serde_json::Value>,
     pub version: u32,
     pub id: String,
     pub title: String,
@@ -206,7 +233,10 @@ impl Project {
             rules: vec![],
             batches: vec![],
             archived_segments: vec![],
-            version: 2,
+            merge_draft: None,
+            match_history: vec![],
+            deletion_records: vec![],
+            version: 3,
             id: id(),
             title,
             generation: 0,

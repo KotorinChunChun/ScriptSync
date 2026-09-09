@@ -188,7 +188,7 @@ impl Store {
         } else {
             return Err("ScriptSyncプロジェクトではありません".into());
         };
-        if project.version != 1 && project.version != 2 {
+        if project.version != 1 && project.version != 2 && project.version != 3 {
             return Err("未対応のプロジェクト版です".into());
         }
         validate_project(&root, &project)?;
@@ -206,9 +206,21 @@ impl Store {
                 }
             }
         }
-        for seg in &mut s.project.segments {
+        for seg in s.project.segments.iter_mut().chain(s.project.archived_segments.iter_mut()) {
             if seg.source_text.is_empty() {
                 seg.source_text = seg.text.clone();
+            }
+            if seg.line_id.is_empty() {
+                // 既存segment_idを行IDとして継承するため、テイクや出力設定の参照を壊さない。
+                seg.line_id = seg.id.clone();
+            }
+            if seg.line_revisions.is_empty() {
+                seg.line_revisions.push(LineRevision {
+                    id: id(),
+                    source_text: seg.source_text.clone(),
+                    source_markdown: String::new(),
+                    created: now(),
+                });
             }
             if seg.hierarchy.is_empty() {
                 seg.hierarchy = vec![0; 4];
@@ -331,14 +343,14 @@ impl Store {
     pub fn save(&mut self) -> Result<()> {
         let generation = self.project.generation + 1;
         let mut snapshot = self.project.clone();
-        snapshot.version = 2;
+        snapshot.version = 3;
         snapshot.generation = generation;
         let rev = safe(&self.root, &format!("revisions/{generation:020}.json"))?;
         let temp = rev.with_extension(format!("{}.tmp", id()));
         json_new(&temp, &snapshot)?;
         fs::rename(&temp, &rev).map_err(|e| e.to_string())?;
         self.project.generation = generation;
-        self.project.version = 2;
+        self.project.version = 3;
         // 世代は既に確定済み。閲覧用索引の失敗でメモリを旧世代へ戻さない。
         if let Ok(index) = safe(&self.root, &format!("project-{}.tmp", id())) {
             if json_new(&index, &snapshot).is_ok() {
@@ -386,6 +398,36 @@ mod tests {
         assert_eq!(s.project.segments.len(), 1);
         assert!(safe(&root, "../secret").is_err());
         drop(s);
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn v2_project_keeps_segment_ids_when_line_metadata_is_added() {
+        let root = std::env::temp_dir().join(id());
+        let mut store = Store::open(root.clone(), true).unwrap();
+        let segment = Segment::new("旧版の発話".into());
+        let segment_id = segment.id.clone();
+        store.project.segments.push(segment);
+        store.project.version = 2;
+        let mut legacy = serde_json::to_value(&store.project).unwrap();
+        let row = legacy["segments"][0].as_object_mut().unwrap();
+        row.remove("line_id");
+        row.remove("line_revisions");
+        fs::write(
+            root.join("revisions/99999999999999999999.json"),
+            serde_json::to_vec(&legacy).unwrap(),
+        )
+        .unwrap();
+        drop(store);
+
+        let reopened = Store::open(root.clone(), false).unwrap();
+        let migrated = &reopened.project.segments[0];
+        assert_eq!(migrated.id, segment_id);
+        assert_eq!(migrated.line_id, segment_id);
+        assert_eq!(migrated.line_revisions.len(), 1);
+        assert_eq!(migrated.line_revisions[0].source_text, "旧版の発話");
+        assert_eq!(reopened.project.version, 3);
+        drop(reopened);
         fs::remove_dir_all(root).unwrap();
     }
 
