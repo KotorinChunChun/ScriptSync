@@ -19,12 +19,12 @@ description: ScriptSyncのUI・録音・保存・音声出力・文書変更を�
 | UI・CSS・キー操作 | 関連UI試験、npm test、npm run build。配置変更は実ブラウザーでも確認 |
 | Rustの保存・音声加工・出力 | 関連試験と cargo test --manifest-path src-tauri/Cargo.toml。RPC変更はUI側も検証 |
 | 録音crate | cargo test --manifest-path crates/scriptsync-recorder/Cargo.toml --locked --target-dir src-tauri/target と呼出側の関連試験 |
-| ASR・Talk | 開発者ガイドの対象外部環境試験のみ追加。通常録音・結合の検証に外部環境を必須化しない |
+| ASR・CLI側の音声合成エンジン | 開発者ガイドの対象外部環境試験のみ追加。通常録音・結合の検証に外部環境を必須化しない |
 | 配布成果物・起動 | [リリース手順](../scriptsync-project-release/SKILL.md)を読む |
 
 新規lockfileの生成が必要な変更では通常のCargo試験で解決し、差分を確認してからlocked検証する。既存lockfileを試験の都合だけで書き換えない。試験件数は固定せず実行結果を記録する。
 
-UI・録音・出力に変更がある場合は [回帰確認](references/regressions.md) の該当部分を読む。Talkの形式変更は [実アプリ保存形式](../../../docs/talk-project-format.md) を参照し、実アプリの保存ファイルと比較する。
+UI・録音・出力に変更がある場合は [回帰確認](references/regressions.md) の該当部分を読む。CLI側の音声合成エンジンの形式変更は [実アプリ保存形式](../../../docs/talk-project-format.md) を参照し、実アプリの保存ファイルと比較する。
 
 ## 環境エラーと終了条件
 

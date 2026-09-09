@@ -37,7 +37,7 @@ UI試験はDOMとRPCモック、Rust試験は保存・録音処理・編集・�
 
 ## 外部音声・認識環境
 
-録音と採用音声の結合にはTalk・ASRは不要です。比較合成は既存の音声CLI、VoiSona Talkと話者・接続設定が必要です。CLIの既定参照先は `C:/develop/amekoro`。認証情報は同梱しません。
+録音と採用音声の結合にはTextToSpeech CLI・ASRは不要です。比較合成はTextToSpeech CLIを呼び出します。配置先は `C:/develop/TextToSpeechCLI`、実行ファイルは `C:/develop/TextToSpeechCLI/TextToSpeechCLI.exe` です。音声合成エンジン・話者・認証・接続設定はCLI側で管理します。Rustの起動先と検証スクリプトもこのパスへ更新しています。設定ファイルはCLI側の既定を利用し、明示指定が必要なら環境変数 `SCRIPTSYNC_TTS_SETTINGS`（スクリプトでは `-Settings` も可）で渡します。新EXEの動作確認は未実施です。呼出引数・入出力形式はCLIの契約に合わせます。認証情報は同梱しません。
 
 ローカルASRは独立Pythonワーカーです。Python 3.12を推奨します。
 
@@ -54,7 +54,7 @@ cargo test --manifest-path src-tauri/Cargo.toml --lib synthetic_end_to_end -- --
 cargo test --manifest-path src-tauri/Cargo.toml --lib synthetic_asr_measurement -- --ignored --nocapture
 ```
 
-これら2件は通常ignoredの外部環境試験です。合成fixtureの成功は人間の音声品質の保証にはなりません。Talkファイルは[実機検証形式](talk-project-format.md)を参照します。
+これら2件は通常ignoredの外部環境試験です。合成fixtureの成功は人間の音声品質の保証にはなりません。CLI側の音声合成エンジンファイルは[実機検証形式](talk-project-format.md)を参照します。
 
 ## 構造と保存契約
 
@@ -71,3 +71,7 @@ cargo test --manifest-path src-tauri/Cargo.toml --lib synthetic_asr_measurement 
 要求は `dev/vX.Y.Z-req.md`、設計・実装結果は `dev/vX.Y.Z-imp.md`、進捗は `dev/vX.Y.Z-task.md` に日本語で記録します。次版へ進む際は旧版を `dev/history/` に残します。v0.0.2の実装開始時にpackage.json、package-lock.json、src-tauri/Cargo.toml、Cargo.lock、tauri.conf.jsonのアプリ版を揃えます。
 
 キー変更時は[キー定義](../dev/SHORTCUT_KEYS.md)、効果音変更時は[効果音定義](../dev/SOUND_EFFECTS.md)、画面操作変更時は利用者ガイドとサンプル手順も更新します。生成物、個人原稿・音声、認証情報、ユーザー提供の `dev/sample/` を文書整理のために追加・削除しないでください。
+
+## CLI移行時の互換性確認
+
+実行パスの変更と通信契約の変更は別です。ユーザー指定によりplan形式識別子は `ttscli.speech-plan`、ログ出力先環境変数は `TTSCLI_LOG_DIR` に統一しています。コードと検証スクリプトへ反映済みです。新CLIとの実接続および設定省略時の動作は別途確認が必要です。Cargoのauthorsは作者の帰属情報でありCLIの名称ではありません。
