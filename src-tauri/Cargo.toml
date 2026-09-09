@@ -1,6 +1,6 @@
 [package]
 name = "scriptsync"
-version = "0.0.1"
+version = "0.0.2"
 description = "人間音声と合成音声の読みを照合する制作支援ツール"
 authors = ["amekoro"]
 edition = "2024"
