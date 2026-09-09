@@ -105,6 +105,9 @@ pub struct Comparison {
 }
 #[derive(Clone, Serialize, Deserialize, Debug)]
 pub struct Segment {
+    /// 台本ファイル単位の不変ID。v4移行時に既存台本のIDを割り当てる。
+    #[serde(default)]
+    pub source_id: String,
     /// v0.0.2以降の内容ベース照合で使う不変の行識別子。旧形式ではsegment IDを引き継ぐ。
     #[serde(default)]
     pub line_id: String,
@@ -142,6 +145,32 @@ pub struct Segment {
     pub comparisons: Vec<Comparison>,
 }
 #[derive(Clone, Serialize, Deserialize, Debug)]
+pub struct ScriptSource {
+    pub id: String,
+    pub name: String,
+    #[serde(default = "default_script_source_kind")]
+    pub kind: String,
+    #[serde(default)]
+    pub confirmed_text: String,
+    #[serde(default)]
+    pub draft_text: String,
+    /// 確定済み本文を解析した行。下書きの選択状態は draft_lines に分離する。
+    #[serde(default)]
+    pub lines: Vec<crate::markdown::ScriptLine>,
+    #[serde(default)]
+    pub draft_lines: Vec<serde_json::Value>,
+    #[serde(default)]
+    pub blank_rows: Vec<BlankScriptRow>,
+    #[serde(default)]
+    pub approved_text: Option<String>,
+}
+#[derive(Clone, Serialize, Deserialize, Debug)]
+pub struct BlankScriptRow {
+    pub segment_id: String,
+    pub line: usize,
+}
+fn default_script_source_kind() -> String { "markdown".into() }
+#[derive(Clone, Serialize, Deserialize, Debug)]
 pub struct LineRevision {
     pub id: String,
     pub source_text: String,
@@ -151,6 +180,7 @@ pub struct LineRevision {
 impl Segment {
     pub fn new(text: String) -> Self {
         Self {
+            source_id: String::new(),
             line_id: id(),
             line_revisions: vec![],
             source_line: None,
@@ -205,6 +235,10 @@ pub struct Project {
     #[serde(default)]
     pub script_lines: Vec<crate::markdown::ScriptLine>,
     #[serde(default)]
+    pub script_sources: Vec<ScriptSource>,
+    #[serde(default)]
+    pub script_revision: u64,
+    #[serde(default)]
     pub export_settings: serde_json::Value,
     #[serde(default)]
     pub rules: Vec<ReadingRule>,
@@ -229,6 +263,8 @@ impl Project {
         Self {
             source_markdown: String::new(),
             script_lines: vec![],
+            script_sources: vec![],
+            script_revision: 0,
             export_settings: serde_json::Value::Null,
             rules: vec![],
             batches: vec![],
@@ -236,7 +272,7 @@ impl Project {
             merge_draft: None,
             match_history: vec![],
             deletion_records: vec![],
-            version: 3,
+            version: 4,
             id: id(),
             title,
             generation: 0,

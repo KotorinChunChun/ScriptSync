@@ -93,6 +93,16 @@ fn validate_project(root: &Path, p: &Project) -> Result<()> {
     };
     let hash_ok = |h: &str| h.len() == 64 && h.bytes().all(|c| c.is_ascii_hexdigit());
     check_id(&p.id)?;
+    let mut source_names = std::collections::HashSet::new();
+    for source in &p.script_sources {
+        check_id(&source.id)?;
+        if source.name.trim().is_empty() || !source_names.insert(source.name.clone()) {
+            return Err("台本ファイル名が空か重複しています".into());
+        }
+        if source.confirmed_text.len() > 2_000_000 || source.draft_text.len() > 2_000_000 {
+            return Err("台本ファイルは2MB以内にしてください".into());
+        }
+    }
     if p.segments.len() > 1000 {
         return Err("発話数の上限を超えています".into());
     }
@@ -188,7 +198,7 @@ impl Store {
         } else {
             return Err("ScriptSyncプロジェクトではありません".into());
         };
-        if project.version != 1 && project.version != 2 && project.version != 3 {
+        if project.version != 1 && project.version != 2 && project.version != 3 && project.version != 4 {
             return Err("未対応のプロジェクト版です".into());
         }
         validate_project(&root, &project)?;
@@ -254,6 +264,33 @@ impl Store {
                 }
             }
         }
+        if s.project.script_sources.is_empty() && (s.project.version < 4 || !s.project.source_markdown.is_empty() || !s.project.script_lines.is_empty() || !s.project.segments.is_empty() || !s.project.archived_segments.is_empty()) {
+            // 旧形式の一つの原稿を一つのファイル台本へ包む。既存の発話・テイクIDは変更しない。
+            let text = if s.project.source_markdown.is_empty() && s.project.script_lines.is_empty() {
+                s.project.segments.iter().map(|segment| if segment.source_text.is_empty() { segment.text.as_str() } else { segment.source_text.as_str() }).collect::<Vec<_>>().join("\n")
+            } else { s.project.source_markdown.clone() };
+            let lines = if s.project.script_lines.is_empty() {
+                crate::markdown::parse(&text)?
+            } else {
+                s.project.script_lines.clone()
+            };
+            let source_id = id();
+            s.project.script_sources.push(ScriptSource {
+                id: source_id.clone(), name: "既存台本".into(), kind: "markdown".into(),
+                confirmed_text: text.clone(), draft_text: text, lines,
+                draft_lines: vec![], blank_rows: vec![], approved_text: None,
+            });
+            for seg in s.project.segments.iter_mut().chain(s.project.archived_segments.iter_mut()) {
+                seg.source_id = source_id.clone();
+            }
+            s.project.script_revision = s.project.script_revision.max(1);
+        } else if !s.project.script_sources.is_empty() {
+            let fallback = s.project.script_sources[0].id.clone();
+            for seg in s.project.segments.iter_mut().chain(s.project.archived_segments.iter_mut()) {
+                if seg.source_id.is_empty() { seg.source_id = fallback.clone(); }
+            }
+        }
+        s.project.version = 4;
         s.save()?;
         Ok(s)
     }
@@ -348,7 +385,7 @@ impl Store {
     pub fn save(&mut self) -> Result<()> {
         let generation = self.project.generation + 1;
         let mut snapshot = self.project.clone();
-        snapshot.version = 3;
+        snapshot.version = 4;
         snapshot.generation = generation;
         let rev = safe(&self.root, &format!("revisions/{generation:020}.json"))?;
         let temp = rev.with_extension(format!("{}.tmp", id()));
@@ -363,7 +400,7 @@ impl Store {
         }
         let _ = fs::remove_file(&temp);
         self.project.generation = generation;
-        self.project.version = 3;
+        self.project.version = 4;
         // 世代は既に確定済み。閲覧用索引の失敗でメモリを旧世代へ戻さない。
         if let Ok(index) = safe(&self.root, &format!("project-{}.tmp", id())) {
             if json_new(&index, &snapshot).is_ok() {
@@ -462,7 +499,10 @@ mod tests {
         assert_eq!(migrated.line_id, segment_id);
         assert_eq!(migrated.line_revisions.len(), 1);
         assert_eq!(migrated.line_revisions[0].source_text, "旧版の発話");
-        assert_eq!(reopened.project.version, 3);
+        assert_eq!(reopened.project.version, 4);
+        assert_eq!(reopened.project.script_sources.len(), 1);
+        assert_eq!(reopened.project.script_sources[0].name, "既存台本");
+        assert_eq!(migrated.source_id, reopened.project.script_sources[0].id);
         let line_revision_id = migrated.line_revisions[0].id.clone();
         drop(reopened);
         let again = Store::open(root.clone(), false).unwrap();

@@ -4,26 +4,38 @@ use serde_json::Value;
 
 pub fn read_dropped_files(paths: &[String]) -> Result<Value> {
     use std::io::Read;
-    if paths.is_empty() || paths.len() > 100 { return Err("台本ファイルは1～100個で指定してください".into()); }
+    if paths.is_empty() { return Err("台本ファイルを指定してください".into()); }
     let mut paths = paths.to_vec();
     paths.sort_by(|a, b| std::path::Path::new(a).file_name().cmp(&std::path::Path::new(b).file_name()).then(a.cmp(b)));
     let mut text = String::new();
     let mut names = Vec::new();
+    let mut files = Vec::new();
+    let mut seen_names = std::collections::HashSet::new();
     for path in paths {
         let path = std::path::Path::new(&path);
         let extension = path.extension().and_then(|s| s.to_str()).unwrap_or("").to_ascii_lowercase();
         if !matches!(extension.as_str(), "md" | "markdown" | "txt") { return Err("Markdown（.md / .markdown）または.txtをドロップしてください".into()); }
         let file = std::fs::File::open(path).map_err(|e| format!("台本を読み込めません: {e}"))?;
         if !file.metadata().map_err(|e| e.to_string())?.is_file() { return Err("フォルダーは読み込めません".into()); }
-        if !text.is_empty() { text.push_str("\n\n"); }
         let mut part = String::new();
-        file.take(2_000_001u64.saturating_sub(text.len() as u64)).read_to_string(&mut part).map_err(|e| format!("UTF-8の台本を読み込めません: {e}"))?;
-        if text.len() + part.len() > 2_000_000 { return Err("台本は合計2MB以内にしてください".into()); }
-        text.push_str(part.trim_start_matches('\u{feff}'));
-        if text.len() > 2_000_000 { return Err("台本は合計2MB以内にしてください".into()); }
-        names.push(path.file_name().unwrap_or_default().to_string_lossy().into_owned());
+        file.take(2_000_001).read_to_string(&mut part).map_err(|e| format!("UTF-8の台本を読み込めません: {e}"))?;
+        if part.len() > 2_000_000 { return Err("台本ファイルは1件2MB以内にしてください".into()); }
+        let part = part.trim_start_matches('\u{feff}').to_owned();
+        let name = path.file_name().unwrap_or_default().to_string_lossy().into_owned();
+        if !seen_names.insert(name.clone()) { return Err("同名の台本ファイルは同時に読み込めません".into()); }
+        if !text.is_empty() { text.push_str("\n\n"); }
+        text.push_str(&part);
+        names.push(name.clone());
+        files.push(serde_json::json!({"name":name,"text":part}));
     }
-    Ok(serde_json::json!({"lines":parse(&text)?,"text":text,"names":names}))
+    // 旧UIは text/lines/names を使う。複数の大きいファイルでは files を正本とし、
+    // 合成テキストの解析だけは旧2MB制限を越えない範囲に留める。
+    for entry in &mut files {
+        let part = entry["text"].as_str().unwrap_or_default();
+        entry["lines"] = serde_json::to_value(parse(part)?).map_err(|e| e.to_string())?;
+    }
+    let legacy_lines = if text.len() <= 2_000_000 { serde_json::to_value(parse(&text)?).map_err(|e| e.to_string())? } else { serde_json::Value::Array(vec![]) };
+    Ok(serde_json::json!({"files":files,"lines":legacy_lines,"text":text,"names":names}))
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -262,8 +274,13 @@ mod tests {
         let paths = vec![b.to_string_lossy().into_owned(), a.to_string_lossy().into_owned()];
         let result = read_dropped_files(&paths).unwrap();
         assert_eq!(result["text"], "最初\n\n次");
+        assert_eq!(result["files"][0]["name"], "01.md");
+        assert_eq!(result["files"][1]["text"], "次");
         assert!(read_dropped_files(&[paths[0].clone(), dir.join("missing.md").to_string_lossy().into_owned()]).is_err());
         assert!(read_dropped_files(&[dir.join("other.exe").to_string_lossy().into_owned()]).is_err());
+        let other = dir.join("nested"); std::fs::create_dir_all(&other).unwrap();
+        let duplicate = other.join("01.md"); std::fs::write(&duplicate, "別").unwrap();
+        assert!(read_dropped_files(&[a.to_string_lossy().into_owned(), duplicate.to_string_lossy().into_owned()]).is_err());
         std::fs::write(&a, "a".repeat(2_000_001)).unwrap();
         assert!(read_dropped_files(&paths).is_err());
         std::fs::remove_dir_all(dir).unwrap();

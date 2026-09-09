@@ -4,7 +4,7 @@
 use crate::{audio, domain::*, storage::*};
 
 use hound::{SampleFormat, WavSpec, WavWriter};
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 use std::path::{Path, PathBuf};
 
 const RATE: u32 = 48_000;
@@ -720,13 +720,11 @@ mod tests {
         let decoded_flac =
             audio_mixer_backend::recording::codecs::decode_audio_file(&flac_path).unwrap();
         assert_eq!(decoded_flac.samples.len(), decoded.len());
-        assert!(
-            decoded_flac
-                .samples
-                .iter()
-                .zip(&decoded)
-                .all(|(a, b)| (a - b).abs() < 0.0001)
-        );
+        assert!(decoded_flac
+            .samples
+            .iter()
+            .zip(&decoded)
+            .all(|(a, b)| (a - b).abs() < 0.0001));
         let preview = preview_blocks(&root, &p, &settings).unwrap();
         assert_eq!(preview["files"].as_array().unwrap().len(), 1);
         let folder =
@@ -877,6 +875,124 @@ mod tests {
         assert!(preview_blocks(&root, &p, &options).is_err());
         std::fs::remove_dir_all(root).unwrap();
     }
+    #[test]
+    fn file_reorder_keeps_segment_state_and_id_keyed_output_overrides() {
+        let root = std::env::temp_dir().join(format!("scriptsync-reorder-{}", id()));
+        std::fs::create_dir_all(&root).unwrap();
+        let mut project = Project::new("ファイル順試験".into());
+        let source_a = id();
+        let source_b = id();
+        project.script_sources = vec![
+            ScriptSource {
+                id: source_a.clone(),
+                name: "a.md".into(),
+                kind: "markdown".into(),
+                confirmed_text: "A".into(),
+                draft_text: "A".into(),
+                lines: crate::markdown::parse("A").unwrap(),
+                draft_lines: vec![],
+                blank_rows: vec![],
+                approved_text: None,
+            },
+            ScriptSource {
+                id: source_b.clone(),
+                name: "b.md".into(),
+                kind: "markdown".into(),
+                confirmed_text: "B".into(),
+                draft_text: "B".into(),
+                lines: crate::markdown::parse("B").unwrap(),
+                draft_lines: vec![],
+                blank_rows: vec![],
+                approved_text: None,
+            },
+        ];
+        project.script_revision = 1;
+        let mut segments = Vec::new();
+        for (source_id, text, amplitude) in [(&source_a, "A", 800i16), (&source_b, "B", 1200i16)] {
+            let file = format!("{text}.wav");
+            let path = root.join(&file);
+            let mut writer = hound::WavWriter::create(&path, audio::spec()).unwrap();
+            for _ in 0..960 {
+                writer.write_sample(amplitude).unwrap();
+            }
+            writer.finalize().unwrap();
+            let mut segment = Segment::new(text.into());
+            segment.source_id = source_id.clone();
+            segment.source_line = Some(0);
+            segment.source_text = text.into();
+            let take = crate::app::take_from_file(&root, &path, text.into()).unwrap();
+            segment.selected = Some(take.id.clone());
+            segment.takes.push(take);
+            segment.corrections.push(Correction {
+                id: id(),
+                start: 0,
+                end: 1,
+                original: text.into(),
+                replacement: format!("{text}読み"),
+                decision: "accepted".into(),
+            });
+            segment.comparisons.push(Comparison {
+                kind: String::new(),
+                correction_hash: String::new(),
+                stale: false,
+                reference_kana: String::new(),
+                id: format!("comparison-{text}"),
+                source_hash: String::new(),
+                reference_hash: String::new(),
+                variants: vec![],
+                order: vec![],
+                revealed: false,
+                created: now(),
+            });
+            segments.push(segment);
+        }
+        let first_id = segments[0].id.clone();
+        let second_id = segments[1].id.clone();
+        project.segments = segments;
+        let mut a_line = json!(crate::markdown::parse("A").unwrap()[0]);
+        a_line["previous_id"] = first_id.clone().into();
+        a_line["keep"] = true.into();
+        let mut b_line = json!(crate::markdown::parse("B").unwrap()[0]);
+        b_line["previous_id"] = second_id.clone().into();
+        b_line["keep"] = true.into();
+        crate::script_sources::commit(&mut project, &json!({"base_revision":1,"sources":[{"id":source_a,"name":"a.md","kind":"markdown","text":"A","lines":[a_line],"approved_text":"A"},{"id":source_b,"name":"b.md","kind":"markdown","text":"B","lines":[b_line],"approved_text":"B"}]})).unwrap();
+        let mut b_line = json!(crate::markdown::parse("B").unwrap()[0]);
+        b_line["previous_id"] = second_id.clone().into();
+        b_line["keep"] = true.into();
+        let mut a_line = json!(crate::markdown::parse("A").unwrap()[0]);
+        a_line["previous_id"] = first_id.clone().into();
+        a_line["keep"] = true.into();
+        let revision = project.script_revision;
+        crate::script_sources::commit(&mut project, &json!({"base_revision":revision,"sources":[{"id":source_b,"name":"b.md","kind":"markdown","text":"B","lines":[b_line],"approved_text":"B"},{"id":source_a,"name":"a.md","kind":"markdown","text":"A","lines":[a_line],"approved_text":"A"}]})).unwrap();
+        assert_eq!(
+            project
+                .segments
+                .iter()
+                .map(|s| s.id.as_str())
+                .collect::<Vec<_>>(),
+            vec![second_id.as_str(), first_id.as_str()]
+        );
+        assert_eq!(project.segments[0].corrections[0].replacement, "B読み");
+        assert_eq!(project.segments[1].corrections[0].replacement, "A読み");
+        assert_eq!(project.segments[0].comparisons[0].id, "comparison-B");
+        assert_eq!(project.segments[1].comparisons[0].id, "comparison-A");
+        let mut options = json!({"unit":"utterance","format":"wav","normalize":false,"global_gaps":{"normal":0.0,"head":0.0,"tail":0.0,"part":0.0,"chapter":0.0,"section":0.0},"blocks":{}});
+        options["blocks"][&second_id] = json!({"gaps":{"normal":{"mode":"auto"},"head":{"mode":"manual","value":0.01},"tail":{"mode":"auto"}}});
+        options["blocks"][&first_id] = json!({"gaps":{"normal":{"mode":"auto"},"head":{"mode":"manual","value":0.02},"tail":{"mode":"auto"}}});
+        let manifest = export_blocks(&root, &project, &options).unwrap();
+        let output_file = safe(&root, manifest["files"][0]["file"].as_str().unwrap()).unwrap();
+        let map_path = output_file.parent().unwrap().join("block-map.json");
+        let map: Value = serde_json::from_slice(&std::fs::read(map_path).unwrap()).unwrap();
+        let blocks = map["blocks"].as_array().unwrap();
+        assert_eq!(blocks[0]["utterances"][0]["segment_id"], second_id);
+        assert_eq!(blocks[1]["utterances"][0]["segment_id"], first_id);
+        assert!(
+            manifest["files"][0]["frames"].as_u64().unwrap()
+                < manifest["files"][1]["frames"].as_u64().unwrap()
+        );
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
     #[test]
     fn filename_text_removes_invalid_characters_and_limits_unicode_characters() {
         assert_eq!(filename_text(" <>:\"/\\|?*\n原稿. "), "原稿");

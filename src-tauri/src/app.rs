@@ -11,6 +11,8 @@ use std::sync::{
 
 #[derive(Default)]
 pub struct Inner {
+    pub auto_asr_queue: std::collections::VecDeque<crate::automatic_asr::Job>,
+    pub auto_asr_running: bool,
     pub project_location: crate::project_location::ProjectLocation,
     pub stop_scheduled: bool,
     pub ui_last_seen: Option<std::time::Instant>,
@@ -101,14 +103,13 @@ impl App {
             return crate::markdown::read_dropped_files(&paths);
         }
         if action == "markdown_import" {
-            let Some(path) = rfd::FileDialog::new()
+            let Some(paths) = rfd::FileDialog::new()
                 .add_filter("台本", &["md", "txt"])
-                .pick_file()
+                .pick_files()
             else {
                 return Ok(Value::Null);
             };
-            let text = std::fs::read_to_string(path).map_err(|e| e.to_string())?;
-            return Ok(json!({"lines":crate::markdown::parse(&text)?,"text":text}));
+            return crate::markdown::read_dropped_files(&paths.iter().map(|p|p.to_string_lossy().into_owned()).collect::<Vec<_>>());
         }
         if matches!(action, "export_blocks" | "preview_blocks") {
             let (root, project) = {
@@ -248,6 +249,10 @@ impl App {
         if action == "asr" {
             return self.transcribe(v);
         }
+        if action == "recording_asr" {
+            self.enqueue_recording_asr(&string(&v,"segment")?, &string(&v,"take")?)?;
+            return Ok(Value::Null);
+        }
         let mut a = self.0.lock().map_err(|e| e.to_string())?;
         if a.busy {
             return Err("処理中です。完了または停止を待ってください".into());
@@ -292,6 +297,16 @@ impl App {
             return Ok(json!(null));
         }
         let store = a.store.as_mut().ok_or("プロジェクトを開いてください")?;
+        if action.starts_with("script_") && v["project_id"].as_str().is_some_and(|id| id != store.project.id) {
+            return Err("編集中のプロジェクトが変更されました".into());
+        }
+        if action == "script_state" {
+            return Ok(crate::script_sources::snapshot(&store.project));
+        }
+        if action == "archive_purge" {
+            crate::archive::purge(store,&string(&v,"segment")?,v["confirmed"].as_bool().unwrap_or(false))?;
+            return Ok(Value::Null);
+        }
         if action == "audio" {
             let file = string(&v, "file")?;
             let hash = string(&v, "hash")?;
@@ -446,6 +461,10 @@ impl App {
                 "markdown_commit" => {
                     crate::markdown::commit(&mut store.project, &v)?;
                 }
+                "script_draft" => crate::script_sources::update_draft(&mut store.project, &v)?,
+                "script_commit" => crate::script_sources::commit(&mut store.project, &v)?,
+                "script_insert_empty" => crate::script_sources::insert_empty(&mut store.project, &v)?,
+                "script_rebind_legacy" => crate::script_sources::rebind_legacy(&mut store.project, &v)?,
                 "append" | "import_script" => {
                     let text = if action == "import_script" {
                         let Some(path) = rfd::FileDialog::new()
@@ -698,8 +717,9 @@ impl App {
                 return Err(format!("テイク音声を削除できません: {error}"));
             }
         }
+        let saved = json!({"generation":store.project.generation,"script_revision":store.project.script_revision});
         a.message = "保存しました".into();
-        Ok(json!(null))
+        Ok(if matches!(action,"script_draft"|"script_commit"|"script_insert_empty"|"script_rebind_legacy") {saved} else {Value::Null})
     }
     fn record(&self, v: Value) -> Result<Value> {
         let mut a = self.0.lock().map_err(|e| e.to_string())?;
@@ -858,6 +878,7 @@ impl App {
                 .is_some_and(|cancel| cancel.load(Ordering::Acquire));
             a.cancel_recording = None;
             a.peak = 0.0;
+            let saved_ok = outcome.is_ok() && !cancelled;
             a.message = outcome.err().unwrap_or_else(|| {
                 if cancelled {
                     "録音を取り消しました".into()
@@ -865,6 +886,11 @@ impl App {
                     "録音を保存しました。テイクの状態を確認してください".into()
                 }
             });
+            drop(a);
+            if saved_ok {
+                // 音声保存後に認識を予約する。認識失敗を録音失敗にしない。
+                let _ = app.enqueue_recording_asr(&sid, &tid);
+            }
         });
         Ok(json!(null))
     }

@@ -7,6 +7,9 @@ use tauri::Manager;
 mod alignment;
 mod app;
 mod asr;
+mod automatic_asr;
+mod archive;
+mod script_sources;
 mod audio;
 #[cfg(test)]
 mod boundary_tests;
