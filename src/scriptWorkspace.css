@@ -1,0 +1,23 @@
+.navigation-layout:has(.script-workspace){grid-template-columns:minmax(0,1fr)}
+.navigation-layout:has(.script-workspace)>.navigation-aside{display:none}
+.navigation-layout>main:has(.script-workspace){display:flex;flex-direction:column;min-height:0;overflow:hidden;padding:12px}
+.script-workspace.script-tab{display:flex;flex-direction:column;gap:10px;max-width:none;min-height:0;flex:1;height:100%;overflow:hidden}
+.workspace-content:has(.script-workspace){display:flex;flex-direction:column;min-height:0;flex:1;overflow:hidden;padding:0}
+.script-heading,.script-bottom{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-shrink:0}
+.script-heading label{display:flex;align-items:center;gap:8px;margin:0;white-space:nowrap}
+.script-heading select{width:auto;margin:0}
+.script-columns{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:16px;min-height:0;flex:1}
+.script-editor,.script-review{display:flex;flex-direction:column;min-width:0;min-height:0;border:1px solid #ccd8d0;border-radius:8px;padding:12px;background:#fff;overflow:hidden}
+.script-columns h3{margin:0 0 8px}
+.script-editor textarea{flex:1;min-height:0!important;resize:none;margin:0;width:100%;font-size:15px;line-height:1.7}
+.script-editor p{margin:0 0 8px;font-size:12px}
+.script-difference{flex:1;min-height:0;overflow:auto;overflow-wrap:anywhere}
+.script-difference pre{white-space:pre-wrap;overflow-wrap:anywhere;margin:4px 0;font-family:inherit}
+.script-difference>div{padding:8px 10px;margin:6px 0;border-radius:4px}
+.diff-added{background:#e8f5ea;border-left:4px solid #398451}.diff-removed{background:#fff0ed;border-left:4px solid #c15547}
+.script-lines{margin-top:8px;max-height:40%;overflow:auto;flex-shrink:0}
+.script-lines .source-list{max-height:none;margin-top:4px}
+.script-bottom{border-top:1px solid #ccd8d0;padding-top:10px;font-size:12px}
+.script-bottom .toolbar{flex-shrink:0}
+.navigation-layout:has(.script-workspace) #stage-extras{display:none}
+@media(max-width:1000px){.script-heading,.script-bottom{flex-wrap:wrap}.script-columns{gap:8px}.script-editor,.script-review{padding:8px}}

@@ -1,4 +1,6 @@
 import {bindTakeTrim,isTakeTrimDirty,discardTakeTrim,guardTakeTrimMove} from "./takeTrim";
+import {scriptDifferences} from "./scriptDiff";
+import "./scriptWorkspace.css";
 import "./takeTrim.css";
 import {playCue} from "./soundEffects";
 import {installReloadProtection} from "./reloadProtection";
@@ -99,7 +101,7 @@ function bind(){const extension=document.getElementById("stop-extension") as HTM
  const script=document.getElementById("text")as HTMLTextAreaElement|null;if(script)script.onblur=()=>{draftSave=saveScriptDraft();};const skip=document.getElementById("skip")as HTMLInputElement|null;if(skip)skip.onchange=()=>{void saveScriptDraft();};root.querySelectorAll<HTMLTextAreaElement>('[data-take-memo]').forEach(memo=>memo.onblur=()=>{void saveTakeMemo(memo);});root.querySelectorAll<HTMLSelectElement>("[data-take-score]").forEach(field=>field.onchange=()=>{void saveTakeScore(field);});
  const range=document.getElementById("range-text") as HTMLTextAreaElement|null;if(range)range.onselect=()=>{(document.getElementById("start")as HTMLInputElement).value=String([...range.value.slice(0,range.selectionStart)].length);(document.getElementById("end")as HTMLInputElement).value=String([...range.value.slice(0,range.selectionEnd)].length);};
  root.querySelectorAll<HTMLButtonElement>("[data-action]").forEach(b=>b.onclick=async()=>{const action=b.dataset.action!;const s=current();const sid={segment:s?.id};switch(action){
- case"test_script":{const sample=testScripts.find(x=>x.id===value("test-script"));if(sample){const input=document.getElementById("append") as HTMLTextAreaElement;if(input.value.trim()){notice("台本の下書きが残っています。追加するか、内容を消してからテスト台本を選んでください。",true);break;}input.value=sample.text.trim();input.closest("details")!.open=true;input.focus();notice("テスト台本を下書きへ入れました。「追加」で登録してください。録音はまだ始まりません。");}break;}
+ case"test_script":{const sample=testScripts.find(x=>x.id===value("test-script"));if(sample){const input=document.getElementById("markdown-source") as HTMLTextAreaElement;if(input.value.trim()){notice("台本の下書きが残っています。内容を確認してからテスト台本を選んでください。",true);break;}input.value=sample.text.trim();input.dispatchEvent(new Event("input"));input.focus();notice("テスト台本を下書きへ入れました。行を確認してから台本を確定してください。");}break;}
  case"talk_export":try{const r=await rpc<{path:string;warning:string}>(action,{...sid,run:b.dataset.run,variant:b.dataset.id});notice(`${r.path} ／ ${r.warning}`);}catch(e){notice(String(e),true);}break;
  case"talk_inspect":try{const r=await rpc<unknown>(action);if(r)document.getElementById("talk-inspection")!.textContent=JSON.stringify(r,null,2);}catch(e){notice(String(e),true);}break;
  case"punctuation":await act("compare",{...sid,punctuation:value("punctuation-text"),base_run:value("punctuation-run")});break;
@@ -212,7 +214,18 @@ function editingView(s:Segment){
 async function loadWave(){const t=current()?.takes.find(t=>t.id===current()?.selected);if(!t)return notice("採用テイクを選んでください",true);const sid=selected;try{const result=await rpc<NonNullable<typeof wave>>("waveform",{file:t.file,hash:t.hash});if(sid!==selected||tab!=="export")return;wave=result;document.getElementById("wave-stats")!.textContent=`${wave.duration.toFixed(2)} 秒 ／ RMS ${wave.rms_db.toFixed(1)} dBFS ／ Peak ${wave.peak_db.toFixed(1)} dBFS`;drawWave();}catch(e){notice(String(e),true);}}
 function drawWave(){const svg=document.getElementById("wave");if(!svg||!wave)return;const w=wave;const a=num("trim_start")/w.duration*800,b=(w.duration-num("trim_end"))/w.duration*800;svg.innerHTML=`<rect x="${a}" width="${Math.max(0,b-a)}" y="0" height="160" fill="#b9dab9"/><path d="${w.peaks.map((p,i)=>`M${i/w.peaks.length*800},${80-p*75}v${p*150}`).join(" ")}" stroke="#304c44" stroke-width="1"/>`;}
 function bindWave(){if(player()){player().onplay=syncTakePlayback;player().onpause=syncTakePlayback;player().addEventListener("ended",syncTakePlayback,{once:true});}syncTakePlayback();const svg=document.getElementById("wave");if(!svg)return;let start=0;const pos=(e:PointerEvent)=>Math.max(0,Math.min(1,(e.clientX-svg.getBoundingClientRect().left)/svg.getBoundingClientRect().width));svg.onpointerdown=e=>{if(!wave)return;start=pos(e);svg.setPointerCapture(e.pointerId);};svg.onpointerup=e=>{if(!wave||!svg.hasPointerCapture(e.pointerId))return;svg.releasePointerCapture(e.pointerId);const end=pos(e);if(Math.abs(end-start)<0.002)return;(document.getElementById("trim_start")as HTMLInputElement).value=(Math.min(start,end)*wave.duration).toFixed(3);(document.getElementById("trim_end")as HTMLInputElement).value=((1-Math.max(start,end))*wave.duration).toFixed(3);drawWave();};for(const id of ["trim_start","trim_end"]){document.getElementById(id)?.addEventListener("input",drawWave);}}
-function scriptTab(){const p=state.project as typeof state.project&{source_markdown?:string;script_lines?:{line:number;text:string;raw:string;enabled:boolean;kind:number}[]};if(!markdownDraft||markdownDraft.root!==state.root)markdownDraft={root:state.root,text:p?.source_markdown??"",lines:p?.script_lines??[]};const lines=markdownDraft.lines;return `<section class="script-tab"><div id="script-extras"><details><summary>台本を追加</summary><label>1行を1発話として追加<textarea id="append" rows="3"></textarea></label>${button("append","追加")}${button("import_script","TXT取込")}</details></div><h2>台本を構成する</h2><p class="muted">Markdownの行を中央で操作して読み上げ対象を選びます。</p><label>元のMarkdown<textarea id="markdown-source" rows="7">${esc(markdownDraft?.text??"")}</textarea></label><div class="toolbar">${button("markdown_import","Markdownを読み込む")}${button("markdown_preview","行を確認")}${button("markdown_commit","台本を確定",'class="primary"')}</div><div class="source-list">${lines.map(x=>`<button id="source-line-${x.line}" class="source-line ${x.enabled?"enabled":"disabled"}" data-script-line="${x.line}"><span>${x.line}</span><b>${["本文","部","章","節","項"][x.kind]??"本文"}</b><em>${esc(x.text||x.raw)}</em></button>`).join("")||"<p class=muted>Markdownを入力または読み込んでください。</p>"}</div><details class="panel"><summary>台本全体の編集・履歴</summary><label>発話ごとの読み上げ原稿<textarea id="revision-text" rows="7">${esc(p?.segments.map(s=>s.text).join("\n")??"")}</textarea></label>${button("revision_preview","差分を確認")}${button("revise_script","改訂を適用")}<div id="revision-diff"></div>${p?.archived_segments?.map(x=>`<p>${esc(x.text)} ${button("restore_segment","履歴から復元",`data-id="${x.id}"`)}</p>`).join("")??""}</details>${current()?`<details class="panel"><summary>選択した発話を編集</summary><textarea id="text" rows="2">${esc(current()!.text)}</textarea>${button("split","カーソル位置で分割")}${button("merge","次と結合")}</details>`:""}</section>`;}
+function scriptTab(){
+ const p=state.project as any;
+ if(!markdownDraft||markdownDraft.root!==state.root)markdownDraft={root:state.root,text:p?.source_markdown??"",lines:p?.script_lines??[]};
+return `<section class="script-tab script-workspace"><div class="script-heading"><h2>台本</h2><div class="toolbar">${button("markdown_import","Markdownを読み込む")}<label>読込方法<select id="script-import-mode"><option value="replace" ${scriptImportMode==="replace"?"selected":""}>全体を置き換え</option><option value="append" ${scriptImportMode==="append"?"selected":""}>末尾に追加</option></select></label></div></div><div class="script-columns"><section class="script-editor"><h3>読み込む・編集する</h3><p class="muted">Markdown / TXTをドロップできます。複数は名前順に結合します。</p><div id="script-extras"></div><textarea id="markdown-source" aria-label="編集する台本" spellcheck="false">${esc(markdownDraft.text)}</textarea></section><section class="script-review"><h3>確定済み台本との差分</h3><div id="script-difference" class="script-difference" aria-live="polite">${scriptDiffHtml()}</div><details class="script-lines"><summary>読み上げ対象を選ぶ（${markdownDraft.lines.filter(x=>String(x.text??'').trim()).length}行）</summary><div class="source-list">${markdownDraft.lines.filter(x=>String(x.text??'').trim()).map(x=>`<button id="source-line-${x.line}" class="source-line ${x.enabled?"enabled":"disabled"}" data-script-line="${x.line}"><span>${x.line+1}</span><b>${["本文","部","章","節","項"][x.kind]??"本文"}</b><em>${esc(x.text||x.raw)}</em></button>`).join("")}</div></details></section></div><div class="script-bottom"><span>差分は原文の比較です。録音の対応付けマージは準備中です。</span><div class="toolbar">${button("markdown_preview","行を確認・差分を更新")}${button("markdown_commit","台本を確定",'class="primary"')}</div></div></section>`;
+}
+let scriptImportMode="replace";
+async function acceptMarkdown(result:{text:string;lines:any[]}){
+ const text=scriptImportMode==="append"&&markdownDraft?.text?markdownDraft.text+"\n\n"+result.text:result.text;
+ const lines=text===result.text?result.lines:(await rpc<{lines:any[]}>("markdown_preview",{text})).lines;
+ markdownDraft={root:state.root,text,lines};
+}
+function scriptDiffHtml(){const old=(state.project as any)?.source_markdown??state.project?.segments.map(s=>s.source_text??s.text).join("\n")??"";const rows=scriptDifferences(old,markdownDraft?.text??"");const changed=rows.filter(r=>r.kind!=="same");return `<p>追加 ${changed.filter(r=>r.kind==="added").length}行 ／ 削除 ${changed.filter(r=>r.kind==="removed").length}行</p>${changed.length?changed.slice(0,300).map(r=>`<div class="diff-${r.kind}"><b>${r.kind==="added"?"＋ 新":"− 旧"}</b><pre>${esc(r.text||"（空行）")}</pre></div>`).join(""):"<p class=muted>変更はありません。左側に原稿を読み込むと、ここに差分を表示します。</p>"}${changed.length>300?"<p>変更が多いため先頭300行を表示しています。</p>":""}`;}
 let markdownDraft:{root:string|null;text:string;lines:any[]}|null=null;
 async function loadDroppedMarkdown(paths:string[]){
  if(tab!=="script"||!state.project){notice("プロジェクトを開き、台本画面でドロップしてください",true);return;}
@@ -222,7 +235,7 @@ async function loadDroppedMarkdown(paths:string[]){
  try{
   const result=await rpc<{text:string;lines:any[];names:string[]}>("markdown_drop",{paths});
   if(state.root!==projectRoot)return;
-  markdownDraft={root:projectRoot,text:result.text,lines:result.lines};
+  await acceptMarkdown(result);
   drafts.delete(`${selected}:script`);
   state.message=`読込順：${result.names.join(" → ")}。台本はまだ確定していません。`;
  }catch(e){state.message=String(e);}finally{busy=false;render();}
@@ -256,7 +269,7 @@ function render(){
  if(s&&(tab==="reading"||tab==="evaluation")){enhance(s);comparisonTools(s);ruleView(s);}
  if(tab==="script")testGuide();
  if(tab==="reading"||tab==="evaluation")batchView(tab);
- if(tab==="recording"){testGuide();bindContinuousControls();}
+ if(tab==="recording"){testGuide();root.querySelector('#text')?.insertAdjacentHTML('afterend',`<div class="toolbar">${button("split","カーソル位置で分割")}${button("merge","次と結合")}</div>`);bindContinuousControls();}
  fitWorkspace();bind();bindScriptTab();bindBatch();updateMeter();void loadTakeWaves();
  if(tab==="recording"&&s)bindTakeTrim({segment:s,rpc:async<T>(action:string,payload?:unknown)=>{const result=await rpc<T>(action,payload);if(action!=="trim_take")return result;const latest=await rpc<Snapshot>("state");return latest.project?.segments.find(x=>x.id===s.id)?.takes.find(x=>x.id===(payload as {take:string}).take) as T;},play,isPlaying:take=>playingTake===take&&!player()?.paused,stop:()=>{player()?.pause();syncTakePlayback();},notice,onSaved:async()=>{player()?.pause();await refresh(true);}});
  if(player()){player().onplay=syncTakePlayback;player().onpause=syncTakePlayback;player().onended=()=>{updateTakeProgress();syncTakePlayback();};}syncTakePlayback();
@@ -270,13 +283,13 @@ function render(){
  if(deleteRequest)showDeleteModal(deleteRequest);
 }
 function bindScriptTab(){
- const section=root.querySelector('.script-tab');
- section?.insertAdjacentHTML('afterbegin','<p class="muted">この台本画面にMarkdown / TXTをドロップして読み込めます。複数ファイルは名前順で結合し、元のMarkdown欄を置き換えます。保存は「台本を確定」で行います。</p>');
+ const mode=document.getElementById('script-import-mode') as HTMLSelectElement|null;
+ if(mode)mode.onchange=()=>{scriptImportMode=mode.value;};
  const input=document.getElementById("markdown-source") as HTMLTextAreaElement|null;
- if(input)input.oninput=()=>{if(markdownDraft){markdownDraft.text=input.value;markdownDraft.lines=[];}};
+ if(input)input.oninput=()=>{if(markdownDraft){markdownDraft.text=input.value;markdownDraft.lines=[];const diff=document.getElementById('script-difference');if(diff)diff.innerHTML=scriptDiffHtml();root.querySelector('.script-lines .source-list')?.replaceChildren();const summary=root.querySelector('.script-lines summary');if(summary)summary.textContent='読み上げ対象（行を確認すると更新）';}};
  root.querySelectorAll<HTMLButtonElement>("[data-script-line]").forEach(b=>b.onclick=async()=>{if(busy)return;const row=markdownDraft?.lines.find(x=>x.line===Number(b.dataset.scriptLine));if(row&&markdownDraft){row.enabled=!row.enabled;if(markdownDraft.text===(state.project as any)?.source_markdown){if(!await act("markdown_commit",{text:markdownDraft.text,lines:markdownDraft.lines}))row.enabled=!row.enabled;}render();}});
  const bindAction=(name:string,callback:()=>Promise<void>)=>{const el=root.querySelector<HTMLButtonElement>(`[data-action="${name}"]`);if(el)el.onclick=()=>void callback();};
- bindAction("markdown_import",async()=>{if(busy)return;busy=true;dialogAction="台本ファイルを選択しています";render();try{const r=await rpc<{text:string;lines:any[]}>("markdown_import");if(r){markdownDraft={root:state.root,...r};drafts.delete(`${selected}:script`);}}catch(e){state.message=String(e);}finally{busy=false;dialogAction="";render();}});
+ bindAction("markdown_import",async()=>{if(busy)return;busy=true;dialogAction="台本ファイルを選択しています";render();try{const r=await rpc<{text:string;lines:any[]}>("markdown_import");if(r){await acceptMarkdown(r);drafts.delete(`${selected}:script`);}}catch(e){state.message=String(e);}finally{busy=false;dialogAction="";render();}});
  bindAction("markdown_preview",async()=>{try{const text=value("markdown-source"),r=await rpc<{lines:any[]}>("markdown_preview",{text});markdownDraft={root:state.root,text,lines:r.lines};render();}catch(e){notice(String(e),true);}});
  bindAction("markdown_commit",async()=>{const text=value("markdown-source");if(text!==markdownDraft?.text||!markdownDraft?.lines.length){notice("先に行を確認してください",true);return;}if(await act("markdown_commit",{text,lines:markdownDraft.lines})){drafts.clear();tab="recording";render();}});
 }
@@ -333,7 +346,7 @@ async function initializeUi(){
 
 function testGuide(){
  if(!state.project)return;
- document.querySelector('#script-extras')?.insertAdjacentHTML('beforeend',`<details><summary>読み上げテスト用の台本</summary><p>新しいテスト用プロジェクトで、1、2の順に試してください。各4発話です。</p><label>テスト内容<select id="test-script">${testScripts.map(s=>`<option value="${s.id}">${esc(s.title)}</option>`).join("")}</select></label>${button("test_script","テスト台本を下書きへ")}<p class="muted">下書きを確認して「追加」を押すと登録します。詳しい手順は samples/reading-test/README.md を参照。</p></details>`);
+document.querySelector('#script-extras')?.insertAdjacentHTML('beforeend',`<details><summary>読み上げテスト用の台本</summary><p>新しいテスト用プロジェクトで、1、2の順に試してください。各4発話です。</p><label>テスト内容<select id="test-script">${testScripts.map(s=>`<option value="${s.id}">${esc(s.title)}</option>`).join("")}</select></label>${button("test_script","テスト台本を下書きへ")}<p class="muted">下書きを確認して「行を確認・差分を更新」「台本を確定」で登録します。詳しい手順は samples/reading-test/README.md を参照。</p></details>`);
  const hint=readingTestHint(current()?.text??"");
  if(hint&&(tab==="recording"||tab==="reading"))document.querySelector('main .section-head')?.insertAdjacentHTML('afterend',`<details class="panel"><summary>この発話の読み上げテスト手順</summary><p>${esc(hint.check)}</p><p>意図する読み：${esc(hint.reading)}</p><p class="muted">これは録音の手引きです。実際の音声と異なる場合は録り直し、試聴してから正解読みを確定してください。比較・採点中はこの手引きを表示しません。</p></details>`);
 }

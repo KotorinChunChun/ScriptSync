@@ -11,6 +11,16 @@ function action(name:string){const b=[...document.querySelectorAll<HTMLButtonEle
 beforeEach(()=>{api.listen.mockClear();vi.spyOn(HTMLMediaElement.prototype,"pause").mockImplementation(()=>{});vi.resetModules();vi.useFakeTimers();document.body.innerHTML='<div id="app"></div>';Object.defineProperty(window,"__TAURI_INTERNALS__",{value:{},configurable:true});snapshot={project:{title:"試験",generation:1,source_markdown:"# 部\n本文",script_lines:[{line:1,raw:"# 部",text:"部",enabled:true,kind:1,hierarchy:[1,0,0,0]},{line:2,raw:"本文",text:"本文",enabled:true,kind:0,hierarchy:[1,0,0,0]}],segments:[{id:"s1",text:"市場へ行きます。",source_text:"市場へ行きます。",kind:0,hierarchy:[1,0,0,0],revision:1,takes:[{id:"t1",status:"ready",duration:1.4,file:"takes/a.wav",hash:"hash",warning:""}],selected:"t1",kana:"いちばへいきます。",confirmed:true,mappings:[],corrections:[],comparisons:[{id:"r1",order:["v1","v2","v3"],revealed:false,variants:["A","B","C"].map((label,i)=>({id:`v${i+1}`,label,status:"succeeded",file:`${label}.wav`,hash:label,error:"",text:label,transcript:"",rating:null}))}],trim_start:0,trim_end:0,gap:0,skip:false}]},root:"test",busy:false,job:"",message:"保存済み",peak:.1,elapsed:0};api.invoke.mockReset();api.invoke.mockImplementation(async(_cmd:string,{action,payload}:any)=>{if(action==="state")return structuredClone(snapshot);if(action==="devices")return [{endpoint_id:"mic1",friendly_name:"試験マイク",is_default:true}];if(action==="waveform")return {peaks:Array.from({length:800},(_,i)=>(i%50)/50)};if(action==="markdown_preview")return {lines:snapshot.project.script_lines};if(action==="markdown_import")return {text:"# 部\n本文",lines:snapshot.project.script_lines};return null;});});
 afterEach(()=>{vi.clearAllTimers();vi.useRealTimers();});
 describe("再設計した作業フロー",()=>{
+ it("台本は入力欄一つと差分欄に分かれ、空本文を一覧に出さない",async()=>{
+  snapshot.project.script_lines.push({line:100,text:"",raw:"",enabled:false,kind:0});
+  await import("../../src/main");await settle();
+  expect(document.querySelectorAll('.script-workspace textarea')).toHaveLength(1);
+  expect(document.querySelector('#source-line-100')).toBeNull();
+  const input=document.querySelector<HTMLTextAreaElement>('#markdown-source')!;
+  input.value="新しい本文";input.dispatchEvent(new Event('input'));
+  expect(document.querySelector('#script-difference')?.textContent).toContain("新しい本文");
+  expect(document.querySelector('.script-bottom [data-action=markdown_commit]')).toBeTruthy();
+ });
  it("ドロップしたMarkdownを下書きに読み込み、確定は送らない",async()=>{
   await import("../../src/main");await settle();
   const original=api.invoke.getMockImplementation()!;
