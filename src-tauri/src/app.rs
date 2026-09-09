@@ -96,6 +96,10 @@ impl App {
         if action == "markdown_preview" {
             return Ok(json!({"lines":crate::markdown::parse(&string(&v,"text")?)?}));
         }
+        if action == "markdown_drop" {
+            let paths: Vec<String> = serde_json::from_value(v["paths"].clone()).map_err(|_| "ファイル一覧が必要です")?;
+            return crate::markdown::read_dropped_files(&paths);
+        }
         if action == "markdown_import" {
             let Some(path) = rfd::FileDialog::new()
                 .add_filter("台本", &["md", "txt"])

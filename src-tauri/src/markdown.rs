@@ -2,6 +2,30 @@ use crate::domain::*;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
+pub fn read_dropped_files(paths: &[String]) -> Result<Value> {
+    use std::io::Read;
+    if paths.is_empty() || paths.len() > 100 { return Err("台本ファイルは1～100個で指定してください".into()); }
+    let mut paths = paths.to_vec();
+    paths.sort_by(|a, b| std::path::Path::new(a).file_name().cmp(&std::path::Path::new(b).file_name()).then(a.cmp(b)));
+    let mut text = String::new();
+    let mut names = Vec::new();
+    for path in paths {
+        let path = std::path::Path::new(&path);
+        let extension = path.extension().and_then(|s| s.to_str()).unwrap_or("").to_ascii_lowercase();
+        if !matches!(extension.as_str(), "md" | "markdown" | "txt") { return Err("Markdown（.md / .markdown）または.txtをドロップしてください".into()); }
+        let file = std::fs::File::open(path).map_err(|e| format!("台本を読み込めません: {e}"))?;
+        if !file.metadata().map_err(|e| e.to_string())?.is_file() { return Err("フォルダーは読み込めません".into()); }
+        if !text.is_empty() { text.push_str("\n\n"); }
+        let mut part = String::new();
+        file.take(2_000_001u64.saturating_sub(text.len() as u64)).read_to_string(&mut part).map_err(|e| format!("UTF-8の台本を読み込めません: {e}"))?;
+        if text.len() + part.len() > 2_000_000 { return Err("台本は合計2MB以内にしてください".into()); }
+        text.push_str(part.trim_start_matches('\u{feff}'));
+        if text.len() > 2_000_000 { return Err("台本は合計2MB以内にしてください".into()); }
+        names.push(path.file_name().unwrap_or_default().to_string_lossy().into_owned());
+    }
+    Ok(serde_json::json!({"lines":parse(&text)?,"text":text,"names":names}))
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ScriptLine {
     pub line: usize,
@@ -162,6 +186,22 @@ pub fn commit(p: &mut Project, v: &Value) -> Result<()> {
 mod tests {
     use super::*;
     use serde_json::json;
+    #[test]
+    fn dropped_files_are_sorted_and_invalid_inputs_fail_as_a_whole() {
+        let dir = std::env::temp_dir().join(id());
+        std::fs::create_dir_all(&dir).unwrap();
+        let a = dir.join("01.md"); let b = dir.join("02.MD");
+        std::fs::write(&a, "\u{feff}最初").unwrap();
+        std::fs::write(&b, "次").unwrap();
+        let paths = vec![b.to_string_lossy().into_owned(), a.to_string_lossy().into_owned()];
+        let result = read_dropped_files(&paths).unwrap();
+        assert_eq!(result["text"], "最初\n\n次");
+        assert!(read_dropped_files(&[paths[0].clone(), dir.join("missing.md").to_string_lossy().into_owned()]).is_err());
+        assert!(read_dropped_files(&[dir.join("other.exe").to_string_lossy().into_owned()]).is_err());
+        std::fs::write(&a, "a".repeat(2_000_001)).unwrap();
+        assert!(read_dropped_files(&paths).is_err());
+        std::fs::remove_dir_all(dir).unwrap();
+    }
     #[test]
     fn markdown_blocks_and_hierarchy() {
         let rows=parse("# 部\n本文\n## 章\n### 節\n- 項\n```rs\ncode\n```\n![image](a.png)\n| A | B |\n|---|---|\n末尾").unwrap();

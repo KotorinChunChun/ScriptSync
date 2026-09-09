@@ -214,6 +214,20 @@ function drawWave(){const svg=document.getElementById("wave");if(!svg||!wave)ret
 function bindWave(){if(player()){player().onplay=syncTakePlayback;player().onpause=syncTakePlayback;player().addEventListener("ended",syncTakePlayback,{once:true});}syncTakePlayback();const svg=document.getElementById("wave");if(!svg)return;let start=0;const pos=(e:PointerEvent)=>Math.max(0,Math.min(1,(e.clientX-svg.getBoundingClientRect().left)/svg.getBoundingClientRect().width));svg.onpointerdown=e=>{if(!wave)return;start=pos(e);svg.setPointerCapture(e.pointerId);};svg.onpointerup=e=>{if(!wave||!svg.hasPointerCapture(e.pointerId))return;svg.releasePointerCapture(e.pointerId);const end=pos(e);if(Math.abs(end-start)<0.002)return;(document.getElementById("trim_start")as HTMLInputElement).value=(Math.min(start,end)*wave.duration).toFixed(3);(document.getElementById("trim_end")as HTMLInputElement).value=((1-Math.max(start,end))*wave.duration).toFixed(3);drawWave();};for(const id of ["trim_start","trim_end"]){document.getElementById(id)?.addEventListener("input",drawWave);}}
 function scriptTab(){const p=state.project as typeof state.project&{source_markdown?:string;script_lines?:{line:number;text:string;raw:string;enabled:boolean;kind:number}[]};if(!markdownDraft||markdownDraft.root!==state.root)markdownDraft={root:state.root,text:p?.source_markdown??"",lines:p?.script_lines??[]};const lines=markdownDraft.lines;return `<section class="script-tab"><div id="script-extras"><details><summary>台本を追加</summary><label>1行を1発話として追加<textarea id="append" rows="3"></textarea></label>${button("append","追加")}${button("import_script","TXT取込")}</details></div><h2>台本を構成する</h2><p class="muted">Markdownの行を中央で操作して読み上げ対象を選びます。</p><label>元のMarkdown<textarea id="markdown-source" rows="7">${esc(markdownDraft?.text??"")}</textarea></label><div class="toolbar">${button("markdown_import","Markdownを読み込む")}${button("markdown_preview","行を確認")}${button("markdown_commit","台本を確定",'class="primary"')}</div><div class="source-list">${lines.map(x=>`<button id="source-line-${x.line}" class="source-line ${x.enabled?"enabled":"disabled"}" data-script-line="${x.line}"><span>${x.line}</span><b>${["本文","部","章","節","項"][x.kind]??"本文"}</b><em>${esc(x.text||x.raw)}</em></button>`).join("")||"<p class=muted>Markdownを入力または読み込んでください。</p>"}</div><details class="panel"><summary>台本全体の編集・履歴</summary><label>発話ごとの読み上げ原稿<textarea id="revision-text" rows="7">${esc(p?.segments.map(s=>s.text).join("\n")??"")}</textarea></label>${button("revision_preview","差分を確認")}${button("revise_script","改訂を適用")}<div id="revision-diff"></div>${p?.archived_segments?.map(x=>`<p>${esc(x.text)} ${button("restore_segment","履歴から復元",`data-id="${x.id}"`)}</p>`).join("")??""}</details>${current()?`<details class="panel"><summary>選択した発話を編集</summary><textarea id="text" rows="2">${esc(current()!.text)}</textarea>${button("split","カーソル位置で分割")}${button("merge","次と結合")}</details>`:""}</section>`;}
 let markdownDraft:{root:string|null;text:string;lines:any[]}|null=null;
+async function loadDroppedMarkdown(paths:string[]){
+ if(tab!=="script"||!state.project){notice("プロジェクトを開き、台本画面でドロップしてください",true);return;}
+ if(busy||state.busy||dialogAction){notice("処理が終わってからドロップしてください",true);return;}
+ const projectRoot=state.root;
+ busy=true;
+ try{
+  const result=await rpc<{text:string;lines:any[];names:string[]}>("markdown_drop",{paths});
+  if(state.root!==projectRoot)return;
+  markdownDraft={root:projectRoot,text:result.text,lines:result.lines};
+  drafts.delete(`${selected}:script`);
+  state.message=`読込順：${result.names.join(" → ")}。台本はまだ確定していません。`;
+ }catch(e){state.message=String(e);}finally{busy=false;render();}
+}
+if(desktop){void listen<{paths:string[]}>("tauri://drag-drop",event=>{void loadDroppedMarkdown(event.payload.paths);}).catch(e=>notice(String(e),true));}
 const collapsed=new Set<string>();
 function scriptTree(segments:Segment[],depth=0):string{
  if(depth>=3)return segments.map(line=>`<button class="segment ${line.id===selected?"selected":""}" data-segment="${line.id}"><span>${String(state.project!.segments.indexOf(line)+1).padStart(4,"0")}</span>${esc(line.text)}</button>`).join("");
@@ -256,6 +270,8 @@ function render(){
  if(deleteRequest)showDeleteModal(deleteRequest);
 }
 function bindScriptTab(){
+ const section=root.querySelector('.script-tab');
+ section?.insertAdjacentHTML('afterbegin','<p class="muted">この台本画面にMarkdown / TXTをドロップして読み込めます。複数ファイルは名前順で結合し、元のMarkdown欄を置き換えます。保存は「台本を確定」で行います。</p>');
  const input=document.getElementById("markdown-source") as HTMLTextAreaElement|null;
  if(input)input.oninput=()=>{if(markdownDraft){markdownDraft.text=input.value;markdownDraft.lines=[];}};
  root.querySelectorAll<HTMLButtonElement>("[data-script-line]").forEach(b=>b.onclick=async()=>{if(busy)return;const row=markdownDraft?.lines.find(x=>x.line===Number(b.dataset.scriptLine));if(row&&markdownDraft){row.enabled=!row.enabled;if(markdownDraft.text===(state.project as any)?.source_markdown){if(!await act("markdown_commit",{text:markdownDraft.text,lines:markdownDraft.lines}))row.enabled=!row.enabled;}render();}});

@@ -11,6 +11,26 @@ function action(name:string){const b=[...document.querySelectorAll<HTMLButtonEle
 beforeEach(()=>{api.listen.mockClear();vi.spyOn(HTMLMediaElement.prototype,"pause").mockImplementation(()=>{});vi.resetModules();vi.useFakeTimers();document.body.innerHTML='<div id="app"></div>';Object.defineProperty(window,"__TAURI_INTERNALS__",{value:{},configurable:true});snapshot={project:{title:"試験",generation:1,source_markdown:"# 部\n本文",script_lines:[{line:1,raw:"# 部",text:"部",enabled:true,kind:1,hierarchy:[1,0,0,0]},{line:2,raw:"本文",text:"本文",enabled:true,kind:0,hierarchy:[1,0,0,0]}],segments:[{id:"s1",text:"市場へ行きます。",source_text:"市場へ行きます。",kind:0,hierarchy:[1,0,0,0],revision:1,takes:[{id:"t1",status:"ready",duration:1.4,file:"takes/a.wav",hash:"hash",warning:""}],selected:"t1",kana:"いちばへいきます。",confirmed:true,mappings:[],corrections:[],comparisons:[{id:"r1",order:["v1","v2","v3"],revealed:false,variants:["A","B","C"].map((label,i)=>({id:`v${i+1}`,label,status:"succeeded",file:`${label}.wav`,hash:label,error:"",text:label,transcript:"",rating:null}))}],trim_start:0,trim_end:0,gap:0,skip:false}]},root:"test",busy:false,job:"",message:"保存済み",peak:.1,elapsed:0};api.invoke.mockReset();api.invoke.mockImplementation(async(_cmd:string,{action,payload}:any)=>{if(action==="state")return structuredClone(snapshot);if(action==="devices")return [{endpoint_id:"mic1",friendly_name:"試験マイク",is_default:true}];if(action==="waveform")return {peaks:Array.from({length:800},(_,i)=>(i%50)/50)};if(action==="markdown_preview")return {lines:snapshot.project.script_lines};if(action==="markdown_import")return {text:"# 部\n本文",lines:snapshot.project.script_lines};return null;});});
 afterEach(()=>{vi.clearAllTimers();vi.useRealTimers();});
 describe("再設計した作業フロー",()=>{
+ it("ドロップしたMarkdownを下書きに読み込み、確定は送らない",async()=>{
+  await import("../../src/main");await settle();
+  const original=api.invoke.getMockImplementation()!;
+  api.invoke.mockImplementation(async(c:string,args:any)=>args.action==="markdown_drop"?{text:"結合した本文",lines:[],names:["01.md","02.md"]}:original(c,args));
+  const callback=api.listen.mock.calls.filter(c=>c[0]==="tauri://drag-drop").at(-1)![1];
+  callback({payload:{paths:["C:/02.md","C:/01.md"]}});await settle();
+  expect(document.querySelector<HTMLTextAreaElement>("#markdown-source")!.value).toBe("結合した本文");
+  expect(document.body.textContent).toContain("01.md → 02.md");
+  expect(api.invoke.mock.calls.some(c=>c[1]?.action==="markdown_commit")).toBe(false);
+ });
+ it("ドロップ読込失敗時は入力中の原稿を保持する",async()=>{
+  await import("../../src/main");await settle();
+  const input=document.querySelector<HTMLTextAreaElement>("#markdown-source")!;input.value="編集中";input.dispatchEvent(new Event("input"));
+  const original=api.invoke.getMockImplementation()!;
+  api.invoke.mockImplementation(async(c:string,args:any)=>{if(args.action==="markdown_drop")throw new Error("読込失敗");return original(c,args);});
+  const callback=api.listen.mock.calls.filter(c=>c[0]==="tauri://drag-drop").at(-1)![1];
+  callback({payload:{paths:["C:/missing.md"]}});await settle();
+  expect(document.querySelector<HTMLTextAreaElement>("#markdown-source")!.value).toBe("編集中");
+  expect(document.body.textContent).toContain("読込失敗");
+ });
  it("起動画面は新規・開く・5工程だけを表示する",async()=>{snapshot.project=null;await import("../../src/main");await settle();expect(document.body.textContent).toContain("新規プロジェクト");expect(document.body.textContent).toContain("結合・出力");expect(document.querySelector("aside")).toBeNull();});
  it("台本が初期工程である",async()=>{await import("../../src/main");await settle();expect(document.querySelector("[data-tab=script]")?.getAttribute("aria-selected")).toBe("true");});
  it("工程バーは作業領域の外にあり、出力工程では左ペインを表示しない",async()=>{await import("../../src/main");await settle();expect(document.querySelector(".stage-bar")?.parentElement?.id).toBe("app");await tab("結合・出力");expect(document.querySelector(".navigation-aside")).toBeNull();});
