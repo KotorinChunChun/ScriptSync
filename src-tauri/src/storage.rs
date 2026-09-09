@@ -111,7 +111,9 @@ fn validate_project(root: &Path, p: &Project) -> Result<()> {
             {
                 return Err("音声メタデータが不正です".into());
             }
-            t.trimmed_range()?;
+            if t.status == "ready" {
+                t.trimmed_range()?;
+            }
         }
         if s.selected
             .as_ref()
@@ -351,6 +353,27 @@ impl Store {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn interrupted_zero_duration_take_can_reopen() {
+        let root = std::env::temp_dir().join(id());
+        let mut store = Store::open(root.clone(), true).unwrap();
+        let mut segment = Segment::new("中断した録音".into());
+        segment.takes.push(
+            serde_json::from_value(serde_json::json!({
+                "id": id(), "file": "takes/interrupted.wav", "hash": "", "status": "recording",
+                "duration": 0.0, "peak": 0.0, "warning": "", "created": 0, "endpoint": ""
+            }))
+            .unwrap(),
+        );
+        store.project.segments.push(segment);
+        store.save().unwrap();
+        drop(store);
+        let reopened = Store::open(root.clone(), false).unwrap();
+        assert_eq!(reopened.project.segments[0].takes.len(), 1);
+        assert_ne!(reopened.project.segments[0].takes[0].status, "recording");
+        drop(reopened);
+        fs::remove_dir_all(root).unwrap();
+    }
     #[test]
     fn revisions_lock_and_recovery() {
         let root = std::env::temp_dir().join(id());
