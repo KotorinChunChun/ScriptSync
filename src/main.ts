@@ -43,7 +43,20 @@ function render(){
  <main>${p?`<div class="tabs flow-tabs" role="tablist">${[["recording","台本・録音"],["reading","読み確認・補正"],["evaluation","比較・採点"],["export","結合・出力"]].map(([key,label],index)=>`<button role="tab" aria-selected="${tab===key}" data-tab="${key}"><span>${index+1}</span>${label}</button>`).join("")}</div>${tab==="export"?exportView():s?segmentView(s):`<section class="empty"><h2>最初の発話を追加しましょう</h2><p>左の「台本を追加」から貼り付け、またはテキストファイルを取り込みます。</p></section>`}`:`<section class="empty"><p class="eyebrow">声から、台本を仕上げる</p><h2>一つずつ録って、<br>納得のいく読みへ。</h2><p>自分の声を発話ごとに録り直して、1本の音声に。<br>合成音声との読みあわせも、同じ原稿から始められます。</p>${button("new","新しいプロジェクトを作成",'class="primary"')}<p class="muted">録音・結合はローカルで動作します。<br>合成提案を実行すると原稿がCodexに送信されます。</p></section>`}</main></div>
  <footer><label>試聴 <audio id="player" controls></audio></label><span>録音：Ctrl + R ／ 停止：Esc</span></footer>${dialogAction?`<div id="dialog-modal" class="dialog-modal" role="dialog" aria-modal="true" aria-labelledby="dialog-modal-title"><div><strong id="dialog-modal-title">${esc(dialogAction)}</strong><p>選択画面を閉じるまで、この画面は操作できません。</p></div></div>`:""}`;
  renderedKey=`${selected}:${tab}`;for(const [id,value]of Object.entries(drafts.get(renderedKey)??{})){const field=document.getElementById(id);if(field instanceof HTMLTextAreaElement)field.value=value;}
- if(s){enhance(s);editingView(s);batchView();comparisonTools(s);ruleView(s);}testGuide();bind();bindBatch();bindWave();updateMeter();void loadTakeWaves();if(state.busy||busy){root.setAttribute("aria-busy","true");root.querySelectorAll<HTMLButtonElement>("button[data-action]:not([data-action=stop]):not([data-action=cancel_record])").forEach(b=>b.disabled=true);root.querySelectorAll<HTMLInputElement>('input,textarea,select').forEach(field=>field.disabled=true);}
+ if(s){enhance(s);editingView(s);batchView();comparisonTools(s);ruleView(s);}testGuide();fitWorkspace();bind();bindBatch();bindWave();updateMeter();void loadTakeWaves();if(state.busy||busy){root.setAttribute("aria-busy","true");root.querySelectorAll<HTMLButtonElement>("button[data-action]:not([data-action=stop]):not([data-action=cancel_record])").forEach(b=>b.disabled=true);root.querySelectorAll<HTMLInputElement>('input,textarea,select').forEach(field=>field.disabled=true);}
+}
+function fitWorkspace(){
+ const main=root.querySelector('main')!;
+ const recording=main.querySelector('.recording-workspace');
+ main.classList.toggle('recording-main',!!recording);
+ if(recording){
+  const script=recording.querySelector('.recording-script')!;
+  for(const child of [...main.children])if(child.matches('details'))script.append(child);
+ }else{
+  const content=document.createElement('div');content.className='workspace-content';
+  for(const child of [...main.children])if(!child.matches('.tabs'))content.append(child);
+  main.append(content);
+ }
 }
 function segmentView(s:Segment){
  const base=`<div class="section-head"><div class="utterance-heading"><h2>発話 ${state.project!.segments.indexOf(s)+1}</h2>${button("previous_segment","← 前へ")}${button("next_segment","後へ →")}</div><span class="badge">${s.confirmed?"正解読み確定":"読み未確定"}</span></div>`;
