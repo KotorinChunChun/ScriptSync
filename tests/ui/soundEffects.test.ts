@@ -1,0 +1,6 @@
+import {beforeEach,afterEach,it,expect,vi} from 'vitest';
+let fail=false;const sounds:any[]=[];
+beforeEach(()=>{vi.resetModules();vi.useFakeTimers();fail=false;sounds.length=0;vi.stubGlobal('Audio',class{volume=1;onended:(()=>void)|null=null;onerror:(()=>void)|null=null;pause=vi.fn();removeAttribute=vi.fn();constructor(public src:string){sounds.push(this);}play(){return fail?Promise.reject(new Error('拒否')):Promise.resolve();}});});
+afterEach(()=>{vi.useRealTimers();vi.unstubAllGlobals();});
+it('開始音の終了まで待ち、次の音と重ねない',async()=>{const {playCue}=await import('../../src/soundEffects');let complete=false;const first=playCue('start').then(()=>{complete=true;});const second=playCue('saved');await Promise.resolve();expect(complete).toBe(false);expect(sounds).toHaveLength(1);sounds[0].onended();await first;await Promise.resolve();expect(sounds[1].src).toBe('/sounds/saved.ogg');sounds[1].onended();await second;});
+it('音源読込拒否や終了通知欠落でも操作を復帰できる',async()=>{const {playCue}=await import('../../src/soundEffects');fail=true;await playCue('start');fail=false;const pending=playCue('next');await vi.advanceTimersByTimeAsync(1900);await pending;expect(sounds.every(sound=>sound.pause.mock.calls.length===1)).toBe(true);});

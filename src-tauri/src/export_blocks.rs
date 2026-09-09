@@ -289,12 +289,22 @@ fn collect_block(
             return Err(format!("採用音声が差し替えられています: {}", seg.text));
         }
         let input = audio::samples(&path)?;
-        let from = (seg.trim_start * RATE as f64).round() as usize * CHANNELS;
-        let tail = (seg.trim_end * RATE as f64).round() as usize * CHANNELS;
-        if from >= input.len() || tail >= input.len() - from {
+        let (take_start, take_end) = take.trimmed_range()?;
+        let kept = take_end - take_start;
+        if !seg.trim_start.is_finite()
+            || !seg.trim_end.is_finite()
+            || seg.trim_start < 0.0
+            || seg.trim_end < 0.0
+            || seg.trim_start + seg.trim_end >= kept
+        {
             return Err("トリム範囲が不正です".into());
         }
-        let clip = &input[from..input.len() - tail];
+        let from = ((take_start + seg.trim_start) * RATE as f64).round() as usize * CHANNELS;
+        let end = ((take_end - seg.trim_end) * RATE as f64).round() as usize * CHANNELS;
+        if from >= end || end > input.len() {
+            return Err("トリム範囲が不正です".into());
+        }
+        let clip = &input[from..end];
         let gain = if v["normalize"].as_bool().unwrap_or(true) {
             normalized_gain(clip)
         } else {

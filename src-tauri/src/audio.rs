@@ -224,7 +224,8 @@ pub fn assemble(root: &Path, project: &Project) -> Result<serde_json::Value> {
         if hash_file(&path)? != t.hash {
             return Err("採用音声が差し替えられています".into());
         }
-        let (duration, _) = inspect(&path)?;
+        let (take_start, take_end) = t.trimmed_range()?;
+        let duration = take_end - take_start;
         if !s.trim_start.is_finite()
             || !s.trim_end.is_finite()
             || !s.gap.is_finite()
@@ -236,8 +237,8 @@ pub fn assemble(root: &Path, project: &Project) -> Result<serde_json::Value> {
         {
             return Err("トリム・間の範囲が不正です".into());
         }
-        let from = (s.trim_start * 48000.0).round() as usize;
-        let end = (duration * 48000.0).round() as usize - (s.trim_end * 48000.0).round() as usize;
+        let from = ((take_start + s.trim_start) * 48000.0).round() as usize;
+        let end = ((take_end - s.trim_end) * 48000.0).round() as usize;
         let gap = (s.gap * 48000.0).round() as usize;
         if !s.gain_db.is_finite() || !(-36.0..=24.0).contains(&s.gain_db) {
             return Err("音量が不正です".into());
@@ -311,6 +312,8 @@ mod tests {
             let mut s = Segment::new(name.into());
             let t = Take {
                 script_text: String::new(),
+                trim_start: 0.0,
+                trim_end: 0.0,
                 id: id(),
                 file: name.into(),
                 hash: hash_file(&root.join(name)).unwrap(),

@@ -59,3 +59,4 @@ footer audio{max-width:38vw;height:40px}
 /* 録音操作を原稿の上へ置き、連続録音操作は発話ナビゲーションへまとめる。 */
 .utterance-heading{flex-wrap:wrap}.utterance-heading .continuous-controls{margin:0 0 0 10px;padding:0;display:flex;align-items:center;gap:6px}.continuous-controls .badge{font-size:11px}
 .live-recording{display:flex;align-items:center;gap:12px;margin-top:8px}.live-recording svg{height:44px;min-width:0;flex:1;background:#f0f6f2;border-radius:5px}.live-recording output{font-variant-numeric:tabular-nums;min-width:66px;font-size:13px;text-align:right}
+.utterance-heading .continuous-controls button{font-size:14px;padding:8px 12px;min-height:38px}.utterance-heading>button{min-height:38px}.continuous-controls .badge{font-size:15px;line-height:1.5}.continuous-controls #continuous-start{background:#176b57;color:#fff;border-color:#176b57}

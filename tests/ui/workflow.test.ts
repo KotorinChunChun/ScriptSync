@@ -1,3 +1,4 @@
+vi.mock("../../src/soundEffects",()=>({playCue:vi.fn(async()=>{})}));
 import { beforeEach, afterEach, describe, expect, it, vi } from "vitest";
 
 const api=vi.hoisted(()=>({invoke:vi.fn(),listen:vi.fn(async(..._args:any[])=>()=>{})}));
@@ -12,11 +13,12 @@ afterEach(()=>{vi.clearAllTimers();vi.useRealTimers();});
 describe("再設計した作業フロー",()=>{
  it("起動画面は新規・開く・5工程だけを表示する",async()=>{snapshot.project=null;await import("../../src/main");await settle();expect(document.body.textContent).toContain("新規プロジェクト");expect(document.body.textContent).toContain("結合・出力");expect(document.querySelector("aside")).toBeNull();});
  it("台本が初期工程である",async()=>{await import("../../src/main");await settle();expect(document.querySelector("[data-tab=script]")?.getAttribute("aria-selected")).toBe("true");});
+ it("工程バーは作業領域の外にあり、出力工程では左ペインを表示しない",async()=>{await import("../../src/main");await settle();expect(document.querySelector(".stage-bar")?.parentElement?.id).toBe("app");await tab("結合・出力");expect(document.querySelector(".navigation-aside")).toBeNull();});
  it("台本タブにMarkdown原稿を表示する",async()=>{await import("../../src/main");await settle();expect(document.querySelector<HTMLTextAreaElement>("#markdown-source")?.value).toContain("# 部");});
  it("原稿行をオンオフできる",async()=>{await import("../../src/main");await settle();const row=document.querySelector<HTMLButtonElement>("[data-script-line]")!;row.click();expect(document.querySelector(".source-line.disabled")).toBeTruthy();});
  it("Markdown確認はRPCへ送る",async()=>{await import("../../src/main");await settle();action("行を確認");await settle();expect(api.invoke.mock.calls.some(x=>x[1]?.action==="markdown_preview")).toBe(true);});
  it("Markdown確定は行情報を送る",async()=>{await import("../../src/main");await settle();action("台本を確定");await settle();expect(api.invoke.mock.calls.some(x=>x[1]?.action==="markdown_commit")).toBe(true);});
- it("左ペインはフィルターと台本ツリーを表示する",async()=>{await import("../../src/main");await settle();expect(document.querySelector("#filter")).toBeTruthy();expect(document.querySelector("[data-segment=s1]")?.textContent).toContain("市場");});
+it("台本工程の左ペインはフィルターと元Markdown構成を表示する",async()=>{await import("../../src/main");await settle();expect(document.querySelector("#filter")).toBeTruthy();expect(document.querySelector("aside")?.textContent).toContain("部");});
  it("録音工程は元原稿と録音用原稿を並べる",async()=>{await import("../../src/main");await settle();await tab("録音");expect(document.querySelector("#text")).toBeTruthy();expect(document.querySelector(".take-column")).toBeTruthy();});
  it("録音開始は既定Endpointを送る",async()=>{await import("../../src/main");await settle();await tab("録音");action("録音開始");await settle();expect(api.invoke.mock.calls.some(x=>x[1]?.action==="record")).toBe(true);});
  it("録音前は停止保存を無効にする",async()=>{await import("../../src/main");await settle();await tab("録音");expect([...document.querySelectorAll<HTMLButtonElement>("button")].find(x=>x.textContent?.includes("停止して保存"))?.disabled).toBe(true);});
@@ -31,7 +33,7 @@ describe("再設計した作業フロー",()=>{
  it("比較工程は候補名を非開示で表示する",async()=>{await import("../../src/main");await settle();await tab("比較");expect([...document.querySelectorAll("h4")].map(x=>x.textContent)).toEqual(["音声 1","音声 2","音声 3"]);});
  it("比較工程で候補名開示を送る",async()=>{await import("../../src/main");await settle();await tab("比較");action("候補名を開示");await settle();expect(api.invoke.mock.calls.some(x=>x[1]?.action==="reveal")).toBe(true);});
  it("結合・出力工程へ移動できる",async()=>{await import("../../src/main");await settle();await tab("結合・出力");expect(document.body.textContent).toContain("分割単位");});
- it("未収録フィルターは収録済み行を除く",async()=>{await import("../../src/main");await settle();const f=document.querySelector<HTMLSelectElement>("#filter")!;f.value="unrecorded";f.dispatchEvent(new Event("change"));expect(document.querySelectorAll("[data-segment]")).toHaveLength(0);});
+it("未収録フィルターは収録済み行を除く",async()=>{await import("../../src/main");await settle();await tab("録音");const f=document.querySelector<HTMLSelectElement>("#filter")!;f.value="unrecorded";f.dispatchEvent(new Event("change"));expect(document.querySelectorAll("[data-segment]")).toHaveLength(0);});
  it("原稿編集はblurで保存する",async()=>{await import("../../src/main");await settle();await tab("録音");const text=document.querySelector<HTMLTextAreaElement>("#text")!;text.value="変更";text.dispatchEvent(new FocusEvent("blur"));await settle();expect(api.invoke.mock.calls.some(x=>x[1]?.action==="edit")).toBe(true);});
  it("新規はRPCを呼ぶ",async()=>{snapshot.project=null;await import("../../src/main");await settle();action("新規プロジェクト");await settle();expect(api.invoke.mock.calls.some(x=>x[1]?.action==="new")).toBe(true);});
  it("開くはRPCを呼ぶ",async()=>{snapshot.project=null;await import("../../src/main");await settle();action("開く");await settle();expect(api.invoke.mock.calls.some(x=>x[1]?.action==="open")).toBe(true);});
@@ -126,4 +128,33 @@ it('F1は取消完了を待って再録音しF2保存F3直前再生を行う',as
  expect(api.invoke).toHaveBeenCalledWith('command',{action:'audio',payload:{file:'new.wav',hash:'new'}});
  document.querySelector<HTMLButtonElement>('#continuous-stop')!.click();await settle();
  expect(document.querySelector<HTMLButtonElement>('[data-action=record]')!.disabled).toBe(false);
+});
+
+it('画面再接続で録音中を検出しても保存完了後に操作を復帰する',async()=>{
+ const original=api.invoke.getMockImplementation()!;snapshot.busy=true;snapshot.job='recording';api.invoke.mockImplementation(async(command:string,args:any)=>args.action==='ui_attach'?{recovering:true}:original(command,args));
+ await import('../../src/main');await settle();expect(document.querySelector('[data-tab=recording]')?.getAttribute('aria-selected')).toBe('true');
+ expect(document.querySelector<HTMLButtonElement>('[data-action=stop]')!.disabled).toBe(false);
+ snapshot.busy=false;snapshot.job='';snapshot.project.generation++;await vi.advanceTimersByTimeAsync(700);await settle();
+ expect(document.querySelector<HTMLButtonElement>('[data-action=record]')!.disabled).toBe(false);expect(document.querySelector('#app')!.hasAttribute('aria-busy')).toBe(false);
+});
+it('保存中のF1は追加録音を予約し保存済みテイクを取り消さない',async()=>{
+ const original=api.invoke.getMockImplementation()!;
+ api.invoke.mockImplementation(async(command:string,args:any)=>{if(args.action==='record'){snapshot.busy=true;snapshot.job='recording';return null;}if(args.action==='stop'){snapshot.job='saving';return null;}return original(command,args);});
+ await import('../../src/main');await settle();await tab('録音');document.querySelector<HTMLButtonElement>('#continuous-start')!.click();await settle();
+ const handler=api.listen.mock.calls.find(x=>x[0]==='scriptsync-hotkey')![1];handler({payload:'F2'});await settle();handler({payload:'F1'});handler({payload:'F1'});await settle();
+ expect(api.invoke.mock.calls.filter(x=>x[1]?.action==='cancel_record')).toHaveLength(0);
+ snapshot.project.segments[0].takes.push({...snapshot.project.segments[0].takes[0],id:'saved-new'});snapshot.busy=false;snapshot.job='';snapshot.project.generation++;
+ await vi.advanceTimersByTimeAsync(700);await settle();
+ expect(api.invoke.mock.calls.filter(x=>x[1]?.action==='record')).toHaveLength(2);expect(snapshot.project.segments[0].takes.map((t:any)=>t.id)).toEqual(['t1','saved-new']);
+ const {playCue}=await import('../../src/soundEffects');vi.mocked(playCue).mockClear();handler({payload:'F3'});await settle();expect(playCue).toHaveBeenCalledWith('invalid');
+});
+it('未保存トリミングをF4で採用せず、移動前に保存を選択できる',async()=>{
+ await import('../../src/main');await settle();await tab('録音');document.querySelector<HTMLButtonElement>('#continuous-start')!.click();await settle();
+ const wave=document.querySelector<HTMLElement>('.take-wave-wrap')!,handle=wave.querySelector<HTMLButtonElement>('.take-trim-handle.start')!;
+ vi.spyOn(wave,'getBoundingClientRect').mockReturnValue({left:0,width:100} as DOMRect);
+ const pointer=(x:number)=>Object.assign(new Event('pointermove',{bubbles:true}),{clientX:x,pointerId:1}) as PointerEvent;
+ handle.onpointerdown!(pointer(0));wave.onpointermove!(pointer(25));wave.onpointerup!(pointer(25));
+ const handler=api.listen.mock.calls.find(x=>x[0]==='scriptsync-hotkey')![1];handler({payload:'F4'});await settle();expect(api.invoke.mock.calls.some(x=>x[1]?.action==='select')).toBe(false);
+ await tab('結合・出力');expect(document.querySelector('.take-trim-modal')).toBeTruthy();document.querySelector<HTMLButtonElement>('[data-choice=save]')!.click();await settle();
+ expect(api.invoke.mock.calls.some(x=>x[1]?.action==='trim_take')).toBe(true);expect(document.querySelector('[data-tab=export]')?.getAttribute('aria-selected')).toBe('true');
 });

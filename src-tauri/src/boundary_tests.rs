@@ -38,6 +38,8 @@ fn deleting_take_removes_audio_and_clears_selection() {
     std::fs::write(&path, b"test").unwrap();
     s.takes.push(Take {
         script_text: String::new(),
+        trim_start: 0.0,
+        trim_end: 0.0,
         id: tid.clone(),
         file: relative,
         hash: "hash".into(),

@@ -11,6 +11,8 @@ use std::sync::{
 
 #[derive(Default)]
 pub struct Inner {
+    pub ui_last_seen: Option<std::time::Instant>,
+    pub ui_interrupted: bool,
     pub queue_stop: Option<Arc<AtomicBool>>,
     pub media: std::collections::HashMap<String, std::path::PathBuf>,
     pub store: Option<Store>,
@@ -49,6 +51,8 @@ pub fn take_from_file(
     write_new(&path, &std::fs::read(source).map_err(|e| e.to_string())?)?;
     Ok(Take {
         script_text: String::new(),
+        trim_start: 0.0,
+        trim_end: 0.0,
         id: tid,
         file,
         hash: hash_file(&path)?,
@@ -74,6 +78,16 @@ impl App {
         )
     }
     pub fn dispatch(&self, action: &str, v: Value) -> Result<Value> {
+        if action == "ui_attach" {
+            return Ok(json!({"recovering":crate::ui_session::attach(self)}));
+        }
+        if action == "ui_heartbeat" {
+            return Ok(json!({"interrupted":crate::ui_session::heartbeat(self)}));
+        }
+        if action == "ui_detach" {
+            crate::ui_session::lost(self);
+            return Ok(Value::Null);
+        }
         if action == "state" {
             return self.snapshot();
         }
@@ -248,7 +262,7 @@ impl App {
                     Store::open_project_file(path)?
                 };
                 a.store = Some(store);
-                a.message = "プロジェクトを開きました".into();
+                a.message.clear();
             }
             return Ok(json!(null));
         }
@@ -261,6 +275,26 @@ impl App {
             a.media.clear();
             a.media.insert(token.clone(), path);
             return Ok(json!(format!("http://scriptsync-audio.localhost/{token}")));
+        }
+        if action == "preview_take_trim" {
+            let sid = string(&v, "segment")?;
+            let tid = string(&v, "take")?;
+            let start = v["start"].as_f64().ok_or("開始秒が必要です")?;
+            let end = v["end"].as_f64().ok_or("終了秒が必要です")?;
+            let mut preview = store.project.clone();
+            crate::take_trim::save(&mut preview, &sid, &tid, start, end)?;
+            let take = preview
+                .segments
+                .iter()
+                .find(|s| s.id == sid)
+                .and_then(|s| s.takes.iter().find(|t| t.id == tid))
+                .ok_or("テイクがありません")?;
+            let input = safe(&store.root, &take.file)?;
+            if hash_file(&input)? != take.hash {
+                return Err("音声が変わっています".into());
+            }
+            let (clip, file) = crate::take_trim::preview_wav(&store.root, &input, start, end)?;
+            return Ok(json!({"file": file, "hash": hash_file(&clip)?}));
         }
         if action == "export" {
             let result = audio::assemble(&store.root, &store.project)?;
@@ -317,6 +351,13 @@ impl App {
                     }
                     s.gain_db = gain;
                 }
+                "trim_take" => crate::take_trim::save(
+                    &mut store.project,
+                    &string(&v, "segment")?,
+                    &string(&v, "take")?,
+                    v["start"].as_f64().ok_or("開始秒が必要です")?,
+                    v["end"].as_f64().ok_or("終了秒が必要です")?,
+                )?,
                 "take_note" => {
                     let s = segment(&mut store.project, &string(&v, "segment")?)?;
                     let tid = string(&v, "take")?;
@@ -631,6 +672,8 @@ impl App {
         let script_text = segment(&mut store.project, &sid)?.text.clone();
         segment(&mut store.project, &sid)?.takes.push(Take {
             script_text,
+            trim_start: 0.0,
+            trim_end: 0.0,
             id: tid.clone(),
             file,
             hash: String::new(),

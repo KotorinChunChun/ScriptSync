@@ -1,4 +1,6 @@
 mod export_settings;
+mod take_trim;
+mod ui_session;
 use tauri::Manager;
 
 mod alignment;
@@ -94,7 +96,13 @@ pub fn run() {
             .as_ref()
             .map(|store| store.project.title.clone())
     });
+    ui_session::start_watchdog(&app);
     tauri::Builder::default()
+        .on_page_load(|webview, payload| {
+            if payload.event() == tauri::webview::PageLoadEvent::Started {
+                ui_session::lost(&webview.state::<app::App>());
+            }
+        })
         .register_uri_scheme_protocol("scriptsync-audio", {
             let app = app.clone();
             move |_, request| media::response(&app, request)

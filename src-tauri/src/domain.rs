@@ -13,6 +13,11 @@ pub fn now() -> u64 {
 pub struct Take {
     #[serde(default)]
     pub script_text: String,
+    /// 保存済みの残す区間（秒）。旧プロジェクトの 0, 0 は全区間を表す。
+    #[serde(default)]
+    pub trim_start: f64,
+    #[serde(default)]
+    pub trim_end: f64,
     pub id: String,
     pub file: String,
     pub hash: String,
@@ -22,6 +27,24 @@ pub struct Take {
     pub warning: String,
     pub created: u64,
     pub endpoint: String,
+}
+impl Take {
+    pub fn trimmed_range(&self) -> Result<(f64, f64)> {
+        let end = if self.trim_start == 0.0 && self.trim_end == 0.0 {
+            self.duration
+        } else {
+            self.trim_end
+        };
+        if !self.trim_start.is_finite()
+            || !end.is_finite()
+            || self.trim_start < 0.0
+            || end <= self.trim_start
+            || end > self.duration
+        {
+            return Err("テイクの残す範囲が不正です".into());
+        }
+        Ok((self.trim_start, end))
+    }
 }
 #[derive(Clone, Serialize, Deserialize, Debug)]
 pub struct Mapping {

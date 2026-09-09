@@ -111,6 +111,7 @@ fn validate_project(root: &Path, p: &Project) -> Result<()> {
             {
                 return Err("音声メタデータが不正です".into());
             }
+            t.trimmed_range()?;
         }
         if s.selected
             .as_ref()
