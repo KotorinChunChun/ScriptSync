@@ -62,3 +62,4 @@ footer audio{max-width:38vw;height:40px}
 .utterance-heading .continuous-controls button{font-size:14px;padding:8px 12px;min-height:38px}.utterance-heading>button{min-height:38px}.continuous-controls .badge{font-size:15px;line-height:1.5}.continuous-controls #continuous-start{background:#176b57;color:#fff;border-color:#176b57}
 
 .stop-extension{display:flex;align-items:center;gap:4px;white-space:nowrap}.stop-extension input{width:65px;margin:0}.record-controls .toolbar{gap:6px}
+.take-column .take-annotation{grid-column:2;grid-row:1;display:flex;align-items:center;gap:6px;min-width:0}.take-column .take-annotation .take-memo{flex:1;min-width:45px;width:100px}.take-score{display:flex;align-items:center;gap:3px;font-size:12px;white-space:nowrap}.take-score select{width:72px;padding:3px;height:30px}.record-controls .toolbar button{padding-inline:10px}

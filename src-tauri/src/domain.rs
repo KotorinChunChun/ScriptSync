@@ -172,6 +172,8 @@ impl Segment {
 }
 #[derive(Clone, Default, Serialize, Deserialize, Debug)]
 pub struct TakeNote {
+    #[serde(default)]
+    pub score: Option<u8>,
     pub memo: String,
     pub favorite: bool,
 }

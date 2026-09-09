@@ -130,3 +130,61 @@ fn split_recorded_segment_reopens_with_history_and_distinct_ids() {
     drop(store);
     std::fs::remove_dir_all(root).unwrap();
 }
+
+#[test]
+fn take_score_persists_validates_and_preserves_memo() {
+    let old: TakeNote = serde_json::from_value(json!({"memo":"旧メモ","favorite":false})).unwrap();
+    assert_eq!(old.score, None);
+    let root = std::env::temp_dir().join(id());
+    let mut store = Store::open(root.clone(), true).unwrap();
+    let mut s = scored_segment(&root, "市場へ行く");
+    let t = take_from_file(
+        &root,
+        &root.join(&s.comparisons[0].variants[0].file),
+        "fixture".into(),
+    )
+    .unwrap();
+    let tid = t.id.clone();
+    let sid = s.id.clone();
+    s.takes.push(t);
+    s.take_notes.insert(tid.clone(), old);
+    store.project.segments.push(s);
+    store.save().unwrap();
+    let app = App::default();
+    app.0.lock().unwrap().store = Some(store);
+    for score in (0..=100).step_by(10) {
+        app.dispatch(
+            "take_score",
+            json!({"segment":sid,"take":tid,"score":score}),
+        )
+        .unwrap();
+    }
+    for score in [json!(-10), json!(101), json!(15), json!(0.5), json!("80")] {
+        assert!(
+            app.dispatch(
+                "take_score",
+                json!({"segment":sid,"take":tid,"score":score})
+            )
+            .is_err()
+        );
+    }
+    app.dispatch(
+        "take_note",
+        json!({"segment":sid,"take":tid,"memo":"変更メモ","favorite":false}),
+    )
+    .unwrap();
+    drop(app);
+    let store = Store::open(root.clone(), false).unwrap();
+    let note = &store.project.segments[0].take_notes[&tid];
+    assert_eq!(note.score, Some(100));
+    assert_eq!(note.memo, "変更メモ");
+    let app = App::default();
+    app.0.lock().unwrap().store = Some(store);
+    app.dispatch("take_score", json!({"segment":sid,"take":tid,"score":null}))
+        .unwrap();
+    drop(app);
+    let store = Store::open(root.clone(), false).unwrap();
+    assert_eq!(store.project.segments[0].take_notes[&tid].score, None);
+    drop(store);
+    std::fs::remove_dir_all(root).unwrap();
+}

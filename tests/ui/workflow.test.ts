@@ -115,7 +115,7 @@ it('F1は取消完了を待って再録音しF2保存F3直前再生を行う',as
  await import('../../src/main');await settle();await tab('録音');
  document.querySelector<HTMLButtonElement>('#continuous-start')!.click();await settle();
  expect(api.invoke.mock.calls.filter(x=>x[1]?.action==='record')).toHaveLength(1);
- for(const name of ['record','cancel_record','stop'])expect(document.querySelector<HTMLButtonElement>(`[data-action=${name}]`)!.disabled).toBe(true);
+ expect(document.querySelector('[data-action=record]')).toBeNull();for(const name of ['cancel_record','stop'])expect(document.querySelector<HTMLButtonElement>(`[data-action=${name}]`)!.disabled).toBe(true);
  const handler=api.listen.mock.calls.find(x=>x[0]==='scriptsync-hotkey')![1];
  handler({payload:'F1'});await settle();handler({payload:'F1'});await settle();
  expect(api.invoke.mock.calls.filter(x=>x[1]?.action==='cancel_record')).toHaveLength(1);
@@ -220,4 +220,26 @@ it('欠落警告があるテイクは確認前に採用しない',async()=>{
  expect(api.invoke.mock.calls.some(x=>x[1]?.action==='select')).toBe(false);
  document.querySelector<HTMLButtonElement>('[data-quality-adopt]')!.click();await settle();
  expect(api.invoke.mock.calls.some(x=>x[1]?.action==='select')).toBe(true);
+});
+
+
+it('評価は未評価と10点刻み11段階で即時保存しメモを保持する',async()=>{
+ snapshot.project.segments[0].take_notes={t1:{memo:'残すメモ',favorite:false,score:null}};
+ await import('../../src/main');await settle();await tab('録音');
+ const field=document.querySelector<HTMLSelectElement>('[data-take-score]')!;expect(field.options).toHaveLength(12);expect(field.value).toBe('');
+ field.value='80';field.dispatchEvent(new Event('change'));await settle();
+ expect(api.invoke).toHaveBeenCalledWith('command',{action:'take_score',payload:{segment:'s1',take:'t1',score:80}});
+ expect(document.querySelector<HTMLTextAreaElement>('[data-take-memo]')!.value).toBe('残すメモ');
+ field.value='';field.dispatchEvent(new Event('change'));await settle();expect(api.invoke).toHaveBeenCalledWith('command',{action:'take_score',payload:{segment:'s1',take:'t1',score:null}});
+});
+it('試聴とF3は再生・停止で表示を切り替え自然終了で戻る',async()=>{
+ const original=api.invoke.getMockImplementation()!;
+ api.invoke.mockImplementation(async(c:string,a:any)=>a.action==='preview_take_trim'?{file:'clip.wav',hash:'clip'}:a.action==='audio'?'blob:test':original(c,a));
+ let paused=true;vi.spyOn(HTMLMediaElement.prototype,'paused','get').mockImplementation(()=>paused);
+ vi.spyOn(HTMLMediaElement.prototype,'play').mockImplementation(async function(this:HTMLMediaElement){paused=false;this.dispatchEvent(new Event('play'));});
+ vi.spyOn(HTMLMediaElement.prototype,'pause').mockImplementation(function(this:HTMLMediaElement){paused=true;this.dispatchEvent(new Event('pause'));});
+ await import('../../src/main');await settle();await tab('録音');
+ const b=document.querySelector<HTMLButtonElement>('[data-trim-preview]')!;b.click();await settle();expect(b.textContent).toBe('停止(F3)');
+ document.dispatchEvent(new KeyboardEvent('keydown',{key:'F3',bubbles:true}));await settle();expect(b.textContent).toBe('試聴(F3)');
+ b.click();await settle();expect(b.textContent).toBe('停止(F3)');paused=true;document.querySelector('audio')!.dispatchEvent(new Event('ended'));expect(b.textContent).toBe('試聴(F3)');
 });

@@ -377,12 +377,30 @@ impl App {
                         return Err("テイクがありません".into());
                     }
                     s.take_notes.insert(
-                        tid,
+                        tid.clone(),
                         TakeNote {
+                            score: s.take_notes.get(&tid).and_then(|note| note.score),
                             memo: string(&v, "memo")?,
                             favorite: v["favorite"].as_bool().unwrap_or(false),
                         },
                     );
+                }
+                "take_score" => {
+                    let score = if v["score"].is_null() {
+                        None
+                    } else {
+                        let n = v["score"]
+                            .as_u64()
+                            .filter(|n| *n <= 100 && *n % 10 == 0)
+                            .ok_or("評価は未評価または0～100点の10点刻みで指定してください")?;
+                        Some(n as u8)
+                    };
+                    let s = segment(&mut store.project, &string(&v, "segment")?)?;
+                    let tid = string(&v, "take")?;
+                    if !s.takes.iter().any(|t| t.id == tid) {
+                        return Err("テイクがありません".into());
+                    }
+                    s.take_notes.entry(tid).or_default().score = score;
                 }
                 "delete_take" => {
                     let sid = string(&v, "segment")?;
