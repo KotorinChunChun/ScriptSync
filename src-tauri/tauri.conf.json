@@ -15,6 +15,7 @@
         "title": "読みあわせ (ScriptSync)",
         "width": 1280,
         "height": 720,
+        "visible": false,
         "minWidth": 960,
         "minHeight": 650
       }
@@ -28,4 +29,3 @@
     "targets": "all"
   }
 }
-

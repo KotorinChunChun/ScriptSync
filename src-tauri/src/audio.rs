@@ -310,6 +310,7 @@ mod tests {
             fixture(&root.join(name), v);
             let mut s = Segment::new(name.into());
             let t = Take {
+                script_text: String::new(),
                 id: id(),
                 file: name.into(),
                 hash: hash_file(&root.join(name)).unwrap(),

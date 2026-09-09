@@ -6,6 +6,15 @@ use std::{
     io::{Read, Write},
     path::{Path, PathBuf},
 };
+
+pub const PROJECT_FILE_EXTENSION: &str = "scriptsync";
+const PROJECT_FILE_VERSION: u32 = 1;
+
+#[derive(serde::Serialize, serde::Deserialize)]
+struct ProjectFile {
+    version: u32,
+    data_directory: String,
+}
 pub fn hash_bytes(bytes: &[u8]) -> String {
     format!("{:x}", Sha256::digest(bytes))
 }
@@ -69,6 +78,7 @@ pub fn safe(root: &Path, relative: &str) -> Result<PathBuf> {
 }
 pub struct Store {
     pub root: PathBuf,
+    pub project_file: Option<PathBuf>,
     pub project: Project,
     _lock: File,
 }
@@ -181,6 +191,7 @@ impl Store {
         validate_project(&root, &project)?;
         let mut s = Self {
             root,
+            project_file: None,
             project,
             _lock: lock,
         };
@@ -193,6 +204,12 @@ impl Store {
             }
         }
         for seg in &mut s.project.segments {
+            if seg.source_text.is_empty() {
+                seg.source_text = seg.text.clone();
+            }
+            if seg.hierarchy.is_empty() {
+                seg.hierarchy = vec![0; 4];
+            }
             for record in &mut seg.transcriptions {
                 if record["status"] == "running" {
                     record["status"] = "interrupted".into();
@@ -219,6 +236,94 @@ impl Store {
         }
         s.save()?;
         Ok(s)
+    }
+
+    /// 新しい形式では、選択する `.scriptsync` ファイルと実データのフォルダを分ける。
+    /// 音声などをプロジェクトファイルへ詰め込まず、従来と同じ非破壊の世代保存を続ける。
+    pub fn create_project_file(path: PathBuf) -> Result<Self> {
+        if path.extension().and_then(|value| value.to_str()) != Some(PROJECT_FILE_EXTENSION) {
+            return Err("プロジェクトファイルの拡張子は .scriptsync にしてください".into());
+        }
+        let parent = path
+            .parent()
+            .ok_or("プロジェクトファイルの保存先が不正です")?;
+        let name = path.file_name().ok_or("プロジェクトファイル名が不正です")?;
+        let data_name = format!("{}.data", name.to_string_lossy());
+        let data_root = parent.join(&data_name);
+        if data_root.exists() {
+            return Err("同名のプロジェクトデータフォルダが既にあります".into());
+        }
+        let project_file = ProjectFile {
+            version: PROJECT_FILE_VERSION,
+            data_directory: data_name,
+        };
+        // create_new により、既存のプロジェクトファイルは一切置き換えない。
+        json_new(&path, &project_file)?;
+        let mut store = match Self::open(data_root, true) {
+            Ok(store) => store,
+            Err(error) => {
+                // この呼出しが create_new した入口だけを消す。作成済みデータは保全する。
+                let _ = fs::remove_file(&path);
+                return Err(error);
+            }
+        };
+        store.project.title = path
+            .file_stem()
+            .unwrap_or_default()
+            .to_string_lossy()
+            .into_owned();
+        store.save()?;
+        store.project_file = Some(path);
+        Ok(store)
+    }
+
+    pub fn open_project_file(path: PathBuf) -> Result<Self> {
+        if path.extension().and_then(|value| value.to_str()) == Some("json") {
+            return Self::migrate_legacy_project(path);
+        }
+        if path.extension().and_then(|value| value.to_str()) != Some(PROJECT_FILE_EXTENSION) {
+            return Err(".scriptsync プロジェクトファイルを選択してください".into());
+        }
+        let bytes = fs::read(&path).map_err(|e| e.to_string())?;
+        let project_file: ProjectFile = serde_json::from_slice(&bytes)
+            .map_err(|e| format!("プロジェクトファイルを読めません: {e}"))?;
+        if project_file.version != PROJECT_FILE_VERSION {
+            return Err("未対応のプロジェクトファイル版です".into());
+        }
+        let parent = path
+            .parent()
+            .ok_or("プロジェクトファイルの保存先が不正です")?;
+        let data_root = if project_file.data_directory == "." {
+            parent.canonicalize().map_err(|e| e.to_string())?
+        } else {
+            safe(parent, &project_file.data_directory)?
+        };
+        let mut store = Self::open(data_root, false)?;
+        store.project_file = Some(path);
+        Ok(store)
+    }
+
+    fn migrate_legacy_project(project_json: PathBuf) -> Result<Self> {
+        if project_json.file_name().and_then(|value| value.to_str()) != Some("project.json") {
+            return Err("従来形式では project.json を選択してください".into());
+        }
+        let root = project_json
+            .parent()
+            .ok_or("従来プロジェクトの保存先が不正です")?
+            .to_path_buf();
+        let manifest = root.join("project.scriptsync");
+        // 先に正本のrevisionsを検証する。不正なフォルダに入口ファイルを残さない。
+        let mut store = Self::open(root, false)?;
+        if !manifest.exists() {
+            let project_file = ProjectFile {
+                version: PROJECT_FILE_VERSION,
+                data_directory: ".".into(),
+            };
+            // 既存データを移動・書換えせず、追加の入口ファイルだけを作る。
+            json_new(&manifest, &project_file)?;
+        }
+        store.project_file = Some(manifest);
+        Ok(store)
     }
     pub fn save(&mut self) -> Result<()> {
         let generation = self.project.generation + 1;
@@ -257,6 +362,52 @@ mod tests {
         assert_eq!(s.project.segments.len(), 1);
         assert!(safe(&root, "../secret").is_err());
         drop(s);
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn project_file_uses_a_sidecar_data_directory_and_reopens() {
+        let parent = std::env::temp_dir().join(id());
+        fs::create_dir_all(&parent).unwrap();
+        let project_file = parent.join("収録.scriptsync");
+        let mut store = Store::create_project_file(project_file.clone()).unwrap();
+        assert_eq!(store.root, parent.join("収録.scriptsync.data"));
+        assert!(project_file.exists());
+        assert_eq!(store.project.title, "収録");
+        store.project.title = "収録テスト".into();
+        store.save().unwrap();
+        drop(store);
+
+        let reopened = Store::open_project_file(project_file).unwrap();
+        assert_eq!(reopened.project.title, "収録テスト");
+        assert!(reopened.root.join("revisions").exists());
+        drop(reopened);
+        fs::remove_dir_all(parent).unwrap();
+    }
+
+    #[test]
+    fn selecting_legacy_project_json_adds_a_manifest_without_moving_data() {
+        let root = std::env::temp_dir().join(id());
+        let mut original = Store::open(root.clone(), true).unwrap();
+        original.project.title = "従来形式".into();
+        original.save().unwrap();
+        drop(original);
+
+        let migrated = Store::open_project_file(root.join("project.json")).unwrap();
+        assert_eq!(migrated.root, root);
+        assert_eq!(migrated.project.title, "従来形式");
+        assert!(root.join("project.scriptsync").exists());
+        drop(migrated);
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn invalid_legacy_project_does_not_gain_a_migration_manifest() {
+        let root = std::env::temp_dir().join(id());
+        fs::create_dir_all(&root).unwrap();
+        fs::write(root.join("project.json"), b"{}").unwrap();
+        assert!(Store::open_project_file(root.join("project.json")).is_err());
+        assert!(!root.join("project.scriptsync").exists());
         fs::remove_dir_all(root).unwrap();
     }
 }

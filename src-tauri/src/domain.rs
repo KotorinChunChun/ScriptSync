@@ -11,6 +11,8 @@ pub fn now() -> u64 {
 }
 #[derive(Clone, Serialize, Deserialize, Debug)]
 pub struct Take {
+    #[serde(default)]
+    pub script_text: String,
     pub id: String,
     pub file: String,
     pub hash: String,
@@ -81,6 +83,14 @@ pub struct Comparison {
 #[derive(Clone, Serialize, Deserialize, Debug)]
 pub struct Segment {
     #[serde(default)]
+    pub source_line: Option<usize>,
+    #[serde(default)]
+    pub source_text: String,
+    #[serde(default)]
+    pub kind: u8,
+    #[serde(default)]
+    pub hierarchy: Vec<u32>,
+    #[serde(default)]
     pub take_notes: std::collections::HashMap<String, TakeNote>,
     #[serde(default)]
     pub needs_review: bool,
@@ -106,6 +116,10 @@ pub struct Segment {
 impl Segment {
     pub fn new(text: String) -> Self {
         Self {
+            source_line: None,
+            source_text: text.clone(),
+            kind: 0,
+            hierarchy: vec![0; 4],
             take_notes: Default::default(),
             needs_review: false,
             gain_db: 0.0,
@@ -141,6 +155,12 @@ pub struct TakeNote {
 #[derive(Clone, Serialize, Deserialize, Debug)]
 pub struct Project {
     #[serde(default)]
+    pub source_markdown: String,
+    #[serde(default)]
+    pub script_lines: Vec<crate::markdown::ScriptLine>,
+    #[serde(default)]
+    pub export_settings: serde_json::Value,
+    #[serde(default)]
     pub rules: Vec<ReadingRule>,
     #[serde(default)]
     pub batches: Vec<Batch>,
@@ -155,6 +175,9 @@ pub struct Project {
 impl Project {
     pub fn new(title: String) -> Self {
         Self {
+            source_markdown: String::new(),
+            script_lines: vec![],
+            export_settings: serde_json::Value::Null,
             rules: vec![],
             batches: vec![],
             archived_segments: vec![],

@@ -47,6 +47,7 @@ pub fn take_from_file(
     let path = safe(root, &file)?;
     write_new(&path, &std::fs::read(source).map_err(|e| e.to_string())?)?;
     Ok(Take {
+        script_text: String::new(),
         id: tid,
         file,
         hash: hash_file(&path)?,
@@ -74,6 +75,59 @@ impl App {
     pub fn dispatch(&self, action: &str, v: Value) -> Result<Value> {
         if action == "state" {
             return self.snapshot();
+        }
+        if action == "markdown_preview" {
+            return Ok(json!({"lines":crate::markdown::parse(&string(&v,"text")?)?}));
+        }
+        if action == "markdown_import" {
+            let Some(path) = rfd::FileDialog::new()
+                .add_filter("台本", &["md", "txt"])
+                .pick_file()
+            else {
+                return Ok(Value::Null);
+            };
+            let text = std::fs::read_to_string(path).map_err(|e| e.to_string())?;
+            return Ok(json!({"lines":crate::markdown::parse(&text)?,"text":text}));
+        }
+        if matches!(action, "export_blocks" | "preview_blocks") {
+            let (root, project) = {
+                let mut a = self.0.lock().map_err(|e| e.to_string())?;
+                if a.busy {
+                    return Err("処理中です".into());
+                }
+                let store = a.store.as_ref().ok_or("プロジェクトを開いてください")?;
+                let pair = (store.root.clone(), store.project.clone());
+                a.busy = true;
+                a.job = "export".into();
+                pair
+            };
+            let result = if action == "preview_blocks" {
+                crate::export_blocks::preview_blocks(&root, &project, &v)
+            } else {
+                crate::export_blocks::export_blocks(&root, &project, &v)
+            };
+            let mut a = self.0.lock().map_err(|e| e.to_string())?;
+            a.busy = false;
+            a.job.clear();
+            a.message = result.as_ref().err().cloned().unwrap_or_default();
+            return result;
+        }
+        if action == "open_export_folder" {
+            let a = self.0.lock().map_err(|e| e.to_string())?;
+            let store = a.store.as_ref().ok_or("プロジェクトを開いてください")?;
+            let relative = v["directory"].as_str().unwrap_or("exports");
+            if relative != "exports" && !relative.starts_with("exports/") {
+                return Err("出力フォルダーを指定してください".into());
+            }
+            let path = safe(&store.root, relative)?;
+            if !path.is_dir() {
+                return Err("出力フォルダーがありません".into());
+            }
+            std::process::Command::new("explorer.exe")
+                .arg(path)
+                .spawn()
+                .map_err(|e| e.to_string())?;
+            return Ok(Value::Null);
         }
         if action == "diff" {
             let expected = string(&v, "expected")?;
@@ -168,20 +222,30 @@ impl App {
             return Err("処理中です。完了または停止を待ってください".into());
         }
         if action == "new" || action == "open" {
-            let chosen = rfd::FileDialog::new()
-                .set_title(if action == "new" {
-                    "新しい作業フォルダを選択"
+            let chosen = if action == "new" {
+                rfd::FileDialog::new()
+                    .set_title("新しいScriptSyncプロジェクトを保存")
+                    .add_filter("ScriptSyncプロジェクト", &[PROJECT_FILE_EXTENSION])
+                    .set_file_name("新しいプロジェクト.scriptsync")
+                    .save_file()
+            } else {
+                rfd::FileDialog::new()
+                    .set_title("ScriptSyncプロジェクトを開く")
+                    .add_filter("ScriptSyncプロジェクト", &[PROJECT_FILE_EXTENSION])
+                    .add_filter("従来のScriptSyncプロジェクト", &["json"])
+                    .pick_file()
+            };
+            if let Some(path) = chosen {
+                let path = if action == "new" && path.extension().is_none() {
+                    path.with_extension(PROJECT_FILE_EXTENSION)
                 } else {
-                    "ScriptSyncの作業フォルダを開く"
-                })
-                .pick_folder();
-            if let Some(folder) = chosen {
-                let root = if action == "new" {
-                    folder.join(format!("ScriptSync-{}", id()))
-                } else {
-                    folder
+                    path
                 };
-                let store = Store::open(root, action == "new")?;
+                let store = if action == "new" {
+                    Store::create_project_file(path)?
+                } else {
+                    Store::open_project_file(path)?
+                };
                 a.store = Some(store);
                 a.message = "プロジェクトを開きました".into();
             }
@@ -289,6 +353,13 @@ impl App {
                     }
                     deleted_take_folder = Some(folder);
                 }
+                "export_settings" => {
+                    store.project.export_settings =
+                        crate::export_settings::validate(&v["settings"])?;
+                }
+                "markdown_commit" => {
+                    crate::markdown::commit(&mut store.project, &v)?;
+                }
                 "append" | "import_script" => {
                     let text = if action == "import_script" {
                         let Some(path) = rfd::FileDialog::new()
@@ -324,7 +395,8 @@ impl App {
                     else {
                         return Ok(());
                     };
-                    let take = take_from_file(&store.root, &path, "import".into())?;
+                    let mut take = take_from_file(&store.root, &path, "import".into())?;
+                    take.script_text = segment(&mut store.project, &sid)?.text.clone();
                     segment(&mut store.project, &sid)?.takes.push(take);
                 }
                 "edit" => {
@@ -333,6 +405,9 @@ impl App {
                     let text = string(&v, "text")?;
                     if text.trim().is_empty() {
                         return Err("原稿が空です".into());
+                    }
+                    if s.source_text.is_empty() {
+                        s.source_text = s.text.clone();
                     }
                     if s.text != text {
                         s.needs_review = true;
@@ -552,7 +627,9 @@ impl App {
         let file = format!("takes/{tid}/audio.wav");
         let path = safe(&store.root, &file)?;
         let root = store.root.clone();
+        let script_text = segment(&mut store.project, &sid)?.text.clone();
         segment(&mut store.project, &sid)?.takes.push(Take {
+            script_text,
             id: tid.clone(),
             file,
             hash: String::new(),
@@ -587,6 +664,18 @@ impl App {
                     json_new(&safe(&root, &format!("takes/{tid}/capture.json"))?, &report)?;
                     Ok(report)
                 });
+            if let Ok(mut state) = app.0.lock() {
+                state.job = "saving".into();
+            }
+            // 波形処理・ハッシュ計算中は状態取得のロックを保持しない。
+            let result = result.and_then(|report| {
+                if cancel.load(Ordering::Acquire) {
+                    return Ok((report, 0.0, 0.0, String::new()));
+                }
+                let (duration, peak) = audio::clean_recording(&path)?;
+                let hash = hash_file(&path)?;
+                Ok((report, duration, peak, hash))
+            });
             let mut a = app.0.lock().unwrap();
             let outcome = (|| -> Result<()> {
                 let store = a.store.as_mut().ok_or("保存先がありません")?;
@@ -608,11 +697,10 @@ impl App {
                     .find(|t| t.id == tid)
                     .ok_or("テイクがありません")?;
                 match result {
-                    Ok(report) => {
-                        let (duration, peak) = audio::clean_recording(&path)?;
+                    Ok((report, duration, peak, hash)) => {
                         t.duration = duration;
                         t.peak = peak;
-                        t.hash = hash_file(&path)?;
+                        t.hash = hash;
                         t.status = "ready".into();
                         t.warning = if report.dropped_samples > 0 {
                             format!("音声欠落: {} samples。再録音を推奨", report.dropped_samples)
@@ -632,6 +720,7 @@ impl App {
                 store.save()
             })();
             a.busy = false;
+            a.job.clear();
             a.stop = None;
             let cancelled = a
                 .cancel_recording

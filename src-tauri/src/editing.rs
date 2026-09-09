@@ -39,6 +39,22 @@ fn lines(text: &str) -> Result<Vec<String>> {
 fn derived(text: String, sources: &[Segment]) -> Segment {
     let mut s = Segment::new(text);
     s.needs_review = true;
+    if let Some(source) = sources.first() {
+        s.source_line = source.source_line;
+        s.kind = source.kind;
+        s.hierarchy = source.hierarchy.clone();
+        s.source_text = sources
+            .iter()
+            .map(|s| {
+                if s.source_text.is_empty() {
+                    s.text.as_str()
+                } else {
+                    s.source_text.as_str()
+                }
+            })
+            .collect::<Vec<_>>()
+            .join("\n");
+    }
     for source in sources {
         for old in &source.takes {
             let mut t = old.clone();
