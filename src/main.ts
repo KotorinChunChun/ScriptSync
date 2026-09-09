@@ -190,7 +190,7 @@ async function startRecording(){
  }finally{startingRecording=false;busy=false;render();}
 }
 async function cycleTake(delta:number){if(state.busy)return;const s=current();const ts=s?.takes.filter(t=>t.status==="ready")??[];if(!ts.length)return;let index=ts.findIndex(t=>t.id===(focusTake||s?.selected));if(index<0)index=ts.length-1;const t=ts[(index+delta+ts.length)%ts.length];focusTake=t.id;await playSavedTake(t);notice(`Take ${s!.takes.indexOf(t)+1} を試聴中`);}
-async function adoptTake(take:string){if(isTakeTrimDirty(take)){void playCue("invalid");notice("トリミングを保存してから採用してください",true);return;}if(state.busy||busy)return;const s=current();if(!s)return;if(await act("select",{segment:s.id,take})){await playCue("next");const list=activeSegments(),index=list.findIndex(x=>x.id===s.id);if(index===list.length-1){await endContinuous();tab="reading";render();}else{selected=list[index+1].id;focusTake="";render();if(continuousRecording)await startRecording();}}}
+async function adoptTake(take:string,qualityConfirmed=false){if(isTakeTrimDirty(take)){void playCue("invalid");notice("トリミングを保存してから採用してください",true);return;}if(state.busy||busy)return;const s=current();if(!s)return;const warning=s.takes.find(t=>t.id===take)?.warning;if(!qualityConfirmed&&warning?.startsWith("要確認：")){showQualityConfirmation(take,warning);return;}if(await act("select",{segment:s.id,take})){await playCue("next");const list=activeSegments(),index=list.findIndex(x=>x.id===s.id);if(index===list.length-1){await endContinuous();tab="reading";render();}else{selected=list[index+1].id;focusTake="";render();if(continuousRecording)await startRecording();}}}
 async function adoptNext(){const s=current();const t=s?.takes.find(t=>t.id===focusTake&&t.status==="ready")??s?.takes.filter(t=>t.status==="ready").at(-1);if(t)await adoptTake(t.id);}
 function ruleView(s:Segment){if(tab!=="evaluation")return;
 for(const r of s.comparisons){for(const v of r.variants.filter(v=>v.status==="succeeded")){document.querySelector(`[data-action="rate"][data-id="${v.id}"]`)?.insertAdjacentHTML("afterend",button("talk_export","Talk編集ファイルを出力（試験対応）",`data-run="${r.id}" data-id="${v.id}"`));}}
@@ -232,7 +232,7 @@ function render(){
  const stage=tab as Stage;
  if(!markdownDraft||markdownDraft.root!==state.root)markdownDraft={root:state.root,text:(p as any).source_markdown??"",lines:(p as any).script_lines??[]};
  const sidebar=tab==="export"||(tab==="script"&&!markdownDraft.lines.length)?"":tab==="script"?`<aside class="navigation-aside"><label>フィルター<select id="filter">${optionsFor("script").map(([value,label])=>`<option value="${value}" ${filterFor(stage)===value?"selected":""}>${label}</option>`).join("")}</select></label><nav data-navigation-scroll aria-label="元Markdownの構成">${renderSourceTree(markdownDraft.lines)}</nav></aside>`:`<aside class="navigation-aside"><label>フィルター<select id="filter">${optionsFor(stage as "recording"|"reading"|"evaluation").map(([value,label])=>`<option value="${value}" ${filterFor(stage)===value?"selected":""}>${label}</option>`).join("")}</select></label><nav data-navigation-scroll aria-label="確定原稿ツリー">${renderSegmentTree(p.segments,stage as "recording"|"reading"|"evaluation",selected)}</nav></aside>`;
- root.innerHTML=`<header><strong>読みあわせ</strong><div class="toolbar">${button("new","新規プロジェクト")}${button("open","開く")}</div><div class="statusbar"><span id="notice" role="status">${esc(state.message)}</span><span id="meter"></span></div></header>${renderStageBar(stage)}<div class="layout navigation-layout ${!sidebar?"no-sidebar":""}">${sidebar}<main>${tab==="script"?scriptTab():tab==="export"?modernExportView(exportContext):s?segmentView(s):"<p>台本画面で原稿を追加してください。</p>"}<div id="stage-extras" class="stage-extras"></div></main></div><footer><label>試聴 <audio id="player" controls></audio></label></footer>`;
+ root.innerHTML=`<header><strong>読みあわせ</strong><div class="toolbar">${button("new","新規プロジェクト")}${button("open","開く")}</div><div class="statusbar"><span id="notice" role="status">${esc(state.message)}</span><span id="meter"></span></div></header>${renderStageBar(stage,activeSegments().length>0&&activeSegments().every(s=>s.takes.some(t=>t.id===s.selected&&t.status==="ready")))}<div class="layout navigation-layout ${!sidebar?"no-sidebar":""}">${sidebar}<main>${tab==="script"?scriptTab():tab==="export"?modernExportView(exportContext):s?segmentView(s):"<p>台本画面で原稿を追加してください。</p>"}<div id="stage-extras" class="stage-extras"></div></main></div><footer><label>試聴 <audio id="player" controls></audio></label></footer>`;
  if(tab==="script")root.querySelector("footer")?.setAttribute("hidden","");
  if(keepPlayer)document.getElementById("player")?.replaceWith(keepPlayer);
  renderedKey=`${selected}:${tab}`;for(const [id,value]of Object.entries(drafts.get(renderedKey)??{})){const field=document.getElementById(id);if(field instanceof HTMLTextAreaElement&&id!=="markdown-source")field.value=value;}
@@ -330,4 +330,14 @@ function bindTrimNavigation(){
   const handler=button.onclick;if(!handler)return;
   button.onclick=async event=>{await guardTakeTrimMove(async()=>{await handler.call(button,event);});};
  });
+}
+
+function showQualityConfirmation(take:string,warning:string){
+ const modal=document.createElement('div');modal.className='take-trim-modal';modal.setAttribute('role','dialog');modal.setAttribute('aria-modal','true');
+ modal.innerHTML=`<section><h2>録音品質を確認してください</h2><p style="white-space:pre-wrap">${esc(warning)}</p><div class="toolbar"><button data-quality-cancel>戻って試聴する</button><button data-quality-adopt>確認して採用</button></div></section>`;
+ const siblings=[...root.children] as HTMLElement[];siblings.forEach(x=>x.inert=true);root.append(modal);
+ const close=()=>{siblings.forEach(x=>x.inert=false);modal.remove();};
+ const cancel=modal.querySelector<HTMLButtonElement>('[data-quality-cancel]')!,adopt=modal.querySelector<HTMLButtonElement>('[data-quality-adopt]')!;
+ cancel.onclick=close;adopt.onclick=()=>{close();void adoptTake(take,true);};
+ modal.onkeydown=e=>{if(e.key==='Escape'){e.preventDefault();close();}if(e.key==='Tab'){e.preventDefault();(document.activeElement===cancel?adopt:cancel).focus();}};cancel.focus();
 }

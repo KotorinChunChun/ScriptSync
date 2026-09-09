@@ -212,3 +212,12 @@ it('テイク範囲試聴は指定した終了時間で停止する',async()=>{
  expect(audio.currentTime).toBe(0.5);expect(audio.pause).toHaveBeenCalled();
  expect(api.invoke).toHaveBeenCalledWith('command',{action:'preview_take_trim',payload:{segment:'s1',take:'t1',start:0,end:0.5}});
 });
+
+it('欠落警告があるテイクは確認前に採用しない',async()=>{
+ snapshot.project.segments[0].takes[0].warning='要確認：WASAPI不連続 1回';
+ await import('../../src/main');await settle();await tab('録音');action('採用');await settle();
+ expect(document.querySelector('[role=dialog]')?.textContent).toContain('WASAPI不連続');
+ expect(api.invoke.mock.calls.some(x=>x[1]?.action==='select')).toBe(false);
+ document.querySelector<HTMLButtonElement>('[data-quality-adopt]')!.click();await settle();
+ expect(api.invoke.mock.calls.some(x=>x[1]?.action==='select')).toBe(true);
+});

@@ -132,13 +132,7 @@ impl App {
             let a = self.0.lock().map_err(|e| e.to_string())?;
             let store = a.store.as_ref().ok_or("プロジェクトを開いてください")?;
             let relative = v["directory"].as_str().unwrap_or("exports");
-            if relative != "exports" && !relative.starts_with("exports/") {
-                return Err("出力フォルダーを指定してください".into());
-            }
-            let path = safe(&store.root, relative)?;
-            if !path.is_dir() {
-                return Err("出力フォルダーがありません".into());
-            }
+            let path = crate::export_blocks::explorer_folder(&store.root, relative)?;
             std::process::Command::new("explorer.exe")
                 .arg(path)
                 .spawn()
@@ -771,15 +765,54 @@ impl App {
                         t.peak = peak;
                         t.hash = hash;
                         t.status = "ready".into();
-                        t.warning = if report.dropped_samples > 0 {
-                            format!("音声欠落: {} samples。再録音を推奨", report.dropped_samples)
-                        } else if t.peak >= 0.999 {
-                            "クリッピングの可能性".into()
+                        let mut warnings = Vec::new();
+                        let d = &report.wasapi;
+                        if d.data_discontinuity_count > 0 || d.missing_device_frames > 0 {
+                            warnings.push(format!(
+                                "WASAPI不連続 {}回、欠落 {}フレーム、補償した無音 {:.1} ms",
+                                d.data_discontinuity_count,
+                                d.missing_device_frames,
+                                d.compensated_internal_frames as f64 / 48.0
+                            ));
+                        }
+                        if report.capture_ring_dropped_samples > 0
+                            || report.writer_ring_dropped_samples > 0
+                        {
+                            warnings.push(format!(
+                                "リングバッファ欠落：転送 {} samples／書込 {} samples",
+                                report.capture_ring_dropped_samples,
+                                report.writer_ring_dropped_samples
+                            ));
+                        }
+                        if d.timestamp_error_count > 0 {
+                            warnings.push(format!("時刻情報エラー {}回", d.timestamp_error_count));
+                        }
+                        let difference = report
+                            .elapsed_duration_ms
+                            .abs_diff(report.wav.audio_duration_ms);
+                        if difference > 100 {
+                            warnings.push(format!(
+                                "端部カット前の音声長と経過時間の差 {} ms",
+                                difference
+                            ));
+                        }
+                        let quality = !warnings.is_empty();
+                        if quality {
+                            warnings.push(
+                                "欠落した発話は復元できません。試聴して再録音を検討してください"
+                                    .into(),
+                            );
+                        }
+                        if t.peak >= 0.999 {
+                            warnings.push("クリッピングの可能性".into());
                         } else if t.peak < 0.01 {
-                            "音量が小さいため確認してください".into()
-                        } else {
-                            String::new()
-                        };
+                            warnings.push("音量が小さいため確認してください".into());
+                        }
+                        t.warning = format!(
+                            "{}{}",
+                            if quality { "要確認：" } else { "" },
+                            warnings.join("\n")
+                        );
                     }
                     Err(e) => {
                         t.status = "failed".into();

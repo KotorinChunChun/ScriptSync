@@ -273,7 +273,9 @@ fn collect_block(
         Ok(n)
     };
     let active: Vec<_> = (start..end)
-        .filter(|&i| !project.segments[i].skip)
+        .filter(|&i| {
+            !project.segments[i].skip && i >= v["_preview_from"].as_u64().unwrap_or(0) as usize
+        })
         .collect();
     if active.is_empty() {
         return Err("出力対象の原稿がありません".into());
@@ -399,6 +401,26 @@ pub fn export_blocks(root: &Path, project: &Project, v: &Value) -> Result<Value>
     Ok(manifest)
 }
 
+pub fn explorer_folder(root: &Path, relative: &str) -> Result<std::path::PathBuf> {
+    if relative != "exports" && !relative.starts_with("exports/") {
+        return Err("出力フォルダーを指定してください".into());
+    }
+    let path = safe(root, relative)?
+        .canonicalize()
+        .map_err(|e| e.to_string())?;
+    if !path.is_dir() {
+        return Err("出力フォルダーがありません".into());
+    }
+    // Explorer は canonicalize の拡張長パス接頭辞や混在区切りを解釈できない。
+    let value = path.to_string_lossy().replace('/', "\\");
+    let value = if let Some(unc) = value.strip_prefix("\\\\?\\UNC\\") {
+        format!("\\\\{unc}")
+    } else {
+        value.strip_prefix("\\\\?\\").unwrap_or(&value).to_owned()
+    };
+    Ok(value.into())
+}
+
 pub fn preview_blocks(root: &Path, project: &Project, v: &Value) -> Result<Value> {
     let v = if v.as_object().map(|o| o.is_empty()).unwrap_or(true)
         && project.export_settings.is_object()
@@ -426,10 +448,29 @@ pub fn preview_blocks(root: &Path, project: &Project, v: &Value) -> Result<Value
             continue;
         }
         let end = b.get(i + 1).copied().unwrap_or(project.segments.len());
-        let data = collect_block(root, project, start, end, gap, overrides, i, v)?;
+        let mut selected_settings = v.clone();
+        let from = if i == selected && v["from_last_item"].as_bool().unwrap_or(false) {
+            (start..end)
+                .rev()
+                .find(|&n| !project.segments[n].skip)
+                .ok_or("試聴対象がありません")?
+        } else {
+            start
+        };
+        selected_settings["_preview_from"] = json!(from);
+        let data = collect_block(
+            root,
+            project,
+            start,
+            end,
+            gap,
+            overrides,
+            i,
+            &selected_settings,
+        )?;
         let duration = data.len() as f64 / (RATE as f64 * CHANNELS as f64);
         all.extend_from_slice(&data);
-        timeline.push(json!({"block":i,"start_segment":start,"end_segment":end,"offset":offset,"duration":duration}));
+        timeline.push(json!({"block":i,"start_segment":from,"end_segment":end,"offset":offset,"duration":duration}));
         offset += duration;
         if i == selected {
             for (mode, norm) in [("raw", false), ("normalize", true)] {
@@ -537,6 +578,22 @@ mod tests {
                 .all(|(a, b)| (a - b).abs() < 0.0001)
         );
         let preview = preview_blocks(&root, &p, &settings).unwrap();
+        let folder =
+            explorer_folder(&root, &format!("exports/{}", wav["id"].as_str().unwrap())).unwrap();
+        assert!(!folder.to_string_lossy().starts_with("\\\\?\\"));
+        assert!(!folder.to_string_lossy().contains('/'));
+        assert!(folder.is_dir());
+        assert!(explorer_folder(&root, "exports/not-found").is_err());
+        assert!(explorer_folder(&root, "exports/../../outside").is_err());
+        let mut last_settings = settings.clone();
+        last_settings["from_last_item"] = json!(true);
+        let last = preview_blocks(&root, &p, &last_settings).unwrap();
+        assert_eq!(last["timeline"][0]["start_segment"], 1);
+        // 同じブロックの先頭/末尾設定を保ち、最終発話だけを試聴する。
+        assert_eq!(
+            last["files"].as_array().unwrap().last().unwrap()["frames"],
+            7200
+        );
         let raw =
             audio::samples(&safe(&root, preview["files"][0]["file"].as_str().unwrap()).unwrap())
                 .unwrap();

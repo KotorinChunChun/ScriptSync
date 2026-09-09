@@ -74,7 +74,9 @@ pub fn save(
     take.peak = peak;
     take.trim_start = 0.0;
     take.trim_end = 0.0;
-    take.warning = if peak >= 0.999 {
+    take.warning = if source.warning.starts_with("要確認：") {
+        source.warning.clone()
+    } else if peak >= 0.999 {
         "クリッピングの可能性があります".into()
     } else if peak < 0.01 {
         "音量が小さいため試聴してください".into()

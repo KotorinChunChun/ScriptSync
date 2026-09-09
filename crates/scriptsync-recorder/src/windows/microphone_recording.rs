@@ -17,7 +17,7 @@ use crate::{
     recording::writer::RecorderSink,
     windows::{
         devices::{list_devices, DeviceDirection},
-        wasapi_capture::start_microphone_capture,
+        wasapi_capture::{start_microphone_capture, WasapiCaptureDiagnostics},
         worker_status::DeviceWorkerSnapshot,
     },
 };
@@ -108,8 +108,35 @@ pub struct MicrophoneRecordingReport {
     pub requested_duration_ms: u64,
     pub elapsed_duration_ms: u64,
     pub worker_status: DeviceWorkerSnapshot,
+    /// 後方互換用の合計値。各経路の内訳を品質判定に使用する。
     pub dropped_samples: u64,
+    pub capture_ring_dropped_samples: u64,
+    pub writer_ring_dropped_samples: u64,
+    pub wasapi: WasapiCaptureDiagnostics,
     pub wav: WavRecordingMetrics,
+}
+
+/// 収録完了前に失敗したときの診断記録。成功時の `capture.json` と区別し、
+/// 不完全なWAVを正常なテイクとして扱わない。
+#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
+pub struct MicrophoneRecordingFailureReport {
+    pub output_path: PathBuf,
+    pub elapsed_duration_ms: u64,
+    pub worker_status: DeviceWorkerSnapshot,
+    pub capture_ring_dropped_samples: u64,
+    pub writer_ring_dropped_samples: u64,
+    pub wasapi: WasapiCaptureDiagnostics,
+    pub error: String,
+}
+
+fn write_capture_failure_report(report: &MicrophoneRecordingFailureReport) {
+    let Some(parent) = report.output_path.parent() else {
+        return;
+    };
+    let path = parent.join("capture-failure.json");
+    if let Ok(json) = serde_json::to_vec_pretty(report) {
+        let _ = std::fs::write(path, json);
+    }
 }
 
 /// Records one Windows capture endpoint directly to a 48 kHz Float32 stereo WAV.
@@ -177,11 +204,11 @@ pub fn record_microphone_to_wav_controlled(
     let started = Instant::now();
     let requested = Duration::from_millis(request.duration_ms);
     let mut samples = vec![0.0f32; INTERNAL_SAMPLE_RATE as usize * INTERNAL_CHANNELS as usize];
-    let mut transfer_dropped = 0u64;
+    let mut writer_ring_dropped = 0u64;
     while started.elapsed() < requested && !stop.load(Ordering::Relaxed) {
         let count = ring.pop_into(&mut samples);
         if count > 0 {
-            transfer_dropped += (count - writer_ring.push_slice(&samples[..count])) as u64;
+            writer_ring_dropped += (count - writer_ring.push_slice(&samples[..count])) as u64;
             let peak = samples[..count].iter().fold(0.0f32, |p, s| p.max(s.abs()));
             let rms = (samples[..count]
                 .iter()
@@ -200,31 +227,53 @@ pub fn record_microphone_to_wav_controlled(
         thread::sleep(remaining.min(Duration::from_millis(20)));
     }
 
-    let worker_status = capture.status();
-    transfer_dropped += capture.stop_and_dropped();
+    // 記録時間は、停止時のjoin・WAV確定・メトリクス解析を含めない。
+    // 完成WAVの長さと同じ録音区間だけを比較対象にする。
+    let elapsed_duration_ms = started.elapsed().as_millis().min(u64::MAX as u128) as u64;
+    let (capture_ring_dropped, wasapi, worker_status) = capture.stop_and_diagnostics();
     loop {
         let count = ring.pop_into(&mut samples);
         if count == 0 {
             break;
         }
-        transfer_dropped += (count - writer_ring.push_slice(&samples[..count])) as u64;
+        writer_ring_dropped += (count - writer_ring.push_slice(&samples[..count])) as u64;
     }
+    let failure_report = |error: String| MicrophoneRecordingFailureReport {
+        output_path: request.output_path.clone(),
+        elapsed_duration_ms,
+        worker_status: worker_status.clone(),
+        capture_ring_dropped_samples: capture_ring_dropped,
+        writer_ring_dropped_samples: writer_ring_dropped,
+        wasapi: wasapi.clone(),
+        error,
+    };
     if let Err(error) = recorder.stop() {
+        write_capture_failure_report(&failure_report(error.to_string()));
         return Err(error);
     }
 
-    let wav = inspect_recorded_wav(&request.output_path)?;
+    let wav = match inspect_recorded_wav(&request.output_path) {
+        Ok(wav) => wav,
+        Err(error) => {
+            write_capture_failure_report(&failure_report(error.to_string()));
+            return Err(error);
+        }
+    };
     if worker_status.state != crate::windows::worker_status::DeviceWorkerState::Running {
-        return Err(BackendError::Audio(format!(
+        let error = BackendError::Audio(format!(
             "録音中にマイクが停止しました。部分録音は保持します: {}",
             request.output_path.display()
-        )));
+        ));
+        write_capture_failure_report(&failure_report(error.to_string()));
+        return Err(error);
     }
     if wav.captured_frames == 0 {
-        return Err(BackendError::Audio(format!(
+        let error = BackendError::Audio(format!(
             "WASAPI録音にAudio Frameがありません: {}",
             request.output_path.display()
-        )));
+        ));
+        write_capture_failure_report(&failure_report(error.to_string()));
+        return Err(error);
     }
 
     Ok(MicrophoneRecordingReport {
@@ -232,9 +281,12 @@ pub fn record_microphone_to_wav_controlled(
         friendly_name: device.friendly_name,
         output_path: request.output_path.clone(),
         requested_duration_ms: request.duration_ms,
-        elapsed_duration_ms: started.elapsed().as_millis().min(u64::MAX as u128) as u64,
+        elapsed_duration_ms,
         worker_status,
-        dropped_samples: transfer_dropped,
+        dropped_samples: capture_ring_dropped.saturating_add(writer_ring_dropped),
+        capture_ring_dropped_samples: capture_ring_dropped,
+        writer_ring_dropped_samples: writer_ring_dropped,
+        wasapi,
         wav,
     })
 }

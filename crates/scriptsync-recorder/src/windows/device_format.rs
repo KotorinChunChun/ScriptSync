@@ -7,6 +7,18 @@ use crate::{
 };
 use wasapi::{SampleType, WaveFormat};
 
+/// Converts capture packets to the internal format while retaining the sample
+/// position between packets.  A linear interpolation sample at a packet end is
+/// deliberately held until the following packet supplies its right neighbour.
+pub(crate) struct StreamingInputConverter {
+    format: DeviceFormat,
+    input_frames: u64,
+    next_output_frame: u64,
+    last_input_frame: Vec<f32>,
+    zero_input_frame: Vec<f32>,
+    gap_before_next_packet: bool,
+}
+
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct DeviceFormat {
     sample_type: SampleType,
@@ -58,18 +70,24 @@ impl DeviceFormat {
         self.sample_rate
     }
 
+    pub(crate) fn streaming_input_converter(&self) -> StreamingInputConverter {
+        StreamingInputConverter {
+            format: *self,
+            input_frames: 0,
+            next_output_frame: 0,
+            last_input_frame: Vec::new(),
+            zero_input_frame: vec![0.0; self.channels as usize],
+            gap_before_next_packet: false,
+        }
+    }
+
     pub(crate) fn bytes_for_frames(&self, frames: usize) -> Result<usize> {
         frames
             .checked_mul(self.block_align)
             .ok_or_else(|| BackendError::Audio("WASAPIバッファ長が上限を超えました".into()))
     }
 
-    pub(crate) fn decode_to_internal(
-        &self,
-        bytes: &[u8],
-        frames: usize,
-        silent: bool,
-    ) -> Result<Vec<f32>> {
+    fn decode_packet(&self, bytes: &[u8], frames: usize, silent: bool) -> Result<Vec<f32>> {
         let required = self.bytes_for_frames(frames)?;
         if bytes.len() < required {
             return Err(BackendError::Audio(format!(
@@ -77,8 +95,7 @@ impl DeviceFormat {
                 bytes.len()
             )));
         }
-        let sample_count = frames * self.channels as usize;
-        let mut decoded = vec![0.0f32; sample_count];
+        let mut decoded = vec![0.0f32; frames * self.channels as usize];
         if !silent {
             for (destination, source) in decoded
                 .iter_mut()
@@ -87,18 +104,7 @@ impl DeviceFormat {
                 *destination = self.decode_sample(source)?;
             }
         }
-        if self.sample_rate == INTERNAL_SAMPLE_RATE && self.channels == INTERNAL_CHANNELS {
-            return Ok(decoded);
-        }
-        Ok(resample_interleaved_linear(
-            &decoded,
-            self.sample_rate,
-            self.channels,
-            INTERNAL_SAMPLE_RATE,
-            INTERNAL_CHANNELS,
-            1.0,
-        )
-        .samples)
+        Ok(decoded)
     }
 
     pub(crate) fn encode_from_internal(
@@ -188,9 +194,188 @@ impl DeviceFormat {
     }
 }
 
+impl StreamingInputConverter {
+    /// Advances the input timeline over a WASAPI discontinuity.  The caller
+    /// must insert this many internal silent frames into the output.  Counting
+    /// from the cumulative timeline avoids packet-local rounding drift.
+    pub(crate) fn skip_input_frames(&mut self, frames: usize) -> usize {
+        if frames == 0 {
+            // WASAPI can report a discontinuity without a measurable position
+            // gap. Do not interpolate that packet from the old endpoint.
+            self.gap_before_next_packet = true;
+            return 0;
+        }
+        let timeline_end = self.input_frames.saturating_add(frames as u64);
+        let expected_output = self.output_frames_for_input(timeline_end);
+        let silence_frames = expected_output.saturating_sub(self.next_output_frame);
+        self.input_frames = timeline_end;
+        self.next_output_frame = expected_output;
+        self.gap_before_next_packet = true;
+        silence_frames as usize
+    }
+
+    /// Decodes one WASAPI packet and converts it to 48 kHz stereo.
+    pub(crate) fn decode_to_internal(
+        &mut self,
+        bytes: &[u8],
+        frames: usize,
+        silent: bool,
+    ) -> Result<Vec<f32>> {
+        let decoded = self.format.decode_packet(bytes, frames, silent)?;
+        Ok(self.convert_decoded(&decoded))
+    }
+
+    /// Converts an already decoded interleaved device packet.  This is kept
+    /// separate so the capture loop can keep its WASAPI buffer ownership.
+    pub(crate) fn convert_decoded(&mut self, input: &[f32]) -> Vec<f32> {
+        let channels = self.format.channels as usize;
+        let frames = input.len() / channels;
+        if frames == 0 {
+            return Vec::new();
+        }
+
+        if self.format.sample_rate == INTERNAL_SAMPLE_RATE {
+            let mut output = Vec::with_capacity(frames * INTERNAL_CHANNELS as usize);
+            for frame in input.chunks_exact(channels) {
+                self.push_converted_frame(&mut output, frame, frame, 0.0);
+            }
+            self.input_frames += frames as u64;
+            self.next_output_frame += frames as u64;
+            self.last_input_frame = input[(frames - 1) * channels..frames * channels].to_vec();
+            self.gap_before_next_packet = false;
+            return output;
+        }
+
+        let packet_start = self.input_frames;
+        let packet_end = packet_start + frames as u64;
+        let mut output = Vec::new();
+        while self.source_index(self.next_output_frame) + 1 < packet_end {
+            let (index, fraction) = self.source_position(self.next_output_frame);
+            let first = self.frame_at(input, packet_start, index);
+            let second = self.frame_at(input, packet_start, index + 1);
+            self.push_converted_frame(&mut output, first, second, fraction);
+            self.next_output_frame += 1;
+        }
+        self.input_frames = packet_end;
+        self.last_input_frame = input[(frames - 1) * channels..frames * channels].to_vec();
+        self.gap_before_next_packet = false;
+        output
+    }
+
+    /// Emits the single deferred interpolation region when capture ends.  The
+    /// final device frame is extended only here, never at an arbitrary packet
+    /// boundary.
+    pub(crate) fn finish_to_internal(&mut self) -> Vec<f32> {
+        if self.input_frames == 0 || self.format.sample_rate == INTERNAL_SAMPLE_RATE {
+            return Vec::new();
+        }
+        let expected = self.output_frames_for_input(self.input_frames);
+        let mut output = Vec::new();
+        while self.next_output_frame < expected {
+            let (index, fraction) = self.source_position(self.next_output_frame);
+            let first = &self.last_input_frame;
+            let second = if index + 1 >= self.input_frames {
+                &self.last_input_frame
+            } else {
+                // The only un-emitted source position before the end is the
+                // final input frame, so both sides are the saved final frame.
+                &self.last_input_frame
+            };
+            self.push_converted_frame(&mut output, first, second, fraction);
+            self.next_output_frame += 1;
+        }
+        output
+    }
+
+    fn source_position(&self, output_frame: u64) -> (u64, f32) {
+        let numerator = output_frame as u128 * self.format.sample_rate as u128;
+        let denominator = INTERNAL_SAMPLE_RATE as u128;
+        let index = (numerator / denominator) as u64;
+        let fraction = (numerator % denominator) as f32 / denominator as f32;
+        (index, fraction)
+    }
+
+    fn source_index(&self, output_frame: u64) -> u64 {
+        self.source_position(output_frame).0
+    }
+
+    fn output_frames_for_input(&self, input_frames: u64) -> u64 {
+        ((input_frames as u128 * INTERNAL_SAMPLE_RATE as u128
+            + (self.format.sample_rate as u128 / 2))
+            / self.format.sample_rate as u128) as u64
+    }
+
+    fn frame_at<'a>(&'a self, input: &'a [f32], packet_start: u64, index: u64) -> &'a [f32] {
+        let channels = self.format.channels as usize;
+        if index < packet_start {
+            if self.gap_before_next_packet {
+                return &self.zero_input_frame;
+            }
+            return &self.last_input_frame;
+        }
+        let offset = (index - packet_start) as usize * channels;
+        &input[offset..offset + channels]
+    }
+
+    fn push_converted_frame(
+        &self,
+        output: &mut Vec<f32>,
+        first: &[f32],
+        second: &[f32],
+        fraction: f32,
+    ) {
+        for output_channel in 0..INTERNAL_CHANNELS as usize {
+            let input_channel = if self.format.channels == 1 {
+                0
+            } else {
+                output_channel.min(self.format.channels as usize - 1)
+            };
+            let a = first[input_channel];
+            let b = second[input_channel];
+            output.push(a + (b - a) * fraction);
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn float_format(sample_rate: u32, channels: u16) -> DeviceFormat {
+        let wave = WaveFormat::new(
+            32,
+            32,
+            &SampleType::Float,
+            sample_rate as usize,
+            channels as usize,
+            None,
+        );
+        DeviceFormat::from_wave_format(&wave).unwrap()
+    }
+
+    fn sine_packet(start: usize, frames: usize, sample_rate: u32, channels: u16) -> Vec<f32> {
+        let mut packet = Vec::with_capacity(frames * channels as usize);
+        for frame in start..start + frames {
+            let phase = frame as f32 * std::f32::consts::TAU * 440.0 / sample_rate as f32;
+            for channel in 0..channels {
+                packet.push((phase + channel as f32 * 0.25).sin() * 0.7);
+            }
+        }
+        packet
+    }
+
+    fn random_packet_sizes(total: usize) -> Vec<usize> {
+        let mut state = 0x9e37_79b9u32;
+        let mut remaining = total;
+        let mut sizes = Vec::new();
+        while remaining > 0 {
+            state = state.wrapping_mul(1_664_525).wrapping_add(1_013_904_223);
+            let frames = (state as usize % 977 + 1).min(remaining);
+            sizes.push(frames);
+            remaining -= frames;
+        }
+        sizes
+    }
 
     #[test]
     fn float32_stereo_round_trip_keeps_internal_samples() {
@@ -199,7 +384,10 @@ mod tests {
         let source = [-0.75, 0.5, 0.25, -0.125];
         let mut bytes = vec![0; format.bytes_for_frames(2).unwrap()];
         format.encode_from_internal(&source, 2, &mut bytes).unwrap();
-        let decoded = format.decode_to_internal(&bytes, 2, false).unwrap();
+        let decoded = format
+            .streaming_input_converter()
+            .decode_to_internal(&bytes, 2, false)
+            .unwrap();
         assert_eq!(decoded, source);
     }
 
@@ -208,11 +396,94 @@ mod tests {
         let wave = WaveFormat::new(16, 16, &SampleType::Int, 24_000, 1, None);
         let format = DeviceFormat::from_wave_format(&wave).unwrap();
         let bytes = [0x00, 0x40, 0x00, 0xC0];
-        let decoded = format.decode_to_internal(&bytes, 2, false).unwrap();
+        let mut converter = format.streaming_input_converter();
+        let mut decoded = converter.decode_to_internal(&bytes, 2, false).unwrap();
+        decoded.extend(converter.finish_to_internal());
         assert_eq!(decoded.len(), 8);
         assert!((decoded[0] - 0.5).abs() < 0.0001);
         assert_eq!(decoded[0], decoded[1]);
         assert!((decoded[6] + 0.5).abs() < 0.0001);
         assert_eq!(decoded[6], decoded[7]);
+    }
+
+    #[test]
+    fn streaming_converter_keeps_sine_wave_continuous_across_random_packets() {
+        for (rate, channels) in [(44_100, 1), (44_100, 2), (48_000, 1), (48_000, 2)] {
+            let format = float_format(rate, channels);
+            let total_frames = 22_157;
+            let source = sine_packet(0, total_frames, rate, channels);
+
+            let mut whole_converter = format.streaming_input_converter();
+            let mut expected = whole_converter.convert_decoded(&source);
+            expected.extend(whole_converter.finish_to_internal());
+
+            let mut packet_converter = format.streaming_input_converter();
+            let mut actual = Vec::new();
+            let mut start = 0;
+            for frames in random_packet_sizes(total_frames) {
+                actual.extend(packet_converter.convert_decoded(
+                    &source[start * channels as usize..(start + frames) * channels as usize],
+                ));
+                start += frames;
+            }
+            actual.extend(packet_converter.finish_to_internal());
+
+            assert_eq!(
+                actual.len(),
+                expected.len(),
+                "{rate} Hz, {channels} channels"
+            );
+            for (actual, expected) in actual.iter().zip(&expected) {
+                assert!(
+                    (actual - expected).abs() < 0.000_001,
+                    "{rate} Hz, {channels} channels"
+                );
+            }
+
+            let largest_step = actual
+                .chunks_exact(INTERNAL_CHANNELS as usize)
+                .map(|frame| frame[0])
+                .collect::<Vec<_>>()
+                .windows(2)
+                .map(|frames| (frames[1] - frames[0]).abs())
+                .fold(0.0f32, f32::max);
+            assert!(largest_step < 0.05, "packet boundary jump: {largest_step}");
+        }
+    }
+
+    #[test]
+    fn streaming_converter_uses_cumulative_frame_count_for_long_capture() {
+        let format = float_format(44_100, 2);
+        let total_frames = 2_646_123; // 60 seconds plus a non-integral tail.
+        let mut converter = format.streaming_input_converter();
+        let mut produced = 0usize;
+        let mut start = 0;
+        for frames in random_packet_sizes(total_frames) {
+            let packet = sine_packet(start, frames, 44_100, 2);
+            produced += converter.convert_decoded(&packet).len() / INTERNAL_CHANNELS as usize;
+            start += frames;
+        }
+        produced += converter.finish_to_internal().len() / INTERNAL_CHANNELS as usize;
+
+        let expected =
+            ((total_frames as u128 * INTERNAL_SAMPLE_RATE as u128 + 22_050) / 44_100) as usize;
+        assert_eq!(produced, expected);
+    }
+
+    #[test]
+    fn skipped_device_frames_advance_the_resampler_timeline() {
+        let format = float_format(44_100, 1);
+        let mut converter = format.streaming_input_converter();
+        let first = sine_packet(0, 1_001, 44_100, 1);
+        let second = sine_packet(1_138, 1_003, 44_100, 1);
+        let mut produced = converter.convert_decoded(&first).len() / INTERNAL_CHANNELS as usize;
+        let silence = converter.skip_input_frames(137);
+        produced += silence;
+        produced += converter.convert_decoded(&second).len() / INTERNAL_CHANNELS as usize;
+        produced += converter.finish_to_internal().len() / INTERNAL_CHANNELS as usize;
+
+        let expected = ((2_141u128 * INTERNAL_SAMPLE_RATE as u128 + 22_050) / 44_100) as usize;
+        assert_eq!(produced, expected);
+        assert!(silence > 0);
     }
 }

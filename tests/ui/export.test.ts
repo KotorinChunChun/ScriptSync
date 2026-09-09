@@ -153,3 +153,23 @@ describe("結合・出力ビュー", () => {
     expect(document.querySelector<HTMLElement>(".export-row.playing")?.dataset.block).toBe("1");
   });
 });
+
+it('試聴開始と再描画後も停止でき、下段の重複再生ボタンを出さない',async()=>{
+ await mount();vi.spyOn(player,'pause').mockImplementation(()=>{});
+ document.querySelector<HTMLButtonElement>('#export-preview')!.click();await settle();
+ expect(document.querySelector<HTMLButtonElement>('#export-stop')!.disabled).toBe(false);
+ document.querySelector<HTMLElement>('.export-row')!.click();
+ expect(document.querySelector<HTMLButtonElement>('#export-stop')!.disabled).toBe(false);
+ expect(document.querySelector('.export-timeline')).toBeNull();
+ document.querySelector<HTMLButtonElement>('#export-stop')!.click();expect(player.pause).toHaveBeenCalled();
+ expect(document.querySelector<HTMLButtonElement>('#export-stop')!.disabled).toBe(true);
+});
+it('先頭と選択ブロック末尾からの試聴に音量チェックを反映する',async()=>{
+ await mount();document.querySelector<HTMLButtonElement>('[data-unit=section]')!.click();
+ document.querySelector<HTMLElement>('.export-row[data-block="2"]')!.click();
+ const norm=document.querySelector<HTMLInputElement>('#export-normalize')!;norm.checked=false;norm.dispatchEvent(new Event('change'));
+ document.querySelector<HTMLButtonElement>('#export-last')!.click();await settle();
+ expect(rpc.mock.calls.filter(c=>c[0]==='preview_blocks').at(-1)![1]).toMatchObject({selected_block:2,from_last_item:true,normalize:false});
+ document.querySelector<HTMLButtonElement>('#export-first')!.click();await settle();
+ expect(rpc.mock.calls.filter(c=>c[0]==='preview_blocks').at(-1)![1]).toMatchObject({selected_block:0,from_last_item:false});
+});
