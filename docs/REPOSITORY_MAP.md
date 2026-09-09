@@ -1,6 +1,6 @@
 # ファイル構成目録
 
-v0.0.1の実装を探すための目録です。全生成物の一覧ではありません。文書の入口は[文書目録](README.md)、変更時の規約は[AGENTS](../AGENTS.md)です。
+v0.0.2開発版の実装を探すための目録です。全生成物の一覧ではありません。文書の入口は[文書目録](README.md)、変更時の規約は[AGENTS](../AGENTS.md)です。
 
 ## UI
 
@@ -61,3 +61,11 @@ v0.0.1の実装を探すための目録です。全生成物の一覧ではあ�
 プロジェクトは `.scriptsync` と対応する `.scriptsync.data/` を一組で扱います。データ内の `revisions/` が正本です。音声や索引を個別に書き換えて整合性を直したことにしないでください。
 
 `dev/sample/` はユーザー提供資料です。現行録音コードは `crates/scriptsync-recorder/` 側にあります。原資料を自動整理・削除・一括コミットしません。外部CLIのソースや個人認証設定は本リポジトリの一部ではありません。
+
+## v0.0.2の追加モジュール
+
+- src/scriptSources.ts：ファイル別下書き・差分・保存payload。
+- src/recordingArchives.ts：廃棄行の試聴・完全消去確認。
+- src-tauri/src/script_sources.rs：台本下書き・全体確定・空行・旧台本対応付け。
+- src-tauri/src/automatic_asr.rs：録音保存後の認識キューと空欄への入力。
+- src-tauri/src/archive.rs：履歴を含む完全消去と共有音声保護。
