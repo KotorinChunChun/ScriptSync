@@ -32,6 +32,8 @@ v0.0.1の実装を探すための目録です。全生成物の一覧ではあ�
 | [alignment.rs](../src-tauri/src/alignment.rs)、rules.rs、queue.rs | 読み対応、補正ルール、処理キュー |
 | [talk_project.rs](../src-tauri/src/talk_project.rs) | Talk形式の生成・検証 |
 
+プロジェクト選択の既定フォルダーは [project_location.rs](../src-tauri/src/project_location.rs) が保存・再読込を担当します。VTT字幕はexport_blocks.rsで音声と共通の時間軸から生成します。
+
 ## 試験・補助・設定
 
 | パス | 用途 |

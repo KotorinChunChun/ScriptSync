@@ -11,6 +11,7 @@ use std::sync::{
 
 #[derive(Default)]
 pub struct Inner {
+    pub project_location: crate::project_location::ProjectLocation,
     pub stop_scheduled: bool,
     pub ui_last_seen: Option<std::time::Instant>,
     pub ui_interrupted: bool,
@@ -248,14 +249,18 @@ impl App {
             return Err("処理中です。完了または停止を待ってください".into());
         }
         if action == "new" || action == "open" {
+            let mut dialog = rfd::FileDialog::new();
+            if let Some(directory) = a.project_location.directory.as_ref().filter(|p| p.is_dir()) {
+                dialog = dialog.set_directory(directory);
+            }
             let chosen = if action == "new" {
-                rfd::FileDialog::new()
+                dialog
                     .set_title("新しいScriptSyncプロジェクトを保存")
                     .add_filter("ScriptSyncプロジェクト", &[PROJECT_FILE_EXTENSION])
                     .set_file_name("新しいプロジェクト.scriptsync")
                     .save_file()
             } else {
-                rfd::FileDialog::new()
+                dialog
                     .set_title("ScriptSyncプロジェクトを開く")
                     .add_filter("ScriptSyncプロジェクト", &[PROJECT_FILE_EXTENSION])
                     .add_filter("従来のScriptSyncプロジェクト", &["json"])
@@ -268,12 +273,17 @@ impl App {
                     path
                 };
                 let store = if action == "new" {
-                    Store::create_project_file(path)?
+                    Store::create_project_file(path.clone())?
                 } else {
-                    Store::open_project_file(path)?
+                    Store::open_project_file(path.clone())?
                 };
                 a.store = Some(store);
-                a.message.clear();
+                a.message = a
+                    .project_location
+                    .remember(&path)
+                    .err()
+                    .map(|e| format!("フォルダー設定を保存できませんでした: {e}"))
+                    .unwrap_or_default();
             }
             return Ok(json!(null));
         }
@@ -815,12 +825,7 @@ impl App {
                             ));
                         }
                         let quality = !warnings.is_empty();
-                        if quality {
-                            warnings.push(
-                                "欠落した発話は復元できません。試聴して再録音を検討してください"
-                                    .into(),
-                            );
-                        }
+
                         if t.peak >= 0.999 {
                             warnings.push("クリッピングの可能性".into());
                         } else if t.peak < 0.01 {

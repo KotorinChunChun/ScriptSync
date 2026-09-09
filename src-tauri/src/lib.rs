@@ -1,4 +1,5 @@
 mod export_settings;
+mod project_location;
 mod take_trim;
 mod ui_session;
 use tauri::Manager;
@@ -110,6 +111,16 @@ pub fn run() {
         .manage(app)
         .setup(move |application| {
             hotkeys::install(application.handle().clone());
+            let config = application
+                .path()
+                .app_config_dir()?
+                .join("読みあわせ/project-location.json");
+            application
+                .state::<app::App>()
+                .0
+                .lock()
+                .unwrap()
+                .project_location = project_location::ProjectLocation::load(config);
             let window = application
                 .get_webview_window("main")
                 .ok_or_else(|| std::io::Error::other("メインウィンドウが見つかりません"))?;

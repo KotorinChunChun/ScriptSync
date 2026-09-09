@@ -63,3 +63,4 @@ footer audio{max-width:38vw;height:40px}
 
 .stop-extension{display:flex;align-items:center;gap:4px;white-space:nowrap}.stop-extension input{width:65px;margin:0}.record-controls .toolbar{gap:6px}
 .take-column .take-annotation{grid-column:2;grid-row:1;display:flex;align-items:center;gap:6px;min-width:0}.take-column .take-annotation .take-memo{flex:1;min-width:45px;width:100px}.take-score{display:flex;align-items:center;gap:3px;font-size:12px;white-space:nowrap}.take-score select{width:72px;padding:3px;height:30px}.record-controls .toolbar button{padding-inline:10px}
+.welcome-options{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:24px}.welcome-options button{width:100%;min-height:76px;font-size:22px;padding:18px 32px}.quality-actions{justify-content:center}.quality-actions .primary{box-shadow:0 0 0 3px #176b5733}.take-diagnostic{font-size:11px;color:#52665f;white-space:pre-wrap}.take-diagnostic:empty{display:none}

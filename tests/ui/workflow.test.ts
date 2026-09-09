@@ -243,3 +243,11 @@ it('試聴とF3は再生・停止で表示を切り替え自然終了で戻る',
  document.dispatchEvent(new KeyboardEvent('keydown',{key:'F3',bubbles:true}));await settle();expect(b.textContent).toBe('試聴(F3)');
  b.click();await settle();expect(b.textContent).toBe('停止(F3)');paused=true;document.querySelector('audio')!.dispatchEvent(new Event('ended'));expect(b.textContent).toBe('試聴(F3)');
 });
+
+it('品質確認は採用が既定でEnterで決定し過剰な文言を表示しない',async()=>{
+ snapshot.project.segments[0].takes[0].warning='要確認：WASAPI不連続 37回\n欠落した発話は復元できません。試聴して再録音を検討してください';
+ await import('../../src/main');await settle();await tab('録音');action('採用');await settle();
+ const button=document.querySelector<HTMLButtonElement>('[data-quality-adopt]')!;
+ expect(button.textContent).toBe('採用');expect(button.classList.contains('primary')).toBe(true);expect(document.activeElement).toBe(button);expect(document.body.textContent).not.toContain('欠落した発話は復元できません');
+ button.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true}));await settle();expect(api.invoke.mock.calls.filter(c=>c[1]?.action==='select')).toHaveLength(1);
+});

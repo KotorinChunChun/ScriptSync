@@ -252,9 +252,32 @@ fn collect_block(
     end: usize,
     gap: Gap,
     overrides: &Value,
-    _block: usize,
+    block: usize,
     v: &Value,
 ) -> Result<Vec<f32>> {
+    Ok(collect_block_with_subtitles(root, project, start, end, gap, overrides, block, v)?.0)
+}
+fn vtt_time(frames: usize) -> String {
+    let ms = (frames as u64 * 1000 + RATE as u64 / 2) / RATE as u64;
+    format!(
+        "{:02}:{:02}:{:02}.{:03}",
+        ms / 3600000,
+        ms / 60000 % 60,
+        ms / 1000 % 60,
+        ms % 1000
+    )
+}
+fn collect_block_with_subtitles(
+    root: &Path,
+    project: &Project,
+    start: usize,
+    end: usize,
+    gap: Gap,
+    overrides: &Value,
+    _block: usize,
+    v: &Value,
+) -> Result<(Vec<f32>, String)> {
+    let mut subtitles = String::from("WEBVTT\n\n");
     if start >= end || end > project.segments.len() {
         return Err("出力する原稿がありません".into());
     }
@@ -312,7 +335,29 @@ fn collect_block(
         } else {
             10f32.powf(seg.gain_db as f32 / 20.0)
         };
+        let begin = out.len() / CHANNELS;
         out.extend(clip.iter().map(|x| x * gain));
+        let finish = out.len() / CHANNELS;
+        let text = seg
+            .text
+            .replace('&', "&amp;")
+            .replace('<', "&lt;")
+            .replace('>', "&gt;")
+            .replace('\0', "\u{FFFD}")
+            .lines()
+            .filter(|line| !line.trim().is_empty())
+            .collect::<Vec<_>>()
+            .join("\n");
+        if vtt_time(begin) == vtt_time(finish) {
+            return Err("字幕の表示区間が1ミリ秒未満です".into());
+        }
+        subtitles.push_str(&format!(
+            "{}\n{} --> {}\n{}\n\n",
+            offset + 1,
+            vtt_time(begin),
+            vtt_time(finish),
+            text
+        ));
         if let Some(&next) = active.get(offset + 1) {
             // 見出し自体を読まない場合も所属階層の変化から区切りを判定する。
             let nh = &project.segments[next].hierarchy;
@@ -331,7 +376,7 @@ fn collect_block(
         0.0,
         (seconds("tail")? * RATE as f64).round() as usize * CHANNELS,
     ));
-    Ok(out)
+    Ok((out, subtitles))
 }
 // 有声区間のRMSを共通目標へ合わせ、ピークによるクリップも抑える。
 fn normalized_gain(samples: &[f32]) -> f32 {
@@ -377,7 +422,8 @@ pub fn export_blocks(root: &Path, project: &Project, v: &Value) -> Result<Value>
     let mut files = Vec::new();
     for (i, &start) in b.iter().enumerate() {
         let end = b.get(i + 1).copied().unwrap_or(project.segments.len());
-        let data = collect_block(root, project, start, end, gap, overrides, i, v)?;
+        let (data, subtitles) =
+            collect_block_with_subtitles(root, project, start, end, gap, overrides, i, v)?;
         if data.is_empty() {
             return Err("出力対象の発話がありません".into());
         };
@@ -394,7 +440,13 @@ pub fn export_blocks(root: &Path, project: &Project, v: &Value) -> Result<Value>
         } else {
             write_wav(&path, &data, normalize)?
         };
-        files.push(json!({"block":i,"range":{"start":start,"end":end},"file":rel,"hash":hash,"stem":stem(v,project,start,i),"name":format!("{}.{}",safe_name(&output_name),ext),"frames":data.len()/CHANNELS,"clipped_samples":clipped}));
+        let subtitle_path = path.with_extension("vtt");
+        crate::storage::write_new(&subtitle_path, subtitles.as_bytes())?;
+        let subtitle_file = std::path::Path::new(&rel)
+            .with_extension("vtt")
+            .to_string_lossy()
+            .replace('\\', "/");
+        files.push(json!({"subtitle_file":subtitle_file,"subtitle_hash":hash_file(&subtitle_path)?,"block":i,"range":{"start":start,"end":end},"file":rel,"hash":hash,"stem":stem(v,project,start,i),"name":format!("{}.{}",safe_name(&output_name),ext),"frames":data.len()/CHANNELS,"clipped_samples":clipped}));
     }
     let manifest = json!({"id":export_id,"format":format,"project":project.id,"generation":project.generation,"files":files});
     json_new(&folder.join("manifest.json"), &manifest)?;
@@ -405,9 +457,11 @@ pub fn explorer_folder(root: &Path, relative: &str) -> Result<std::path::PathBuf
     if relative != "exports" && !relative.starts_with("exports/") {
         return Err("出力フォルダーを指定してください".into());
     }
-    let path = safe(root, relative)?
-        .canonicalize()
-        .map_err(|e| e.to_string())?;
+    let requested = safe(root, relative)?;
+    if relative == "exports" {
+        std::fs::create_dir_all(&requested).map_err(|e| e.to_string())?;
+    }
+    let path = requested.canonicalize().map_err(|e| e.to_string())?;
     if !path.is_dir() {
         return Err("出力フォルダーがありません".into());
     }
@@ -561,12 +615,26 @@ mod tests {
         let wav = export_blocks(&root, &p, &settings).unwrap();
         let wav_path = safe(&root, wav["files"][0]["file"].as_str().unwrap()).unwrap();
         let decoded = audio::samples(&wav_path).unwrap();
+        let vtt_path = wav_path.with_extension("vtt");
+        let vtt = std::fs::read_to_string(&vtt_path).unwrap();
+        assert_eq!(
+            vtt,
+            "WEBVTT\n\n1\n00:00:00.060 --> 00:00:00.080\n原稿0\n\n2\n00:00:00.130 --> 00:00:00.150\n原稿1\n\n"
+        );
+        assert_eq!(
+            safe(&root, wav["files"][0]["subtitle_file"].as_str().unwrap()).unwrap(),
+            vtt_path
+        );
         assert_eq!(decoded.len(), 21120); // 0.22秒 × 48000 × stereo
         assert!((decoded[5760] - decoded[12480]).abs() < 0.0001);
         assert!((decoded[5760] - 0.1).abs() < 0.0001);
         settings["format"] = json!("flac");
         let flac = export_blocks(&root, &p, &settings).unwrap();
         let flac_path = safe(&root, flac["files"][0]["file"].as_str().unwrap()).unwrap();
+        assert_eq!(
+            std::fs::read_to_string(flac_path.with_extension("vtt")).unwrap(),
+            vtt
+        );
         let decoded_flac =
             audio_mixer_backend::recording::codecs::decode_audio_file(&flac_path).unwrap();
         assert_eq!(decoded_flac.samples.len(), decoded.len());
@@ -603,6 +671,44 @@ mod tests {
             p.segments[0].takes[0].hash,
             hash_file(&safe(&root, &p.segments[0].takes[0].file).unwrap()).unwrap()
         );
+        std::fs::remove_dir_all(root).unwrap();
+    }
+    #[test]
+    fn opens_export_root_before_export_and_subtitles_follow_trim_and_split() {
+        let root = std::env::temp_dir().join(id());
+        std::fs::create_dir_all(&root).unwrap();
+        assert!(explorer_folder(&root, "exports").unwrap().is_dir());
+        assert!(explorer_folder(&root, "exports/../outside").is_err());
+        let mut p = Project::new("字幕".into());
+        for text in ["<b>原稿</b> & -->\n\n次の行", "別ファイル"] {
+            let path = root.join(format!("{}.wav", id()));
+            write_wav(&path, &vec![0.1; 96000], false).unwrap();
+            let mut t = crate::app::take_from_file(&root, &path, "test".into()).unwrap();
+            t.trim_start = 0.1;
+            t.trim_end = 0.9;
+            let mut s = Segment::new(text.into());
+            s.trim_start = 0.1;
+            s.trim_end = 0.2;
+            s.selected = Some(t.id.clone());
+            s.takes.push(t);
+            p.segments.push(s);
+        }
+        let settings =
+            json!({"unit":"utterance","format":"wav","global_gaps":{"head":0.1,"tail":0.2}});
+        let output = export_blocks(&root, &p, &settings).unwrap();
+        assert_eq!(output["files"].as_array().unwrap().len(), 2);
+        for file in output["files"].as_array().unwrap() {
+            let path = safe(&root, file["file"].as_str().unwrap()).unwrap();
+            let subtitle = safe(&root, file["subtitle_file"].as_str().unwrap()).unwrap();
+            assert_eq!(path.with_extension("vtt"), subtitle);
+            let text = std::fs::read_to_string(subtitle).unwrap();
+            assert!(text.contains("00:00:00.100 --> 00:00:00.600"));
+        }
+        let first = std::fs::read_to_string(
+            safe(&root, output["files"][0]["subtitle_file"].as_str().unwrap()).unwrap(),
+        )
+        .unwrap();
+        assert!(first.contains("&lt;b&gt;原稿&lt;/b&gt; &amp; --&gt;\n次の行"));
         std::fs::remove_dir_all(root).unwrap();
     }
 }

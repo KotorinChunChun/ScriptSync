@@ -44,6 +44,7 @@ async function mount(value = project("project-a")) {
 
 beforeEach(async () => {
   vi.resetModules();
+  vi.spyOn(HTMLMediaElement.prototype,"pause").mockImplementation(()=>{});
   document.body.innerHTML = "";
   rpc = vi.fn(async (action: string) => {
     if (action === "preview_blocks") {
@@ -172,4 +173,16 @@ it('先頭と選択ブロック末尾からの試聴に音量チェックを反�
  expect(rpc.mock.calls.filter(c=>c[0]==='preview_blocks').at(-1)![1]).toMatchObject({selected_block:2,from_last_item:true,normalize:false});
  document.querySelector<HTMLButtonElement>('#export-first')!.click();await settle();
  expect(rpc.mock.calls.filter(c=>c[0]==='preview_blocks').at(-1)![1]).toMatchObject({selected_block:0,from_last_item:false});
+});
+
+
+it('出力前からフォルダーを開ける',async()=>{
+ await mount();document.querySelector<HTMLButtonElement>('#export-folder')!.click();await settle();expect(rpc).toHaveBeenCalledWith('open_export_folder',{directory:'exports'});
+});
+it('試聴の生成中は明示表示し二重要求を抑止して失敗後に解除する',async()=>{
+ let reject!:(e:Error)=>void;rpc.mockImplementation((action:string)=>action==='preview_blocks'?new Promise((_,r)=>reject=r):Promise.resolve(null));
+ const context=await mount();document.querySelector<HTMLButtonElement>('#export-preview')!.click();
+ expect(document.querySelector('.export-preparation')?.textContent).toContain('生成中');expect(document.querySelector<HTMLButtonElement>('#export-first')!.disabled).toBe(true);
+ document.querySelector<HTMLButtonElement>('#export-first')!.click();expect(rpc.mock.calls.filter(c=>c[0]==='preview_blocks')).toHaveLength(1);
+ reject(new Error('生成失敗'));await settle();expect(document.querySelector<HTMLElement>('.export-preparation')!.hidden).toBe(true);expect(document.querySelector<HTMLButtonElement>('#export-preview')!.disabled).toBe(false);expect(context.notice).toHaveBeenCalledWith('Error: 生成失敗',true);
 });
