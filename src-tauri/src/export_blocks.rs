@@ -488,6 +488,68 @@ pub fn preview_blocks(root: &Path, project: &Project, v: &Value) -> Result<Value
     if selected >= b.len() {
         return Err("試聴ブロックが不正です".into());
     };
+    let scope = v["preview_scope"].as_str().unwrap_or("following");
+    if !["all", "block", "following"].contains(&scope) {
+        return Err("試聴範囲が不正です".into());
+    }
+    let selected = if scope == "all" { 0 } else { selected };
+    let last_block = if scope == "block" {
+        selected + 1
+    } else {
+        b.len()
+    };
+    // 採用音声と加工条件だけをキャッシュの依存先とする。メモや評価の変更では破棄しない。
+    let mut dependencies = Vec::new();
+    for block in selected..last_block {
+        let start = b[block];
+        let end = b.get(block + 1).copied().unwrap_or(project.segments.len());
+        let from = if block == selected && v["from_last_item"].as_bool().unwrap_or(false) {
+            (start..end)
+                .rev()
+                .find(|&i| !project.segments[i].skip)
+                .ok_or("試聴対象がありません")?
+        } else {
+            start
+        };
+        for seg in &project.segments[from..end] {
+            if seg.skip {
+                continue;
+            }
+            let take = seg.selected_take()?;
+            if hash_file(&safe(root, &take.file)?)? != take.hash {
+                return Err("採用音声が差し替えられています".into());
+            }
+            dependencies.push(json!({"id":seg.id,"text":seg.text,"hierarchy":seg.hierarchy,"kind":seg.kind,"gain":seg.gain_db,"trim_start":seg.trim_start,"trim_end":seg.trim_end,"take":take}));
+        }
+    }
+    let cache_key = hash_bytes(
+        &serde_json::to_vec(
+            &json!({"version":1,"settings":v,"boundaries":b,"dependencies":dependencies}),
+        )
+        .map_err(|e| e.to_string())?,
+    );
+    let cache_path = safe(root, &format!("exports/preview-cache-{cache_key}.json"))?;
+    if let Ok(bytes) = std::fs::read(&cache_path) {
+        if let Ok(mut cached) = serde_json::from_slice::<Value>(&bytes) {
+            let valid = cached["files"].as_array().is_some_and(|files| {
+                files.len() == 1
+                    && files.iter().all(|f| {
+                        f["file"]
+                            .as_str()
+                            .zip(f["hash"].as_str())
+                            .is_some_and(|(file, hash)| {
+                                safe(root, file)
+                                    .and_then(|p| hash_file(&p))
+                                    .is_ok_and(|actual| actual == hash)
+                            })
+                    })
+            });
+            if valid {
+                cached["cached"] = json!(true);
+                return Ok(cached);
+            }
+        }
+    }
     let gap = gaps(v.get("global_gaps").unwrap_or(&Value::Null))?;
     let overrides = v.get("blocks").unwrap_or(&Value::Null);
     let id = id();
@@ -498,7 +560,7 @@ pub fn preview_blocks(root: &Path, project: &Project, v: &Value) -> Result<Value
     let mut timeline = Vec::new();
     let mut offset = 0.0f64;
     for (i, &start) in b.iter().enumerate() {
-        if i < selected {
+        if i < selected || i >= last_block {
             continue;
         }
         let end = b.get(i + 1).copied().unwrap_or(project.segments.len());
@@ -526,22 +588,17 @@ pub fn preview_blocks(root: &Path, project: &Project, v: &Value) -> Result<Value
         all.extend_from_slice(&data);
         timeline.push(json!({"block":i,"start_segment":from,"end_segment":end,"offset":offset,"duration":duration}));
         offset += duration;
-        if i == selected {
-            for (mode, norm) in [("raw", false), ("normalize", true)] {
-                let p = folder.join(format!("{mode}.wav"));
-                let mut variant = v.clone();
-                variant["normalize"] = json!(norm);
-                let variant_data =
-                    collect_block(root, project, start, end, gap, overrides, i, &variant)?;
-                let (h, _) = write_wav(&p, &variant_data, false)?;
-                result.push(json!({"mode":mode,"file":format!("exports/preview-{id}/{mode}.wav"),"hash":h,"frames":data.len()/CHANNELS}));
-            }
-        }
     }
     let p = folder.join("combined.wav");
     let (h, _) = write_wav(&p, &all, false)?;
     result.push(json!({"mode":"combined","file":format!("exports/preview-{id}/combined.wav"),"hash":h,"frames":all.len()/CHANNELS}));
-    Ok(json!({"selected_block":selected,"files":result,"timeline":timeline}))
+    let result =
+        json!({"selected_block":selected,"files":result,"timeline":timeline,"cached":false});
+    // キャッシュ索引の破損・書き込み失敗は再生成に戻せる。完成音声のみ登録する。
+    if let Ok(bytes) = serde_json::to_vec(&result) {
+        let _ = std::fs::write(cache_path, bytes);
+    }
+    Ok(result)
 }
 
 #[cfg(test)]
@@ -646,6 +703,7 @@ mod tests {
                 .all(|(a, b)| (a - b).abs() < 0.0001)
         );
         let preview = preview_blocks(&root, &p, &settings).unwrap();
+        assert_eq!(preview["files"].as_array().unwrap().len(), 1);
         let folder =
             explorer_folder(&root, &format!("exports/{}", wav["id"].as_str().unwrap())).unwrap();
         assert!(!folder.to_string_lossy().starts_with("\\\\?\\"));
@@ -662,6 +720,9 @@ mod tests {
             last["files"].as_array().unwrap().last().unwrap()["frames"],
             7200
         );
+        let mut raw_settings = settings.clone();
+        raw_settings["normalize"] = json!(false);
+        let preview = preview_blocks(&root, &p, &raw_settings).unwrap();
         let raw =
             audio::samples(&safe(&root, preview["files"][0]["file"].as_str().unwrap()).unwrap())
                 .unwrap();
@@ -709,6 +770,59 @@ mod tests {
         )
         .unwrap();
         assert!(first.contains("&lt;b&gt;原稿&lt;/b&gt; &amp; --&gt;\n次の行"));
+        std::fs::remove_dir_all(root).unwrap();
+    }
+    #[test]
+    fn selected_preview_is_isolated_and_full_preview_reuses_valid_cache() {
+        let root = std::env::temp_dir().join(id());
+        std::fs::create_dir_all(&root).unwrap();
+        let mut p = Project::new("キャッシュ".into());
+        for _ in 0..2 {
+            let path = root.join(format!("{}.wav", id()));
+            write_wav(&path, &vec![0.1; 9600], false).unwrap();
+            let t = crate::app::take_from_file(&root, &path, "test".into()).unwrap();
+            let mut s = Segment::new("本文".into());
+            s.selected = Some(t.id.clone());
+            s.takes.push(t);
+            p.segments.push(s);
+        }
+        let mut options = json!({"unit":"utterance","preview_scope":"block","selected_block":0});
+        let other = p.segments[1].selected.take();
+        let selected = preview_blocks(&root, &p, &options).unwrap();
+        assert_eq!(selected["timeline"].as_array().unwrap().len(), 1);
+        assert_eq!(selected["files"].as_array().unwrap().len(), 1);
+        p.segments[1].selected = other;
+        options["preview_scope"] = json!("all");
+        let first = preview_blocks(&root, &p, &options).unwrap();
+        assert_eq!(first["cached"], false);
+        assert_eq!(first["timeline"].as_array().unwrap().len(), 2);
+        let second = preview_blocks(&root, &p, &options).unwrap();
+        assert_eq!(second["cached"], true);
+        assert_eq!(first["files"], second["files"]);
+        p.segments[0]
+            .take_notes
+            .insert("memo".into(), crate::domain::TakeNote::default());
+        assert_eq!(preview_blocks(&root, &p, &options).unwrap()["cached"], true);
+        options["global_gaps"] = json!({"normal":0.5});
+        assert_eq!(
+            preview_blocks(&root, &p, &options).unwrap()["cached"],
+            false
+        );
+        let cached = preview_blocks(&root, &p, &options).unwrap();
+        let file = safe(&root, cached["files"][0]["file"].as_str().unwrap()).unwrap();
+        std::fs::write(file, b"broken").unwrap();
+        assert_eq!(
+            preview_blocks(&root, &p, &options).unwrap()["cached"],
+            false
+        );
+        p.segments[0].gain_db = 1.0;
+        assert_eq!(
+            preview_blocks(&root, &p, &options).unwrap()["cached"],
+            false
+        );
+        let input = safe(&root, &p.segments[0].takes[0].file).unwrap();
+        std::fs::write(input, b"changed").unwrap();
+        assert!(preview_blocks(&root, &p, &options).is_err());
         std::fs::remove_dir_all(root).unwrap();
     }
 }

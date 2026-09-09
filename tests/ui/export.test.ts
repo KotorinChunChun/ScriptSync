@@ -186,3 +186,9 @@ it('試聴の生成中は明示表示し二重要求を抑止して失敗後に�
  document.querySelector<HTMLButtonElement>('#export-first')!.click();expect(rpc.mock.calls.filter(c=>c[0]==='preview_blocks')).toHaveLength(1);
  reject(new Error('生成失敗'));await settle();expect(document.querySelector<HTMLElement>('.export-preparation')!.hidden).toBe(true);expect(document.querySelector<HTMLButtonElement>('#export-preview')!.disabled).toBe(false);expect(context.notice).toHaveBeenCalledWith('Error: 生成失敗',true);
 });
+
+it('選択ブロックは単独範囲、最初から再生は全体範囲を要求する',async()=>{
+ await mount();expect(document.querySelector('#export-preview')?.textContent).toBe('選択ブロックを試聴');
+ document.querySelector<HTMLButtonElement>('#export-preview')!.click();await settle();expect(rpc).toHaveBeenCalledWith('preview_blocks',expect.objectContaining({preview_scope:'block',selected_block:0}));
+ document.querySelector<HTMLButtonElement>('#export-first')!.click();await settle();expect(rpc).toHaveBeenCalledWith('preview_blocks',expect.objectContaining({preview_scope:'all',selected_block:0}));
+});
