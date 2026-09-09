@@ -15,9 +15,9 @@ Windows上のRust + Tauri v2アプリとする。TypeScript UIは表示と操作
 | `asr_adapter` | 音声→実発話転記、時刻、エンジン条件、失敗情報 |
 | `normalization` / `alignment` | 比較用読み生成、差分、原文位置への対応候補 |
 | `corrections` | 補正候補の承認、原文検査、混在原稿生成 |
-| `amekoro_adapter` | EXE起動、plan生成、WAV・実条件取得 |
+| `tts_cli_adapter` | EXE起動、plan生成、WAV・実条件取得 |
 | `src/` UI / `evaluation` | 差分再生、採用、匿名比較、採点 |
-| `analysis` / `export` | 後続のルール出力・Talk編集形式 |
+| `analysis` / `export` | 後続のルール出力・CLI側の音声合成エンジン編集形式 |
 
 ## 実発話の文字起こしが最初の技術課題
 
@@ -69,25 +69,27 @@ output/tests/reading/runs/日時-GUID/
 
 工程状態はpending/running/succeeded/failed/blocked/cancelled。音声生成成功と評価済みは独立。音声はデコード可能・長さ正・ハッシュ確定まで検査する。成功件数／必須件数と未評価件数を表示し、空HTMLを成功扱いしない。再開は入力・版・声条件・ASR条件・音声ハッシュが一致する工程だけを再利用する。
 
-## amekoro-speech.exeとの連携
+## TextToSpeechCLI.exeとの連携
 
-初期版は外部プロセス連携を採用し、雨衣ソースのコピーやGUI内への組込みを必須にしない。EXEパスとDPAPI設定パスはローカル設定とする。新リポジトリに認証ファイルをコピーせず、保存したWindowsユーザーで読み込む。設定の再保存を復号失敗の一律対処にしない。
+TextToSpeech CLIは、テキストを音声へ変換する外部CLIソフトウェアの抽象名とする。以下のパス・認証方式・引数・plan形式は当時の接続先の具体例であり、抽象概念全体に共通する要件ではない。
+
+初期版は外部プロセス連携を採用し、TextToSpeech CLIのソースのコピーやGUI内への組込みを必須にしない。EXEパスとDPAPI設定パスはローカル設定とする。新リポジトリに認証ファイルをコピーせず、保存したWindowsユーザーで読み込む。設定の再保存を復号失敗の一律対処にしない。
 
 現行コードで確認した契約：`synthesize --plan` はCodexへ再提案せず `proposal.reading.strip()` を発声する。新規`--text --reading-policy original`でも提案処理は通るため、厳密な固定比較にはplan経路を使う。新ツールは完全な検証済みplanを一度固定し、候補間でreadingだけを変える。
 
 ```powershell
-# 下記は実装時の連携例。入力planと実行フォルダーの作成後に使う。
-& 'C:\develop\amekoro\release\amekoro-speech.exe' synthesize --plan '<実行フォルダー>\A.plan.json' --settings 'C:\develop\amekoro\settings\voisona.dpapi' --output '<実行フォルダー>\A.wav' --result-json '<実行フォルダー>\A.result.json'
+# 新配置先への呼出例。引数と設定形式はCLI側の契約確認後に使用する。
+& 'C:\develop\TextToSpeechCLI\TextToSpeechCLI.exe' synthesize --plan '<実行フォルダー>\A.plan.json' --settings '<CLI側で指定する接続設定ファイル>' --output '<実行フォルダー>\A.wav' --result-json '<実行フォルダー>\A.result.json'
 ```
 
-実コードではshellを使わず引数配列で起動し、stdout/stderrと終了コードを別々に保存する。CLIの通常エラーは1、引数解析エラーは2になり得る。外側のタイムアウトを設け、キャンセル時は部分生成を失敗として残す。Talkジョブが残る場合の処理はP0で確認する。
+実コードではshellを使わず引数配列で起動し、stdout/stderrと終了コードを別々に保存する。CLIの通常エラーは1、引数解析エラーは2になり得る。外側のタイムアウトを設け、キャンセル時は部分生成を失敗として残す。CLI側の音声合成エンジンジョブが残る場合の処理はP0で確認する。
 
-planは `format="amekoro.speech-plan"`、version=1/2、原文text、voiceのname/version、proposalのid/reading/model_expression/voice_expression/reason/tone_parametersが必要。初期連携はv1の確認済みplanを採用し、新ツール独自の補正証跡を別JSONへ保存する。v2を使う場合は既存validatorの追加読みフィールドとの整合を契約試験で確認する。新ツールのversionと混同しない。
+形式識別子とログ環境変数の表記は新CLIに合わせて更新。planは `format="ttscli.speech-plan"`、version=1/2、原文text、voiceのname/version、proposalのid/reading/model_expression/voice_expression/reason/tone_parametersが必要。初期連携はv1の確認済みplanを採用し、新ツール独自の補正証跡を別JSONへ保存する。v2を使う場合は既存validatorの追加読みフィールドとの整合を契約試験で確認する。新ツールのversionと混同しない。
 
 声数値は既存toneの範囲に従い、既定値はalp=0、huskiness=0、intonation=1、pitch=0、speed=1、volume=0、style=""、style_intensity=0。具体的な固定話者名・版を導入環境から選び、未確定話者を公平比較に使わない。返却requested.text/global_parametersとactualの話者・値を保存・照合する。実条件が取得できなければunknownを明示し、厳密な比較合格にしない。
 
 原文・合成読みとも500文字上限がある。かな展開後にも検査し、超過は句境界で共通分割する。A/B/Cそれぞれ異なる分割は比較条件を壊す。原文へのグローバル位置マップを維持する。GUI側240文字基準とは別制約。
 
-`memory`は全合成完了後のWAVでストリーミングではない。初期版はfileに統一する。出力先の既存ファイルは拒否されるため、試行番号別の新規パスを使う。`AMEKORO_LOG_DIR`は子プロセスの実行フォルダーへ設定し、環境全体は記録しない。
+`memory`は全合成完了後のWAVでストリーミングではない。初期版はfileに統一する。出力先の既存ファイルは拒否されるため、試行番号別の新規パスを使う。`TTSCLI_LOG_DIR`は子プロセスの実行フォルダーへ設定し、環境全体は記録しない。
 
-Talkのanalyzed_text、phonemes、phoneme_durationsは取得された実データを保存できるが、かな照合やTalk編集ファイルの代替にはしない。元の発音詳細を補正後原稿へ使い回さない。
+CLI側の音声合成エンジンのanalyzed_text、phonemes、phoneme_durationsは取得された実データを保存できるが、かな照合やCLI側の音声合成エンジン編集ファイルの代替にはしない。元の発音詳細を補正後原稿へ使い回さない。

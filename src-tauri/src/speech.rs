@@ -15,8 +15,8 @@ use std::{
     },
     time::{Duration, Instant},
 };
-const EXE: &str = "C:/develop/amekoro/release/amekoro-speech.exe";
-const SETTINGS: &str = "C:/develop/amekoro/settings/voisona.dpapi";
+const EXE: &str = "C:/develop/TextToSpeechCLI/TextToSpeechCLI.exe";
+// 設定はCLI側の既定を利用し、必要な場合だけ環境変数で指定する。
 pub fn cli(args: &[String], folder: &Path, stop: &AtomicBool) -> Result<Value> {
     std::fs::create_dir_all(folder).map_err(|e| e.to_string())?;
     let stdout = OpenOptions::new()
@@ -32,11 +32,14 @@ pub fn cli(args: &[String], folder: &Path, stop: &AtomicBool) -> Result<Value> {
     let mut command = Command::new(EXE);
     command
         .args(args)
-        .arg("--settings")
-        .arg(SETTINGS)
-        .env("AMEKORO_LOG_DIR", folder.join("ai_logs"))
+        .env("TTSCLI_LOG_DIR", folder.join("ai_logs"))
         .stdout(Stdio::from(stdout))
         .stderr(Stdio::from(stderr));
+    if let Some(settings) =
+        std::env::var_os("SCRIPTSYNC_TTS_SETTINGS").filter(|value| !value.is_empty())
+    {
+        command.arg("--settings").arg(settings);
+    }
     #[cfg(windows)]
     {
         use std::os::windows::process::CommandExt;
@@ -182,7 +185,7 @@ impl App {
             Some(plan)
         } else if v["fixed"].as_bool() == Some(true) {
             Some(
-                json!({"format":"amekoro.speech-plan","version":1,"text":text,"voice":null,"proposal":{"id":"speech","reading":text,"model_expression":"neutral","voice_expression":"neutral","reason":"利用者が選択した標準の固定声条件","tone_parameters":{"alp":0,"huskiness":0,"intonation":1,"pitch":0,"speed":1,"volume":0,"style":"","style_intensity":0}}}),
+                json!({"format":"ttscli.speech-plan","version":1,"text":text,"voice":null,"proposal":{"id":"speech","reading":text,"model_expression":"neutral","voice_expression":"neutral","reason":"利用者が選択した標準の固定声条件","tone_parameters":{"alp":0,"huskiness":0,"intonation":1,"pitch":0,"speed":1,"volume":0,"style":"","style_intensity":0}}}),
             )
         } else {
             None

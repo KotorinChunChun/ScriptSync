@@ -1,0 +1,50 @@
+[package]
+name = "microphone-recorder-example"
+version = "0.4.6"
+edition = "2021"
+rust-version = "1.85"
+
+[lib]
+name = "audio_mixer_backend"
+path = "src/lib.rs"
+
+[[bin]]
+name = "microphone-recorder"
+path = "src/bin/microphone_recorder.rs"
+
+[dependencies]
+chrono = { version = "0.4", features = ["serde"] }
+crossbeam-queue = "0.3"
+hound = "3.5"
+mp3lame-encoder = "0.2.5"
+oxiaudio-core = "0.2.1"
+oxiaudio-decode = "0.2.1"
+oxiaudio-encode = "0.2.1"
+parking_lot = "0.12"
+schemars = { version = "0.8.22", features = ["uuid1", "chrono"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2"
+uuid = { version = "1", features = ["serde", "v4"] }
+
+[target.'cfg(windows)'.dependencies]
+wasapi = "0.24"
+windows = { version = "0.62", features = [
+  "Win32_Foundation",
+  "Win32_Graphics_Gdi",
+  "Win32_Media_Audio",
+  "Win32_Media_Multimedia",
+  "Win32_Storage_FileSystem",
+  "Win32_System_Com",
+  "Win32_System_Com_StructuredStorage",
+  "Win32_System_LibraryLoader",
+  "Win32_System_Ole",
+  "Win32_System_Threading",
+  "Win32_UI_Input_KeyboardAndMouse",
+  "Win32_UI_Shell",
+  "Win32_UI_Shell_PropertiesSystem",
+  "Win32_UI_WindowsAndMessaging"
+] }
+
+[dev-dependencies]
+proptest = "1"

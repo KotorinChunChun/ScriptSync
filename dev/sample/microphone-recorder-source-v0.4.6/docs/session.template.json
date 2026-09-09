@@ -1,0 +1,22 @@
+{
+  "schema_version": 1,
+  "endpoint_id": "",
+  "low_level_db": -40.0,
+  "silence": {
+    "threshold_db": -45.0,
+    "minimum_ms": 100,
+    "edge_padding_ms": 10
+  },
+  "prompts": [
+    { "id": "room", "text": "室内音のみ：話さずに数秒待ってください。", "room_tone": true, "accepted_take": null, "takes": [] },
+    { "id": "normal", "text": "普段の声で：今日は窓を開けて、ゆっくり深呼吸をしました。", "room_tone": false, "accepted_take": null, "takes": [] },
+    { "id": "quiet", "text": "小さな声で：静かな部屋で、小さな時計の音が聞こえます。", "room_tone": false, "accepted_take": null, "takes": [] },
+    { "id": "loud", "text": "無理のない大きな声で：おはようございます。こちらの声は届いていますか。", "room_tone": false, "accepted_take": null, "takes": [] },
+    { "id": "onset", "text": "2秒待ち、はっきり発声：ぱっと明かりがつきました。最後に2秒待つ。", "room_tone": false, "accepted_take": null, "takes": [] },
+    { "id": "pause", "text": "途中で2秒休む：ここで一度止まります。（休止）それでは続きを話します。", "room_tone": false, "accepted_take": null, "takes": [] },
+    { "id": "vowel", "text": "息が苦しくならない長さで：あー、いー、うー、えー、おー。", "room_tone": false, "accepted_take": null, "takes": [] },
+    { "id": "dynamic", "text": "小声から普段の声へ：遠くから近くへ、声の大きさを変えてみます。", "room_tone": false, "accepted_take": null, "takes": [] },
+    { "id": "ending", "text": "語尾を柔らかく：今日のお話は、これでおしまいです。その後3秒待つ。", "room_tone": false, "accepted_take": null, "takes": [] },
+    { "id": "consonant", "text": "自然な声で：ささやく風と、かすかな足音が聞こえました。", "room_tone": false, "accepted_take": null, "takes": [] }
+  ]
+}

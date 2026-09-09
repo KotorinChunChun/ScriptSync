@@ -1,0 +1,102 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://voicemixer.local/schema/microphone-recorder-session-v1.json",
+  "title": "microphone-recorder session",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "endpoint_id", "low_level_db", "silence", "prompts"],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "endpoint_id": { "type": "string" },
+    "low_level_db": { "type": "number", "minimum": -120, "maximum": 0 },
+    "silence": { "$ref": "#/$defs/silenceOptions" },
+    "prompts": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/prompt" }
+    }
+  },
+  "$defs": {
+    "silenceOptions": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["threshold_db", "minimum_ms", "edge_padding_ms"],
+      "properties": {
+        "threshold_db": { "type": "number", "minimum": -120, "maximum": 0 },
+        "minimum_ms": { "type": "integer", "minimum": 100 },
+        "edge_padding_ms": { "type": "integer", "minimum": 0, "maximum": 50 }
+      }
+    },
+    "quality": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["peak", "rms", "clipped_samples", "longest_clip_run", "has_voice_level", "low_level_warning"],
+      "properties": {
+        "peak": { "type": "number", "minimum": 0 },
+        "rms": { "type": "number", "minimum": 0 },
+        "clipped_samples": { "type": "integer", "minimum": 0 },
+        "longest_clip_run": { "type": "integer", "minimum": 0 },
+        "has_voice_level": { "type": "boolean" },
+        "low_level_warning": { "type": "boolean" }
+      }
+    },
+    "edit": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["original_frames", "output_frames", "removed_frame_ranges", "options"],
+      "properties": {
+        "original_frames": { "type": "integer", "minimum": 0 },
+        "output_frames": { "type": "integer", "minimum": 0 },
+        "removed_frame_ranges": {
+          "type": "array",
+          "items": {
+            "type": "array",
+            "minItems": 2,
+            "maxItems": 2,
+            "prefixItems": [{ "type": "integer", "minimum": 0 }, { "type": "integer", "minimum": 0 }],
+            "items": false
+          }
+        },
+        "options": { "$ref": "#/$defs/silenceOptions" }
+      }
+    },
+    "derived": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["file", "source_take_id", "edit"],
+      "properties": {
+        "file": { "type": "string", "pattern": "^[^/\\\\]+\\.wav$" },
+        "source_take_id": { "type": "string", "minLength": 1 },
+        "edit": { "$ref": "#/$defs/edit" }
+      }
+    },
+    "take": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "recorded_at", "file", "endpoint_id", "duration_ms", "status", "quality", "error", "derived"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "recorded_at": { "type": "string", "format": "date-time" },
+        "file": { "type": "string", "pattern": "^[^/\\\\]+\\.wav$" },
+        "endpoint_id": { "type": "string" },
+        "duration_ms": { "type": "integer", "minimum": 1 },
+        "status": { "enum": ["success", "warning", "failed"] },
+        "quality": { "oneOf": [{ "$ref": "#/$defs/quality" }, { "type": "null" }] },
+        "error": { "type": ["string", "null"] },
+        "derived": { "type": "array", "items": { "$ref": "#/$defs/derived" } }
+      }
+    },
+    "prompt": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "text", "room_tone", "accepted_take", "takes"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "text": { "type": "string", "minLength": 1 },
+        "room_tone": { "type": "boolean" },
+        "accepted_take": { "type": ["string", "null"] },
+        "takes": { "type": "array", "items": { "$ref": "#/$defs/take" } }
+      }
+    }
+  }
+}

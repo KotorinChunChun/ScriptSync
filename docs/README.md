@@ -15,7 +15,7 @@
 | 次版を実装する | [v0.0.2入口](../dev/v0.0.2-README.md)、[要求](../dev/v0.0.2-req.md)、[計画](../dev/v0.0.2-imp.md)、[進捗](../dev/v0.0.2-task.md) |
 | 録音ノイズを検証する | [修正・検証手順](../dev/audio-recording-noise-fix-procedure.md) |
 | プレゼンテーションソフトへ音声の時間情報を渡す | [音声・字幕・ブロックマップ連携仕様](EXPORT_BLOCK_MAP.md) |
-| Talkの形式を扱う | [Talkプロジェクト形式](talk-project-format.md) |
+| CLI側の音声合成エンジンの形式を扱う | [CLI側の音声合成エンジンプロジェクト形式](talk-project-format.md) |
 | 取り込み元の由来を確認 | [初期調査記録](source-inventory.md)、[録音crateの由来](../crates/scriptsync-recorder/ORIGIN.md) |
 | 初期設計を調べる | [初期アーキテクチャ案（履歴）](history/architecture-initial-design.md)、[追加案](../dev/PLAN_IDEAS.md) |
 

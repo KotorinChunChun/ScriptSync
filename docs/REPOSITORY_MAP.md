@@ -30,7 +30,7 @@ v0.0.1の実装を探すための目録です。全生成物の一覧ではあ�
 | [hotkeys.rs](../src-tauri/src/hotkeys.rs)、ui_session.rs、window_state.rs | キー登録、UI生存確認、ウィンドウ状態 |
 | [asr.rs](../src-tauri/src/asr.rs)、speech.rs | ローカル認識、外部音声CLI |
 | [alignment.rs](../src-tauri/src/alignment.rs)、rules.rs、queue.rs | 読み対応、補正ルール、処理キュー |
-| [talk_project.rs](../src-tauri/src/talk_project.rs) | Talk形式の生成・検証 |
+| [talk_project.rs](../src-tauri/src/talk_project.rs) | CLI側の音声合成エンジン形式の生成・検証 |
 
 プロジェクト選択の既定フォルダーは [project_location.rs](../src-tauri/src/project_location.rs) が保存・再読込を担当します。VTT字幕はexport_blocks.rsで音声と共通の時間軸から生成します。
 

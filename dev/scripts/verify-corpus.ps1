@@ -1,4 +1,6 @@
-param([string]$Exe='C:/develop/amekoro/release/amekoro-speech.exe',[string]$Settings='C:/develop/amekoro/settings/voisona.dpapi')
+param([string]$Exe='C:/develop/TextToSpeechCLI/TextToSpeechCLI.exe',[string]$Settings=$env:SCRIPTSYNC_TTS_SETTINGS)
+$settingsArgs = @()
+if ($Settings) { $settingsArgs = @('--settings', $Settings) }
 $ErrorActionPreference='Stop'
 $projectRoot=Split-Path (Split-Path $PSScriptRoot -Parent) -Parent
 $runRoot=Join-Path $projectRoot ('output/tests/corpus/'+(Get-Date -Format 'yyyyMMdd-HHmmss'))
@@ -14,9 +16,9 @@ foreach($case in $cases){
  foreach($variant in @(@{name='A';reading=$case.text},@{name='B';reading=$case.kana},@{name='C';reading=$case.corrected})){
   $folder=Join-Path $runRoot ($case.id+'/'+$variant.name)
   New-Item -ItemType Directory -Path $folder | Out-Null
-  $plan=@{format='amekoro.speech-plan';version=1;text=$case.text;voice=@{voice_name='tanaka-san_ja_JP';voice_version='2.0.1'};proposal=@{id='speech';reading=$variant.reading;model_expression='neutral';voice_expression='neutral';reason='固定コーパスの合成可否検証。聴感は未評価。';tone_parameters=@{alp=0;huskiness=0;intonation=1;pitch=0;speed=1;volume=0;style='';style_intensity=0}}}
+  $plan=@{format='ttscli.speech-plan';version=1;text=$case.text;voice=@{voice_name='tanaka-san_ja_JP';voice_version='2.0.1'};proposal=@{id='speech';reading=$variant.reading;model_expression='neutral';voice_expression='neutral';reason='固定コーパスの合成可否検証。聴感は未評価。';tone_parameters=@{alp=0;huskiness=0;intonation=1;pitch=0;speed=1;volume=0;style='';style_intensity=0}}}
   $plan | ConvertTo-Json -Depth 20 | Set-Content -LiteralPath (Join-Path $folder 'plan.json') -Encoding utf8
-  & $Exe synthesize --plan (Join-Path $folder 'plan.json') --settings $Settings --output (Join-Path $folder 'audio.wav') --result-json (Join-Path $folder 'result.json') | Out-Null
+  & $Exe synthesize --plan (Join-Path $folder 'plan.json') @settingsArgs --output (Join-Path $folder 'audio.wav') --result-json (Join-Path $folder 'result.json') | Out-Null
   if($LASTEXITCODE -ne 0){throw "合成失敗: $($case.id)/$($variant.name)"}
   $result=Get-Content (Join-Path $folder 'result.json') -Raw | ConvertFrom-Json
   if($result.actual.duration -le 0){throw '音声長が不正です'}
@@ -24,5 +26,5 @@ foreach($case in $cases){
   Write-Output "合成成功: $($case.id)/$($variant.name)"
  }
 }
-@{results=$results;success_count=$results.Count;expected_count=12;human_quality_evaluated=$false;dictionary_state='外部Talk設定・未取得'} | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath (Join-Path $runRoot 'report.json') -Encoding utf8
+@{results=$results;success_count=$results.Count;expected_count=12;human_quality_evaluated=$false;dictionary_state='外部CLI設定・未取得'} | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath (Join-Path $runRoot 'report.json') -Encoding utf8
 Write-Output $runRoot
