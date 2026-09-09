@@ -192,3 +192,14 @@ it('選択ブロックは単独範囲、最初から再生は全体範囲を要�
  document.querySelector<HTMLButtonElement>('#export-preview')!.click();await settle();expect(rpc).toHaveBeenCalledWith('preview_blocks',expect.objectContaining({preview_scope:'block',selected_block:0}));
  document.querySelector<HTMLButtonElement>('#export-first')!.click();await settle();expect(rpc).toHaveBeenCalledWith('preview_blocks',expect.objectContaining({preview_scope:'all',selected_block:0}));
 });
+
+it('ファイル名を禁止文字除去と20文字制限で表示・保存する',async()=>{
+ expect(view.cleanFilenameText(' <>:"/\\|?*\n原稿. ')).toBe('原稿');expect(view.cleanFilenameText('<>:')).toBe('script');expect(view.cleanFilenameText('あ😀'.repeat(20))).toBe('あ😀'.repeat(10));
+ const p=project('filename');p.segments[0].source_text='題名?'.repeat(20);await mount(p);
+ expect(Array.from(document.querySelector<HTMLInputElement>('#export-name')!.value)).toHaveLength(20);
+ const input=document.querySelector<HTMLInputElement>('#export-name')!;input.value='編集:*題名'+ '文'.repeat(30);input.dispatchEvent(new Event('change'));await settle();
+ const saved=rpc.mock.calls.filter(c=>c[0]==='export_settings').at(-1)![1].settings.blocks.h1.name;expect(saved).not.toMatch(/[:*]/);expect(Array.from(saved)).toHaveLength(20);expect(document.querySelector<HTMLInputElement>('#export-name')!.value).toBe(saved);
+});
+it('無音時間は部・章・節・発話・先頭・末尾の順に表示する',async()=>{
+ await mount();expect([...document.querySelectorAll<HTMLElement>('[data-global-gap]')].map(e=>e.dataset.globalGap)).toEqual(['part','chapter','section','normal','head','tail']);expect([...document.querySelectorAll<HTMLElement>('[data-gap-mode]')].map(e=>e.dataset.gapMode)).toEqual(['part','chapter','section','normal','head','tail']);expect(document.querySelector('.export-defaults h3')?.textContent).toContain('挿入する無音時間');
+});

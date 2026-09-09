@@ -130,16 +130,19 @@ fn kind(project: &Project, index: usize) -> String {
     .into()
 }
 fn stem(v: &Value, project: &Project, start: usize, block: usize) -> String {
-    v.get("stems")
+    let raw = v
+        .get("stems")
         .and_then(Value::as_array)
         .and_then(|a| a.get(block))
         .and_then(Value::as_str)
+        .filter(|name| !name.trim().is_empty())
         .or_else(|| {
             project.segments.get(start).and_then(|s| {
                 v.get("blocks")
                     .and_then(|b| b.get(&s.id))
                     .and_then(|x| x.get("name"))
                     .and_then(Value::as_str)
+                    .filter(|name| !name.trim().is_empty())
             })
         })
         .or_else(|| {
@@ -153,7 +156,8 @@ fn stem(v: &Value, project: &Project, start: usize, block: usize) -> String {
         })
         .unwrap_or("script")
         .trim()
-        .to_string()
+        .to_string();
+    filename_text(&raw)
 }
 fn prefix(v: &Value, project: &Project, start: usize, block: usize) -> String {
     let style = v["naming"].as_str().unwrap_or("jp");
@@ -177,16 +181,23 @@ fn prefix(v: &Value, project: &Project, start: usize, block: usize) -> String {
     }
     result
 }
+fn filename_text(name: &str) -> String {
+    let text = safe_name(name)
+        .chars()
+        .take(20)
+        .collect::<String>()
+        .trim_end_matches([' ', '.'])
+        .to_owned();
+    if text.is_empty() {
+        "script".into()
+    } else {
+        text
+    }
+}
 fn safe_name(name: &str) -> String {
-    name.chars()
-        .map(|c| {
-            if c.is_control() || "<>:\"/\\|?*".contains(c) {
-                '_'
-            } else {
-                c
-            }
-        })
-        .take(110)
+    name.trim()
+        .chars()
+        .filter(|c| !c.is_control() && !"<>:\"/\\|?*".contains(*c))
         .collect::<String>()
         .trim_end_matches([' ', '.'])
         .to_owned()
@@ -276,8 +287,9 @@ fn collect_block_with_subtitles(
     overrides: &Value,
     _block: usize,
     v: &Value,
-) -> Result<(Vec<f32>, String)> {
+) -> Result<(Vec<f32>, String, Vec<Value>)> {
     let mut subtitles = String::from("WEBVTT\n\n");
+    let mut utterances = Vec::new();
     if start >= end || end > project.segments.len() {
         return Err("出力する原稿がありません".into());
     }
@@ -338,6 +350,7 @@ fn collect_block_with_subtitles(
         let begin = out.len() / CHANNELS;
         out.extend(clip.iter().map(|x| x * gain));
         let finish = out.len() / CHANNELS;
+        utterances.push(json!({"segment_id":seg.id,"take_id":take.id,"text":seg.text,"hierarchy":seg.hierarchy,"kind":seg.kind,"start_frame":begin,"end_frame":finish,"start_seconds":begin as f64/RATE as f64,"end_seconds":finish as f64/RATE as f64}));
         let text = seg
             .text
             .replace('&', "&amp;")
@@ -376,7 +389,7 @@ fn collect_block_with_subtitles(
         0.0,
         (seconds("tail")? * RATE as f64).round() as usize * CHANNELS,
     ));
-    Ok((out, subtitles))
+    Ok((out, subtitles, utterances))
 }
 // 有声区間のRMSを共通目標へ合わせ、ピークによるクリップも抑える。
 fn normalized_gain(samples: &[f32]) -> f32 {
@@ -420,9 +433,11 @@ pub fn export_blocks(root: &Path, project: &Project, v: &Value) -> Result<Value>
     let folder = safe(root, &format!("exports/{export_id}"))?;
     std::fs::create_dir_all(&folder).map_err(|e| e.to_string())?;
     let mut files = Vec::new();
+    let mut blocks = Vec::new();
+    let mut cumulative_frames = 0usize;
     for (i, &start) in b.iter().enumerate() {
         let end = b.get(i + 1).copied().unwrap_or(project.segments.len());
-        let (data, subtitles) =
+        let (data, subtitles, utterances) =
             collect_block_with_subtitles(root, project, start, end, gap, overrides, i, v)?;
         if data.is_empty() {
             return Err("出力対象の発話がありません".into());
@@ -446,9 +461,19 @@ pub fn export_blocks(root: &Path, project: &Project, v: &Value) -> Result<Value>
             .with_extension("vtt")
             .to_string_lossy()
             .replace('\\', "/");
+        let frames = data.len() / CHANNELS;
+        let full_text = utterances
+            .iter()
+            .filter_map(|u| u["text"].as_str())
+            .collect::<Vec<_>>()
+            .join("\n");
+        blocks.push(json!({"block_index":i,"slide_number":i+1,"audio_file":path.file_name().unwrap().to_string_lossy(),"subtitle_file":subtitle_path.file_name().unwrap().to_string_lossy(),"audio_hash":hash,"duration_frames":frames,"duration_seconds":frames as f64/RATE as f64,"sequence_start_frame":cumulative_frames,"sequence_end_frame":cumulative_frames+frames,"sequence_start_seconds":cumulative_frames as f64/RATE as f64,"sequence_end_seconds":(cumulative_frames+frames) as f64/RATE as f64,"utterance_start_seconds":utterances.first().map(|u|u["start_seconds"].clone()),"utterance_end_seconds":utterances.last().map(|u|u["end_seconds"].clone()),"text":full_text,"utterances":utterances}));
+        cumulative_frames += frames;
         files.push(json!({"subtitle_file":subtitle_file,"subtitle_hash":hash_file(&subtitle_path)?,"block":i,"range":{"start":start,"end":end},"file":rel,"hash":hash,"stem":stem(v,project,start,i),"name":format!("{}.{}",safe_name(&output_name),ext),"frames":data.len()/CHANNELS,"clipped_samples":clipped}));
     }
-    let manifest = json!({"id":export_id,"format":format,"project":project.id,"generation":project.generation,"files":files});
+    let block_map = json!({"schema":"scriptsync.block-map","schema_version":1,"export_id":export_id,"project_id":project.id,"generation":project.generation,"split_unit":v["unit"].as_str().unwrap_or("all"),"sample_rate":RATE,"channels":CHANNELS,"total_duration_frames":cumulative_frames,"total_duration_seconds":cumulative_frames as f64/RATE as f64,"blocks":blocks});
+    json_new(&folder.join("block-map.json"), &block_map)?;
+    let manifest = json!({"block_map":"block-map.json","id":export_id,"format":format,"project":project.id,"generation":project.generation,"files":files});
     json_new(&folder.join("manifest.json"), &manifest)?;
     Ok(manifest)
 }
@@ -648,7 +673,7 @@ mod tests {
             boundaries(&p, &json!({"unit":"chapter"})).unwrap(),
             vec![0, 1, 4]
         );
-        assert_eq!(safe_name("0001_日本語:原稿/題名"), "0001_日本語_原稿_題名");
+        assert_eq!(safe_name("0001_日本語:原稿/題名"), "0001_日本語原稿題名");
     }
 
     #[test]
@@ -765,6 +790,33 @@ mod tests {
             let text = std::fs::read_to_string(subtitle).unwrap();
             assert!(text.contains("00:00:00.100 --> 00:00:00.600"));
         }
+        let map_path = safe(
+            &root,
+            &format!("exports/{}/block-map.json", output["id"].as_str().unwrap()),
+        )
+        .unwrap();
+        let map: Value = serde_json::from_slice(&std::fs::read(map_path).unwrap()).unwrap();
+        assert_eq!(map["schema"], "scriptsync.block-map");
+        assert_eq!(map["schema_version"], 1);
+        assert_eq!(map["blocks"].as_array().unwrap().len(), 2);
+        assert_eq!(map["blocks"][0]["duration_frames"], 38400);
+        assert_eq!(map["blocks"][1]["sequence_start_frame"], 38400);
+        assert_eq!(map["total_duration_frames"], 76800);
+        assert_eq!(map["blocks"][0]["utterances"][0]["start_frame"], 4800);
+        assert_eq!(map["blocks"][0]["utterances"][0]["end_frame"], 28800);
+        assert_eq!(map["blocks"][0]["text"], p.segments[0].text);
+        for (i, block) in map["blocks"].as_array().unwrap().iter().enumerate() {
+            assert_eq!(block["slide_number"], i + 1);
+            let audio = root
+                .join("exports")
+                .join(output["id"].as_str().unwrap())
+                .join(block["audio_file"].as_str().unwrap());
+            assert_eq!(
+                audio::samples(&audio).unwrap().len() / CHANNELS,
+                block["duration_frames"].as_u64().unwrap() as usize
+            );
+            assert!(audio.with_extension("vtt").exists());
+        }
         let first = std::fs::read_to_string(
             safe(&root, output["files"][0]["subtitle_file"].as_str().unwrap()).unwrap(),
         )
@@ -824,5 +876,15 @@ mod tests {
         std::fs::write(input, b"changed").unwrap();
         assert!(preview_blocks(&root, &p, &options).is_err());
         std::fs::remove_dir_all(root).unwrap();
+    }
+    #[test]
+    fn filename_text_removes_invalid_characters_and_limits_unicode_characters() {
+        assert_eq!(filename_text(" <>:\"/\\|?*\n原稿. "), "原稿");
+        assert_eq!(filename_text("<>::\n"), "script");
+        assert_eq!(filename_text(&"あ😀".repeat(20)), "あ😀".repeat(10));
+        assert_eq!(
+            filename_text("1234567890123456789.残り"),
+            "1234567890123456789"
+        );
     }
 }
