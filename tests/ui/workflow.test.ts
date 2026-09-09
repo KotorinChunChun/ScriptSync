@@ -87,3 +87,43 @@ describe("収録の状態遷移",()=>{
   expect(document.querySelector('#notice')!.textContent).toContain('保存失敗');
  });
 });
+
+it('録音操作は原稿より前、連続操作は発話ナビゲーションに配置する',async()=>{
+ await import('../../src/main');await settle();await tab('録音');
+ const column=document.querySelector('.recording-script')!;
+ expect(column.firstElementChild?.classList.contains('record-controls')).toBe(true);
+ expect(document.querySelector('.utterance-heading #continuous-start')).toBeTruthy();
+ expect(document.querySelector('.record-controls #continuous-start')).toBeNull();
+ expect(document.querySelector('#recording-wave')).toBeTruthy();
+ snapshot.recording_peaks=[.01,.3,.9];snapshot.elapsed=1234;
+ await vi.advanceTimersByTimeAsync(700);await settle();
+ expect(document.querySelector('#recording-elapsed')?.textContent).toBe('1.2 秒');
+ expect(document.querySelector('#recording-wave path:last-child')?.getAttribute('d')).toContain('v');
+});
+it('F1は取消完了を待って再録音しF2保存F3直前再生を行う',async()=>{
+ vi.spyOn(HTMLMediaElement.prototype,'play').mockResolvedValue();
+ const original=api.invoke.getMockImplementation()!;
+ api.invoke.mockImplementation(async(command:string,args:any)=>{
+  if(args.action==='record'){snapshot.busy=true;snapshot.job='recording';return null;}
+  if(args.action==='cancel_record'){snapshot.job='saving';return null;}
+  if(args.action==='stop'){snapshot.busy=false;snapshot.job='';snapshot.project.segments[0].takes.push({...snapshot.project.segments[0].takes[0],id:'new',file:'new.wav',hash:'new'});snapshot.project.generation++;return null;}
+  if(args.action==='audio')return 'data:audio/wav;base64,';
+  return original(command,args);
+ });
+ await import('../../src/main');await settle();await tab('録音');
+ document.querySelector<HTMLButtonElement>('#continuous-start')!.click();await settle();
+ expect(api.invoke.mock.calls.filter(x=>x[1]?.action==='record')).toHaveLength(1);
+ for(const name of ['record','cancel_record','stop'])expect(document.querySelector<HTMLButtonElement>(`[data-action=${name}]`)!.disabled).toBe(true);
+ const handler=api.listen.mock.calls.find(x=>x[0]==='scriptsync-hotkey')![1];
+ handler({payload:'F1'});await settle();handler({payload:'F1'});await settle();
+ expect(api.invoke.mock.calls.filter(x=>x[1]?.action==='cancel_record')).toHaveLength(1);
+ expect(api.invoke.mock.calls.filter(x=>x[1]?.action==='record')).toHaveLength(1);
+ snapshot.busy=false;snapshot.job='';await vi.advanceTimersByTimeAsync(700);await settle();
+ expect(api.invoke.mock.calls.filter(x=>x[1]?.action==='record')).toHaveLength(2);
+ handler({payload:'F2'});await settle();
+ expect(api.invoke).toHaveBeenCalledWith('command',{action:'stop',payload:{}});
+ handler({payload:'F3'});await settle();
+ expect(api.invoke).toHaveBeenCalledWith('command',{action:'audio',payload:{file:'new.wav',hash:'new'}});
+ document.querySelector<HTMLButtonElement>('#continuous-stop')!.click();await settle();
+ expect(document.querySelector<HTMLButtonElement>('[data-action=record]')!.disabled).toBe(false);
+});

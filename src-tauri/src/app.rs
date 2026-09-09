@@ -19,6 +19,7 @@ pub struct Inner {
     pub message: String,
     pub peak: f32,
     pub elapsed: u64,
+    pub recording_peaks: Vec<f32>,
     pub stop: Option<Arc<AtomicBool>>,
     pub cancel_recording: Option<Arc<AtomicBool>>,
 }
@@ -69,7 +70,7 @@ impl App {
     pub fn snapshot(&self) -> Result<Value> {
         let a = self.0.lock().map_err(|e| e.to_string())?;
         Ok(
-            json!({"project":a.store.as_ref().map(|s|&s.project),"root":a.store.as_ref().map(|s|s.root.to_string_lossy()),"busy":a.busy||a.queue_stop.is_some(),"job":a.job,"message":a.message,"peak":a.peak,"elapsed":a.elapsed}),
+            json!({"project":a.store.as_ref().map(|s|&s.project),"root":a.store.as_ref().map(|s|s.root.to_string_lossy()),"busy":a.busy||a.queue_stop.is_some(),"job":a.job,"message":a.message,"peak":a.peak,"elapsed":a.elapsed,"recording_peaks":a.recording_peaks}),
         )
     }
     pub fn dispatch(&self, action: &str, v: Value) -> Result<Value> {
@@ -647,6 +648,9 @@ impl App {
         a.cancel_recording = Some(cancel.clone());
         a.busy = true;
         a.job = "recording".into();
+        a.recording_peaks.clear();
+        a.elapsed = 0;
+        a.peak = 0.0;
         a.message = "録音準備中…停止すると保存します".into();
         let app = self.clone();
         std::thread::spawn(move || {
@@ -656,6 +660,9 @@ impl App {
                     if let Ok(mut a) = app.0.lock() {
                         a.peak = peak;
                         a.elapsed = elapsed;
+                        let bin = (elapsed / 100).min(3000) as usize;
+                        a.recording_peaks.resize(bin + 1, 0.0);
+                        a.recording_peaks[bin] = a.recording_peaks[bin].max(peak);
                         a.message = "録音中".into();
                     }
                 })
