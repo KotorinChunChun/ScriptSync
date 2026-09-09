@@ -51,6 +51,8 @@ v0.0.1の実装を探すための目録です。全生成物の一覧ではあ�
 | dev/history/v0.0.1/ | 確定版の要求・実装履歴 |
 | dev/mockups/ | 設計確認用HTML。実アプリとは別 |
 | dev/templates/ | 文書テンプレート |
+| .agents/skills/scriptsync-project-validation/ | プロジェクト専用の変更検証手順と回帰確認 |
+| .agents/skills/scriptsync-project-release/ | プロジェクト専用のリリース確定手順 |
 
 ## 生成物・利用者データ
 

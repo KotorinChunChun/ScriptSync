@@ -22,3 +22,10 @@
 - 利用者に試験を依頼するときは、起動済みでなければ `cd C:\develop\ScriptSync` と `npm run tauri dev` を案内します。
 
 保存の正本や音声の扱いは [architecture](docs/architecture.md)、保守上の要点は [KNOWLEDGE](dev/KNOWLEDGE.md) を参照してください。
+
+## プロジェクト専用スキル
+
+- 変更の検証には [scriptsync-project-validation](.agents/skills/scriptsync-project-validation/SKILL.md) を使用します。文書・UI・録音・出力から必要な検証を選びます。
+- 完成版の確定や最新ビルドの起動には [scriptsync-project-release](.agents/skills/scriptsync-project-release/SKILL.md) を使用します。
+
+仕様の正本は既存の要求・定義書です。スキルは確認手順を管理し、版番号・キー表・出力形式を複製しません。スキルの利用だけでは次版実装、公開、個人データ変更の許可になりません。
