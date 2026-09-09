@@ -34,6 +34,16 @@ it('数値入力直後に両端バーを更新する',()=>{
  const selection=document.querySelector<HTMLElement>('.take-trim-selection')!;
  expect(selection.style.left).toBe('25%');expect(selection.style.width).toBe('50%');expect(isTakeTrimDirty(take.id)).toBe(true);
 });
+it('物理トリム後も数値入力で開始位置を再編集して保存できる',async()=>{
+ const rpc=vi.fn(async()=>({id:'take-1',duration:1,file:'trimmed.wav',hash:'new',trim_start:0,trim_end:1}));bindTakeTrim({segment:{id:'s',takes:[take]},rpc,play:vi.fn(),notice:vi.fn()});
+ const start=document.querySelector<HTMLInputElement>('[data-trim-start]')!;start.value='0.50';start.dispatchEvent(new Event('change'));document.querySelector<HTMLButtonElement>('[data-trim-save]')!.click();await Promise.resolve();await Promise.resolve();expect(isTakeTrimDirty(take.id)).toBe(false);
+ start.value='0.25';start.dispatchEvent(new Event('change'));expect(isTakeTrimDirty(take.id)).toBe(true);document.querySelector<HTMLButtonElement>('[data-trim-save]')!.click();await Promise.resolve();await Promise.resolve();expect(rpc).toHaveBeenLastCalledWith('trim_take',{segment:'s',take:'take-1',start:.25,end:1});expect(isTakeTrimDirty(take.id)).toBe(false);
+});
+it('物理トリム後もドラッグで開始位置を再編集して保存できる',async()=>{
+ const rpc=vi.fn(async()=>({id:'take-1',duration:1,file:'trimmed.wav',hash:'new',trim_start:0,trim_end:1}));bindTakeTrim({segment:{id:'s',takes:[take]},rpc,play:vi.fn(),notice:vi.fn()});const wave=document.querySelector<HTMLElement>('.take-wave-wrap')!;vi.spyOn(wave,'getBoundingClientRect').mockReturnValue({left:0,width:100} as DOMRect);const handle=document.querySelector<HTMLButtonElement>('.take-trim-handle.start')!;
+ handle.onpointerdown!(pointer('pointerdown',0));wave.onpointermove!(pointer('pointermove',50));wave.onpointerup!(pointer('pointerup',50));document.querySelector<HTMLButtonElement>('[data-trim-save]')!.click();await Promise.resolve();await Promise.resolve();expect(isTakeTrimDirty(take.id)).toBe(false);
+ handle.onpointerdown!(pointer('pointerdown',0));wave.onpointermove!(pointer('pointermove',25));wave.onpointerup!(pointer('pointerup',25));expect(isTakeTrimDirty(take.id)).toBe(true);document.querySelector<HTMLButtonElement>('[data-trim-save]')!.click();await Promise.resolve();await Promise.resolve();expect(rpc).toHaveBeenLastCalledWith('trim_take',{segment:'s',take:'take-1',start:.25,end:1});expect(isTakeTrimDirty(take.id)).toBe(false);
+});
 it('試聴中は停止表示で同じボタンが停止しプレビューを再生成しない',async()=>{
  const rpc=vi.fn(),stop=vi.fn();bindTakeTrim({segment:{id:'s',takes:[take]},rpc,play:vi.fn(),notice:vi.fn(),isPlaying:()=>true,stop});
  const b=document.querySelector<HTMLButtonElement>('[data-trim-preview]')!;expect(b.textContent).toBe('停止(F3)');b.click();await Promise.resolve();expect(stop).toHaveBeenCalledOnce();expect(rpc).not.toHaveBeenCalled();
