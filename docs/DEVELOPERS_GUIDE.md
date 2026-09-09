@@ -1,55 +1,73 @@
 # 開発者ガイド
 
-## 構成
+対象は実装済みのv0.0.1です。`feature/v0.0.2`では台本マージの設計準備まで完了しています。[実装計画](../dev/v0.0.2-imp.md)の未実装機能を現行仕様として扱わないでください。
 
-- `src/`: Tauri WebViewで動作するTypeScript UI
-- `src-tauri/src/`: Rustバックエンド、ドメイン、保存、外部プロセス連携
-- `tests/fixtures/`: 契約試験・回帰試験用の非機密fixture
-- `dev/`: 要求、実装計画、進捗、運用資料
+## 開発起動とビルド
 
-## 起動
+Windows、PowerShell 7、Node.js/npm、Rust、TauriのWindowsビルド環境（MSVC・WebView2）が必要です。録音・プロジェクト保存の確認にはネイティブアプリを使用します。
 
 ```powershell
-npm install
+cd C:\develop\ScriptSync
+npm ci
 npm run tauri dev
 ```
 
-## 検証
+UIはViteのホットリロードで反映されます。録音は停止・保存してから更新してください。Rust変更時は再ビルドされます。`npm run dev`だけではブラウザー表示用で、ネイティブ録音やファイル操作の動作確認にはなりません。
+
+```powershell
+npm run tauri build -- --no-bundle
+```
+
+実行ファイルは `src-tauri/target/release/scriptsync.exe` です。既存アプリを閉じてから最新ビルドを起動します。配布用インストーラーの作成・別PCでの動作保証とは別です。
+
+## 通常の検証
+
+変更前に `git status --short` を確認し、既存変更を保持します。関係する試験から実施し、結果と未確認事項を実装計画へ記録します。
 
 ```powershell
 npm run build
-cargo test --manifest-path src-tauri/Cargo.toml
 npm test
+cargo test --manifest-path src-tauri/Cargo.toml
+cargo test --manifest-path crates/scriptsync-recorder/Cargo.toml --locked --target-dir src-tauri/target
 ```
 
-## 録音基盤と認識
+UI試験はDOMとRPCモック、Rust試験は保存・録音処理・編集・出力などを検証します。マイク音質、OSのダイアログ、非アクティブ時のキー入力、実際の再生音の検証は別途必要です。[検証記録](validation.md)と[読み上げテスト](../samples/reading-test/README.md)を参照してください。
 
-`crates/scriptsync-recorder` は受領したv0.4.6のコピー。由来と修正点は同crateのORIGIN.mdを参照。アプリの状態と保存はRust、表示はTypeScript、認識のみ独立Pythonワーカーです。
+文書だけの変更では参照先、現在のコード・画面名との一致、`git diff --check`を確認します。過去の試験件数を今回の実行結果として記載しません。
 
-ローカルASRの準備（Python 3.12を推奨）：
+## 外部音声・認識環境
+
+録音と採用音声の結合にはTalk・ASRは不要です。比較合成は既存の音声CLI、VoiSona Talkと話者・接続設定が必要です。CLIの既定参照先は `C:/develop/amekoro`。認証情報は同梱しません。
+
+ローカルASRは独立Pythonワーカーです。Python 3.12を推奨します。
 
 ```powershell
-pwsh -File dev/scripts/setup-asr.ps1 -Python 'Python実行ファイルのパス'
+pwsh -File dev/scripts/setup-asr.ps1 -Python 'Python実行ファイルの絶対パス'
 ```
 
-初回は依存とsmallモデルを取得します。通常の認識はキャッシュのみを使用し、原稿や期待読みを渡しません。候補は要確認として保存し、正解読みを自動で変更しません。実装方法の出典：[faster-whisper公式](https://github.com/SYSTRAN/faster-whisper)。漢字→かな変換にはpykakasiを使用するため、かな候補は発話の直接証拠ではありません。
-
-## 合成fixtureによる実機試験
+初回準備は依存とモデルを取得します。通常の認識はキャッシュを使用し、原稿・期待読みを認識のヒントに渡しません。候補は人間が確認し、正解読みへ自動確定しません。ASRワーカーはビルド時の `tools/asr` を参照するため、別PCへの移動時は配置と接続設定の調整が必要です。
 
 ```powershell
 pwsh -File dev/scripts/create-synthetic-fixtures.ps1
-$env:SCRIPT_SYNC_FIXTURES = '上記が出力したフォルダの絶対パス'
+$env:SCRIPT_SYNC_FIXTURES = '生成されたフォルダーの絶対パス'
 cargo test --manifest-path src-tauri/Cargo.toml --lib synthetic_end_to_end -- --ignored --nocapture
 cargo test --manifest-path src-tauri/Cargo.toml --lib synthetic_asr_measurement -- --ignored --nocapture
-cargo test --manifest-path crates/scriptsync-recorder/Cargo.toml --lib --locked --target-dir src-tauri/target
 ```
 
-合成fixtureは人間の正解音声ではありません。既定でignoredの2試験を明示実行し、生成・認識・保存・結合を実サービスで確認します。通常試験はマイクやTalkを使用しません。
+これら2件は通常ignoredの外部環境試験です。合成fixtureの成功は人間の音声品質の保証にはなりません。Talkファイルは[実機検証形式](talk-project-format.md)を参照します。
 
-`npm test` はDOM上で入力のエスケープ、匿名表示、採点null、Unicode選択、マイクIDの呼出しを確認します。ネイティブ画面操作や実マイク音質の代替ではありません。開発時のみ `?preview=output/tests/<検証フォルダ>` で保存済み検証プロジェクトの閲覧プレビューが可能です。書込操作は動作しません。
+## 構造と保存契約
 
-## 配置上の前提
+[ファイル構成目録](REPOSITORY_MAP.md)から担当モジュールを探し、[現行アーキテクチャ](architecture.md)で保存と処理の境界を確認してください。
 
-現在の音声CLI既定パスは `C:/develop/amekoro`。ASRワーカーはビルド時の本プロジェクトのtools/asrを参照します。別PCへの単体配布パッケージではなく、今回の開発PCで動かすv0.0.1です。別環境への移動時は接続パス・ASR配置を調整し、認証ファイルを配布しないでください。
+- `.scriptsync`と対応する`.scriptsync.data/`がプロジェクト一式です。
+- `revisions/`の保存世代が正本で、`project.json`は閲覧用索引です。破損時に黙って過去へ戻さず、既存世代・音声を保持します。
+- テイクのトリム保存は音声実体・ハッシュ・長さ・波形を更新します。画面だけの開始終了変更で済ませません。
+- 原文、読み上げ編集、録音時原稿を区別します。v0.0.1の行対応を固定IDによるマージ実装と混同しません。
+- 録音crateの由来・変更点は[ORIGIN](../crates/scriptsync-recorder/ORIGIN.md)を更新します。
 
-`revisions` の不変JSONを保存の正本とし、`project.json` は閲覧用索引です。最新世代が破損した場合は自動で過去へ戻さずエラーを表示し、履歴を保全します。WAV確定と台帳保存の間で中断した場合もファイルを残します。
+## バージョンと文書更新
+
+要求は `dev/vX.Y.Z-req.md`、設計・実装結果は `dev/vX.Y.Z-imp.md`、進捗は `dev/vX.Y.Z-task.md` に日本語で記録します。次版へ進む際は旧版を `dev/history/` に残します。v0.0.2の実装開始時にpackage.json、package-lock.json、src-tauri/Cargo.toml、Cargo.lock、tauri.conf.jsonのアプリ版を揃えます。
+
+キー変更時は[キー定義](../dev/SHORTCUT_KEYS.md)、効果音変更時は[効果音定義](../dev/SOUND_EFFECTS.md)、画面操作変更時は利用者ガイドとサンプル手順も更新します。生成物、個人原稿・音声、認証情報、ユーザー提供の `dev/sample/` を文書整理のために追加・削除しないでください。
