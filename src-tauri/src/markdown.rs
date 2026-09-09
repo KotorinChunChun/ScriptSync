@@ -126,8 +126,8 @@ pub fn commit(p: &mut Project, v: &Value) -> Result<()> {
         .iter()
         .filter(|r| r.enabled && !r.text.is_empty())
         .collect();
-    if active.is_empty() || active.len() > 1000 {
-        return Err("読み上げる行を1～1000行選んでください".into());
+    if active.len() > 1000 {
+        return Err("読み上げる行は1000行以内で選んでください".into());
     }
     let old = std::mem::take(&mut p.segments);
     let mut used = std::collections::HashSet::new();
@@ -135,6 +135,7 @@ pub fn commit(p: &mut Project, v: &Value) -> Result<()> {
         // 同じ行・元原稿なら、録音画面での読みや句読点の変更も保持する。
         let previous = old
             .iter()
+            .chain(p.archived_segments.iter())
             .find(|s| s.source_line == Some(row.line) && s.source_text == row.text);
         let mut s = if let Some(s) = previous {
             used.insert(s.id.clone());
@@ -143,11 +144,13 @@ pub fn commit(p: &mut Project, v: &Value) -> Result<()> {
             Segment::new(row.text.clone())
         };
         s.source_line = Some(row.line);
+        s.skip = false;
         s.source_text = row.text.clone();
         s.kind = row.kind;
         s.hierarchy = row.hierarchy.clone();
         p.segments.push(s);
     }
+    p.archived_segments.retain(|s| !used.contains(&s.id));
     p.archived_segments
         .extend(old.into_iter().filter(|s| !used.contains(&s.id)));
     p.source_markdown = text.to_owned();
@@ -182,6 +185,20 @@ mod tests {
         v["lines"][1]["enabled"] = json!(false);
         commit(&mut p, &v).unwrap();
         assert_eq!(p.archived_segments[0].id, id);
+        v["lines"][1]["enabled"] = json!(true);
+        commit(&mut p, &v).unwrap();
+        assert_eq!(p.segments[1].id, id);
+        assert_eq!(p.segments[1].text, "かんじ。");
+        assert!(p.archived_segments.is_empty());
+        for line in v["lines"].as_array_mut().unwrap() {
+            line["enabled"] = json!(false);
+        }
+        commit(&mut p, &v).unwrap();
+        assert!(p.segments.is_empty());
+        assert_eq!(p.archived_segments.len(), 2);
+        v["lines"][1]["enabled"] = json!(true);
+        commit(&mut p, &v).unwrap();
+        assert_eq!(p.segments[0].id, id);
     }
     #[test]
     fn source_and_edited_text_survive_project_reopen() {

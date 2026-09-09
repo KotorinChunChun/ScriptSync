@@ -11,6 +11,7 @@ use std::sync::{
 
 #[derive(Default)]
 pub struct Inner {
+    pub stop_scheduled: bool,
     pub ui_last_seen: Option<std::time::Instant>,
     pub ui_interrupted: bool,
     pub queue_stop: Option<Arc<AtomicBool>>,
@@ -74,7 +75,7 @@ impl App {
     pub fn snapshot(&self) -> Result<Value> {
         let a = self.0.lock().map_err(|e| e.to_string())?;
         Ok(
-            json!({"project":a.store.as_ref().map(|s|&s.project),"root":a.store.as_ref().map(|s|s.root.to_string_lossy()),"busy":a.busy||a.queue_stop.is_some(),"job":a.job,"message":a.message,"peak":a.peak,"elapsed":a.elapsed,"recording_peaks":a.recording_peaks}),
+            json!({"project":a.store.as_ref().map(|s|&s.project),"root":a.store.as_ref().map(|s|s.root.to_string_lossy()),"busy":a.busy||a.queue_stop.is_some(),"job":a.job,"message":a.message,"peak":a.peak,"elapsed":a.elapsed,"recording_peaks":a.recording_peaks,"stop_scheduled":a.stop_scheduled}),
         )
     }
     pub fn dispatch(&self, action: &str, v: Value) -> Result<Value> {
@@ -184,7 +185,23 @@ impl App {
             return Ok(result);
         }
         if action == "stop" {
-            let a = self.0.lock().map_err(|e| e.to_string())?;
+            let delay = v["delay_seconds"].as_f64().unwrap_or(0.0);
+            if !delay.is_finite() || !(0.0..=60.0).contains(&delay) {
+                return Err("終了延長は0～60秒で指定してください".into());
+            }
+            let mut a = self.0.lock().map_err(|e| e.to_string())?;
+            if delay > 0.0 && a.job == "recording" {
+                if !a.stop_scheduled {
+                    if let Some(stop) = a.stop.clone() {
+                        a.stop_scheduled = true;
+                        std::thread::spawn(move || {
+                            std::thread::sleep(std::time::Duration::from_secs_f64(delay));
+                            stop.store(true, Ordering::Release);
+                        });
+                    }
+                }
+                return Ok(json!(null));
+            }
             if let Some(s) = &a.queue_stop {
                 s.store(true, Ordering::Release);
             }
@@ -281,9 +298,9 @@ impl App {
             let tid = string(&v, "take")?;
             let start = v["start"].as_f64().ok_or("開始秒が必要です")?;
             let end = v["end"].as_f64().ok_or("終了秒が必要です")?;
-            let mut preview = store.project.clone();
-            crate::take_trim::save(&mut preview, &sid, &tid, start, end)?;
-            let take = preview
+            crate::take_trim::validate(&store.project, &sid, &tid, start, end)?;
+            let take = store
+                .project
                 .segments
                 .iter()
                 .find(|s| s.id == sid)
@@ -352,6 +369,7 @@ impl App {
                     s.gain_db = gain;
                 }
                 "trim_take" => crate::take_trim::save(
+                    &store.root,
                     &mut store.project,
                     &string(&v, "segment")?,
                     &string(&v, "take")?,
@@ -688,6 +706,7 @@ impl App {
         let stop = Arc::new(AtomicBool::new(false));
         let cancel = Arc::new(AtomicBool::new(false));
         a.stop = Some(stop.clone());
+        a.stop_scheduled = false;
         a.cancel_recording = Some(cancel.clone());
         a.busy = true;
         a.job = "recording".into();
@@ -772,6 +791,7 @@ impl App {
             a.busy = false;
             a.job.clear();
             a.stop = None;
+            a.stop_scheduled = false;
             let cancelled = a
                 .cancel_recording
                 .as_ref()

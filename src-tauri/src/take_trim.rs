@@ -1,17 +1,63 @@
-//! テイクごとの非破壊トリミング。範囲だけをプロジェクトへ保存する。
+//! テイク編集の保存時に、指定範囲だけを新しいWAVへ確定する。
 use crate::domain::*;
-use std::path::{Path, PathBuf};
+use std::{
+    fs::OpenOptions,
+    io::BufWriter,
+    path::{Path, PathBuf},
+};
+
+fn source_take<'a>(
+    project: &'a Project,
+    segment_id: &str,
+    take_id: &str,
+    start: f64,
+    end: f64,
+) -> Result<&'a Take> {
+    if !start.is_finite() || !end.is_finite() || start < 0.0 || end <= start {
+        return Err("開始と終了は、空でない正しい順番の秒数にしてください".into());
+    }
+    let take = project
+        .segments
+        .iter()
+        .find(|segment| segment.id == segment_id)
+        .ok_or("発話が見つかりません")?
+        .takes
+        .iter()
+        .find(|take| take.id == take_id && take.status == "ready")
+        .ok_or("保存できるテイクがありません")?;
+    if end > take.duration {
+        return Err("終了位置は音声の長さを超えています".into());
+    }
+    Ok(take)
+}
+
+pub fn validate(
+    project: &Project,
+    segment_id: &str,
+    take_id: &str,
+    start: f64,
+    end: f64,
+) -> Result<()> {
+    source_take(project, segment_id, take_id, start, end)?;
+    Ok(())
+}
 
 pub fn save(
+    root: &Path,
     project: &mut Project,
     segment_id: &str,
     take_id: &str,
     start: f64,
     end: f64,
 ) -> Result<()> {
-    if !start.is_finite() || !end.is_finite() || start < 0.0 || end <= start {
-        return Err("開始と終了は、空でない正しい順番の秒数にしてください".into());
+    let source = source_take(project, segment_id, take_id, start, end)?.clone();
+    let input = crate::storage::safe(root, &source.file)?;
+    if crate::storage::hash_file(&input)? != source.hash {
+        return Err("音声が変わっています".into());
     }
+    let (path, file) = write_trimmed_wav(root, &source.id, &input, start, end)?;
+    let hash = crate::storage::hash_file(&path)?;
+    let (duration, peak) = crate::audio::inspect(&path)?;
     let segment = project
         .segments
         .iter_mut()
@@ -22,20 +68,74 @@ pub fn save(
         .iter_mut()
         .find(|take| take.id == take_id && take.status == "ready")
         .ok_or("保存できるテイクがありません")?;
-    if end > take.duration {
-        return Err("終了位置は音声の長さを超えています".into());
-    }
-    let changed = take.trimmed_range()? != (start, end);
-    take.trim_start = start;
-    take.trim_end = end;
-    take.trimmed_range()?;
-    if changed && segment.selected.as_deref() == Some(take_id) {
+    take.file = file;
+    take.hash = hash;
+    take.duration = duration;
+    take.peak = peak;
+    take.trim_start = 0.0;
+    take.trim_end = 0.0;
+    take.warning = if peak >= 0.999 {
+        "クリッピングの可能性があります".into()
+    } else if peak < 0.01 {
+        "音量が小さいため試聴してください".into()
+    } else {
+        String::new()
+    };
+    if segment.selected.as_deref() == Some(take_id) {
         segment.needs_review = true;
         for comparison in &mut segment.comparisons {
             comparison.stale = true;
         }
     }
     Ok(())
+}
+
+/// 未公開の一意な一時ファイルへ完成させてから、テイク専用の新WAVとして確定する。
+/// 旧WAVはrevisionsから参照され得るため残す。
+fn write_trimmed_wav(
+    root: &Path,
+    take_id: &str,
+    source: &Path,
+    start: f64,
+    end: f64,
+) -> Result<(PathBuf, String)> {
+    let samples = crate::audio::samples(source)?;
+    let from = (start * 48_000.0).round() as usize * 2;
+    let until = (end * 48_000.0).round() as usize * 2;
+    let clip = samples
+        .get(from..until)
+        .ok_or("終了位置は音声の長さを超えています")?;
+    if clip.is_empty() {
+        return Err("保存する音声がありません".into());
+    }
+    let relative = format!("takes/{take_id}/trim-{}.wav", id());
+    let path = crate::storage::safe(root, &relative)?;
+    let pending = path.with_extension(format!("{}.pending", id()));
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+    }
+    let result = (|| -> Result<()> {
+        let pending_file = OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&pending)
+            .map_err(|e| e.to_string())?;
+        let mut writer = hound::WavWriter::new(BufWriter::new(pending_file), crate::audio::spec())
+            .map_err(|e| e.to_string())?;
+        for &sample in clip {
+            writer
+                .write_sample((sample.clamp(-1.0, 1.0) * 32767.0).round() as i16)
+                .map_err(|e| e.to_string())?;
+        }
+        writer.finalize().map_err(|e| e.to_string())?;
+        std::fs::rename(&pending, &path).map_err(|e| e.to_string())?;
+        Ok(())
+    })();
+    if result.is_err() {
+        let _ = std::fs::remove_file(&pending);
+    }
+    result?;
+    Ok((path, relative))
 }
 
 /// 編集途中の範囲だけを一時WAVへ書き出す。元ファイルは開いて読むだけで変更しない。
@@ -87,7 +187,7 @@ mod tests {
         }
     }
     #[test]
-    fn legacy_range_is_the_whole_take_and_save_rejects_empty_or_reversed_ranges() {
+    fn validation_rejects_empty_or_reversed_ranges() {
         let mut p = Project::new("test".into());
         let mut s = Segment::new("line".into());
         let t = take();
@@ -97,14 +197,9 @@ mod tests {
         s.selected = Some(tid.clone());
         p.segments.push(s);
         assert_eq!(p.segments[0].takes[0].trimmed_range().unwrap(), (0.0, 2.0));
-        assert!(save(&mut p, &sid, &tid, 1.0, 1.0).is_err());
-        assert!(save(&mut p, &sid, &tid, 1.5, 1.0).is_err());
-        assert!(save(&mut p, &sid, &tid, 0.25, 1.75).is_ok());
-        assert_eq!(
-            p.segments[0].takes[0].trimmed_range().unwrap(),
-            (0.25, 1.75)
-        );
-        assert!(p.segments[0].needs_review);
+        assert!(validate(&p, &sid, &tid, 1.0, 1.0).is_err());
+        assert!(validate(&p, &sid, &tid, 1.5, 1.0).is_err());
+        assert!(validate(&p, &sid, &tid, 0.25, 1.75).is_ok());
     }
     #[test]
     fn preview_wav_contains_only_the_requested_range() {
@@ -131,7 +226,7 @@ mod tests {
         std::fs::remove_dir_all(root).unwrap();
     }
     #[test]
-    fn persisted_trim_limits_export_without_changing_original_wav() {
+    fn save_creates_trimmed_wav_resets_range_and_keeps_old_file() {
         let root = std::env::temp_dir().join(format!("scriptsync-trim-export-{}", id()));
         std::fs::create_dir_all(&root).unwrap();
         let source = root.join("source.wav");
@@ -146,22 +241,29 @@ mod tests {
         let take = crate::app::take_from_file(&root, &source, "test".into()).unwrap();
         let original = crate::storage::safe(&root, &take.file).unwrap();
         let original_hash = crate::storage::hash_file(&original).unwrap();
+        let original_file = take.file.clone();
         let mut segment = Segment::new("line".into());
         let sid = segment.id.clone();
         let tid = take.id.clone();
         segment.selected = Some(tid.clone());
         segment.takes.push(take);
         store.project.segments.push(segment);
-        save(&mut store.project, &sid, &tid, 0.02, 0.08).unwrap();
+        save(&root, &mut store.project, &sid, &tid, 0.02, 0.08).unwrap();
         store.save().unwrap();
         drop(store);
         let reopened = crate::storage::Store::open(root.clone(), false).unwrap();
+        let trimmed = &reopened.project.segments[0].takes[0];
+        let (trim_start, trim_end) = trimmed.trimmed_range().unwrap();
+        assert_eq!(trim_start, 0.0);
+        assert!((trim_end - 0.06).abs() < f64::EPSILON);
         assert_eq!(
-            reopened.project.segments[0].takes[0]
-                .trimmed_range()
-                .unwrap(),
-            (0.02, 0.08)
+            crate::audio::samples(&crate::storage::safe(&root, &trimmed.file).unwrap())
+                .unwrap()
+                .len(),
+            5_760
         );
+        assert_ne!(trimmed.file, original_file);
+        assert!(original.exists());
         let output = crate::export_blocks::export_blocks(
             &root,
             &reopened.project,

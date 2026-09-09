@@ -138,3 +138,32 @@ fn media_uses_project_audio_and_byte_ranges() {
     drop(app);
     std::fs::remove_dir_all(root).unwrap();
 }
+
+#[test]
+fn delayed_stop_is_scoped_to_the_current_capture_and_cancel_is_immediate() {
+    use std::sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering},
+    };
+    let app = App::default();
+    let first = Arc::new(AtomicBool::new(false));
+    {
+        let mut state = app.0.lock().unwrap();
+        state.busy = true;
+        state.job = "recording".into();
+        state.stop = Some(first.clone());
+        state.cancel_recording = Some(Arc::new(AtomicBool::new(false)));
+    }
+    app.dispatch("stop", json!({"delay_seconds":0.05})).unwrap();
+    assert!(!first.load(Ordering::Acquire));
+    assert_eq!(app.snapshot().unwrap()["stop_scheduled"], true);
+    app.dispatch("cancel_record", json!({})).unwrap();
+    assert!(first.load(Ordering::Acquire));
+    let second = Arc::new(AtomicBool::new(false));
+    app.0.lock().unwrap().stop = Some(second.clone());
+    std::thread::sleep(std::time::Duration::from_millis(80));
+    assert!(!second.load(Ordering::Acquire));
+    app.dispatch("stop", json!({})).unwrap();
+    assert!(second.load(Ordering::Acquire));
+    assert!(app.dispatch("stop", json!({"delay_seconds":-1})).is_err());
+}

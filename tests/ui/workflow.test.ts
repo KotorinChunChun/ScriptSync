@@ -15,7 +15,7 @@ describe("再設計した作業フロー",()=>{
  it("台本が初期工程である",async()=>{await import("../../src/main");await settle();expect(document.querySelector("[data-tab=script]")?.getAttribute("aria-selected")).toBe("true");});
  it("工程バーは作業領域の外にあり、出力工程では左ペインを表示しない",async()=>{await import("../../src/main");await settle();expect(document.querySelector(".stage-bar")?.parentElement?.id).toBe("app");await tab("結合・出力");expect(document.querySelector(".navigation-aside")).toBeNull();});
  it("台本タブにMarkdown原稿を表示する",async()=>{await import("../../src/main");await settle();expect(document.querySelector<HTMLTextAreaElement>("#markdown-source")?.value).toContain("# 部");});
- it("原稿行をオンオフできる",async()=>{await import("../../src/main");await settle();const row=document.querySelector<HTMLButtonElement>("[data-script-line]")!;row.click();expect(document.querySelector(".source-line.disabled")).toBeTruthy();});
+ it("原稿行をオンオフできる",async()=>{await import("../../src/main");await settle();const row=document.querySelector<HTMLButtonElement>("[data-script-line]")!;row.click();await settle();expect(document.querySelector(".source-line.disabled")).toBeTruthy();});
  it("Markdown確認はRPCへ送る",async()=>{await import("../../src/main");await settle();action("行を確認");await settle();expect(api.invoke.mock.calls.some(x=>x[1]?.action==="markdown_preview")).toBe(true);});
  it("Markdown確定は行情報を送る",async()=>{await import("../../src/main");await settle();action("台本を確定");await settle();expect(api.invoke.mock.calls.some(x=>x[1]?.action==="markdown_commit")).toBe(true);});
 it("台本工程の左ペインはフィルターと元Markdown構成を表示する",async()=>{await import("../../src/main");await settle();expect(document.querySelector("#filter")).toBeTruthy();expect(document.querySelector("aside")?.textContent).toContain("部");});
@@ -157,4 +157,58 @@ it('未保存トリミングをF4で採用せず、移動前に保存を選択�
  const handler=api.listen.mock.calls.find(x=>x[0]==='scriptsync-hotkey')![1];handler({payload:'F4'});await settle();expect(api.invoke.mock.calls.some(x=>x[1]?.action==='select')).toBe(false);
  await tab('結合・出力');expect(document.querySelector('.take-trim-modal')).toBeTruthy();document.querySelector<HTMLButtonElement>('[data-choice=save]')!.click();await settle();
  expect(api.invoke.mock.calls.some(x=>x[1]?.action==='trim_take')).toBe(true);expect(document.querySelector('[data-tab=export]')?.getAttribute('aria-selected')).toBe('true');
+});
+
+it('停止延長は既定0秒で指定値を停止RPCへ渡す',async()=>{
+ await import('../../src/main');await settle();await tab('録音');
+ const field=document.querySelector<HTMLInputElement>('#stop-extension')!;
+ expect(field.value).toBe('0');field.value='2';field.dispatchEvent(new Event('change'));
+ snapshot.busy=true;snapshot.job='recording';await vi.advanceTimersByTimeAsync(800);await settle();
+ action('停止して保存');await settle();
+ expect(api.invoke).toHaveBeenCalledWith('command',{action:'stop',payload:{delay_seconds:2}});
+});
+it('無効化した確定原稿は即保存し録音から除外する',async()=>{
+ const original=api.invoke.getMockImplementation()!;
+ api.invoke.mockImplementation(async(c:string,a:any)=>{if(a.action==='markdown_commit'){snapshot.project.segments=[];snapshot.project.generation++;return null;}return original(c,a);});
+ await import('../../src/main');await settle();
+ document.querySelector<HTMLButtonElement>('[data-script-line]')!.click();await settle();
+ expect(api.invoke.mock.calls.some(x=>x[1]?.action==='markdown_commit')).toBe(true);
+ await tab('録音');expect(document.querySelector('[data-action=record]')).toBeNull();
+});
+it('無効な原稿を採用後の移動から飛ばす',async()=>{
+ snapshot.project.segments.push({...structuredClone(snapshot.project.segments[0]),id:'off',skip:true,text:'無効'}, {...structuredClone(snapshot.project.segments[0]),id:'active',text:'有効'});
+ await import('../../src/main');await settle();await tab('録音');action('採用');await settle();
+ expect(document.querySelector<HTMLTextAreaElement>('#text')?.value).toBe('有効');
+ expect(document.querySelector('[data-segment="off"]')).toBeNull();
+});
+it('通常録音のF1は開始と取消を切り替えF2保存F3再生F4最新採用を行う',async()=>{
+ const original=api.invoke.getMockImplementation()!;
+ snapshot.project.segments.push({...structuredClone(snapshot.project.segments[0]),id:'next',takes:[],selected:null});
+ api.invoke.mockImplementation(async(c:string,a:any)=>{
+  if(a.action==='record'){snapshot.busy=true;snapshot.job='recording';return null;}
+  if(a.action==='cancel_record'||a.action==='stop'){snapshot.busy=false;snapshot.job='';return null;}
+  if(a.action==='audio')return 'test.wav';
+  return original(c,a);
+ });
+ vi.spyOn(HTMLMediaElement.prototype,'play').mockResolvedValue();
+ await import('../../src/main');await settle();await tab('録音');
+ const key=async(key:string)=>{document.dispatchEvent(new KeyboardEvent('keydown',{key,bubbles:true,cancelable:true}));await settle();};
+ await key('F1');expect(snapshot.job).toBe('recording');await key('F1');expect(snapshot.busy).toBe(false);
+ expect(snapshot.project.segments[0].takes).toHaveLength(1);
+ await key('F1');await key('F2');expect(snapshot.busy).toBe(false);
+ await key('F3');expect(api.invoke.mock.calls.some(x=>x[1]?.action==='audio')).toBe(true);
+ await key('F4');expect(api.invoke).toHaveBeenCalledWith('command',{action:'select',payload:{segment:'s1',take:'t1'}});
+ expect(api.invoke.mock.calls.some(x=>x[0]==='continuous_hotkeys')).toBe(false);
+ expect(api.invoke.mock.calls.filter(x=>x[1]?.action==='record')).toHaveLength(2);
+});
+it('テイク範囲試聴は指定した終了時間で停止する',async()=>{
+ const original=api.invoke.getMockImplementation()!;
+ api.invoke.mockImplementation(async(c:string,a:any)=>{if(a.action==='preview_take_trim')return {file:'clip.wav',hash:'clip'};if(a.action==='audio')return 'clip.wav';return original(c,a);});
+ vi.spyOn(HTMLMediaElement.prototype,'play').mockResolvedValue();
+ await import('../../src/main');await settle();await tab('録音');
+ const end=document.querySelector<HTMLInputElement>('[data-trim-end]')!;end.value='0.50';end.dispatchEvent(new Event('change'));
+ document.querySelector<HTMLButtonElement>('[data-trim-preview]')!.click();await settle();
+ const audio=document.querySelector<HTMLAudioElement>('#player')!;audio.currentTime=0.7;audio.dispatchEvent(new Event('timeupdate'));
+ expect(audio.currentTime).toBe(0.5);expect(audio.pause).toHaveBeenCalled();
+ expect(api.invoke).toHaveBeenCalledWith('command',{action:'preview_take_trim',payload:{segment:'s1',take:'t1',start:0,end:0.5}});
 });
