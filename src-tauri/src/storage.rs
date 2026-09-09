@@ -206,7 +206,12 @@ impl Store {
                 }
             }
         }
-        for seg in s.project.segments.iter_mut().chain(s.project.archived_segments.iter_mut()) {
+        for seg in s
+            .project
+            .segments
+            .iter_mut()
+            .chain(s.project.archived_segments.iter_mut())
+        {
             if seg.source_text.is_empty() {
                 seg.source_text = seg.text.clone();
             }
@@ -348,7 +353,15 @@ impl Store {
         let rev = safe(&self.root, &format!("revisions/{generation:020}.json"))?;
         let temp = rev.with_extension(format!("{}.tmp", id()));
         json_new(&temp, &snapshot)?;
-        fs::rename(&temp, &rev).map_err(|e| e.to_string())?;
+        // renameはWindowsでも既存世代を置き換え得る。新規リンクの公開なら
+        // 既存名との競合時に失敗し、不変世代を上書きしない。
+        if let Err(error) = fs::hard_link(&temp, &rev) {
+            let _ = fs::remove_file(&temp);
+            return Err(format!(
+                "保存世代を確定できません。再読込して再確認してください: {error}"
+            ));
+        }
+        let _ = fs::remove_file(&temp);
         self.project.generation = generation;
         self.project.version = 3;
         // 世代は既に確定済み。閲覧用索引の失敗でメモリを旧世代へ戻さない。
@@ -365,6 +378,25 @@ impl Store {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn stale_save_never_overwrites_an_existing_revision() {
+        let root = std::env::temp_dir().join(id());
+        let mut store = Store::open(root.clone(), true).unwrap();
+        let before = store.project.clone();
+        store.project.title = "確定済みの内容".into();
+        store.save().unwrap();
+        let revision = root.join(format!("revisions/{:020}.json", store.project.generation));
+        let bytes = fs::read(&revision).unwrap();
+        store.project = before;
+        store.project.title = "古い下書き".into();
+        assert!(store.save().is_err());
+        assert_eq!(fs::read(&revision).unwrap(), bytes);
+        drop(store);
+        let reopened = Store::open(root.clone(), false).unwrap();
+        assert_eq!(reopened.project.title, "確定済みの内容");
+        drop(reopened);
+        fs::remove_dir_all(root).unwrap();
+    }
     #[test]
     fn interrupted_zero_duration_take_can_reopen() {
         let root = std::env::temp_dir().join(id());
@@ -410,11 +442,15 @@ mod tests {
         store.project.segments.push(segment);
         store.project.version = 2;
         let mut legacy = serde_json::to_value(&store.project).unwrap();
+        legacy["generation"] = serde_json::json!(store.project.generation + 1);
         let row = legacy["segments"][0].as_object_mut().unwrap();
         row.remove("line_id");
         row.remove("line_revisions");
         fs::write(
-            root.join("revisions/99999999999999999999.json"),
+            root.join(format!(
+                "revisions/{:020}.json",
+                store.project.generation + 1
+            )),
             serde_json::to_vec(&legacy).unwrap(),
         )
         .unwrap();
@@ -427,7 +463,14 @@ mod tests {
         assert_eq!(migrated.line_revisions.len(), 1);
         assert_eq!(migrated.line_revisions[0].source_text, "旧版の発話");
         assert_eq!(reopened.project.version, 3);
+        let line_revision_id = migrated.line_revisions[0].id.clone();
         drop(reopened);
+        let again = Store::open(root.clone(), false).unwrap();
+        assert_eq!(
+            again.project.segments[0].line_revisions[0].id,
+            line_revision_id
+        );
+        drop(again);
         fs::remove_dir_all(root).unwrap();
     }
 

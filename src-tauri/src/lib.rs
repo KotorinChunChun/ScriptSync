@@ -17,6 +17,11 @@ mod export_blocks;
 mod feature_tests;
 mod hotkeys;
 mod markdown;
+// 実原稿によるアルゴリズム検証段階。画面との接続は受入条件を満たしてから行う。
+#[cfg(test)]
+mod script_merge;
+#[cfg(test)]
+mod merge_experiment_tests;
 mod media;
 mod queue;
 mod rules;
