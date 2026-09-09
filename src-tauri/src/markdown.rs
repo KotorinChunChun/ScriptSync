@@ -135,9 +135,25 @@ pub fn parse(text: &str) -> Result<Vec<ScriptLine>> {
 }
 
 pub fn commit(p: &mut Project, v: &Value) -> Result<()> {
+    if let Some(base) = v["base_generation"].as_u64() {
+        if base != p.generation { return Err("保存済み台本が更新されています。開き直して比較してください".into()); }
+    }
     let text = v["text"].as_str().ok_or("元原稿が必要です")?;
     let mut rows = parse(text)?;
     let choices = v["lines"].as_array().ok_or("行の選択が必要です")?;
+    // UIの承認結果が保持する元行を検証し、行番号が変わっても既存録音を保持する。
+    let mut mapped = std::collections::HashSet::new();
+    for row in &rows {
+        if let Some(choice) = choices.iter().find(|c| c["line"].as_u64() == Some(row.line as u64)) {
+            if let Some(previous) = choice["previous_line"].as_u64() {
+                let source = p.script_lines.iter().find(|r| r.line == previous as usize)
+                    .ok_or("対応する元原稿行がありません")?;
+                if source.raw != row.raw || !mapped.insert(previous) {
+                    return Err("元原稿行との対応が一致しないか重複しています".into());
+                }
+            }
+        }
+    }
     for row in &mut rows {
         if let Some(choice) = choices
             .iter()
@@ -157,10 +173,15 @@ pub fn commit(p: &mut Project, v: &Value) -> Result<()> {
     let mut used = std::collections::HashSet::new();
     for row in active {
         // 同じ行・元原稿なら、録音画面での読みや句読点の変更も保持する。
+        let choice = choices.iter().find(|c| c["line"].as_u64() == Some(row.line as u64));
+        let previous_line = match choice {
+            Some(c) if c.get("previous_line").is_some() => c["previous_line"].as_u64().map(|n| n as usize),
+            _ => Some(row.line),
+        };
         let previous = old
             .iter()
             .chain(p.archived_segments.iter())
-            .find(|s| s.source_line == Some(row.line) && s.source_text == row.text);
+            .find(|s| previous_line.is_some() && s.source_line == previous_line && s.source_text == row.text && !used.contains(&s.id));
         let mut s = if let Some(s) = previous {
             used.insert(s.id.clone());
             s.clone()
@@ -168,7 +189,7 @@ pub fn commit(p: &mut Project, v: &Value) -> Result<()> {
             Segment::new(row.text.clone())
         };
         s.source_line = Some(row.line);
-        s.skip = false;
+        // 維持行の無効状態も引き継ぐ。新しい行はSegment::newの初期値を使う。
         s.source_text = row.text.clone();
         s.kind = row.kind;
         s.hierarchy = row.hierarchy.clone();
@@ -177,6 +198,15 @@ pub fn commit(p: &mut Project, v: &Value) -> Result<()> {
     p.archived_segments.retain(|s| !used.contains(&s.id));
     p.archived_segments
         .extend(old.into_iter().filter(|s| !used.contains(&s.id)));
+    for s in &mut p.archived_segments {
+        if let Some(row) = rows.iter().find(|r| choices.iter().any(|c|
+            c["line"].as_u64() == Some(r.line as u64)
+            && c["previous_line"].as_u64().is_some()
+            && c["previous_line"].as_u64().map(|n| n as usize) == s.source_line
+            && r.text == s.source_text)) {
+            s.source_line = Some(row.line);
+        }
+    }
     p.source_markdown = text.to_owned();
     p.script_lines = rows;
     Ok(())
@@ -186,6 +216,42 @@ pub fn commit(p: &mut Project, v: &Value) -> Result<()> {
 mod tests {
     use super::*;
     use serde_json::json;
+    #[test]
+    fn reviewed_insertion_preserves_ids_edits_and_disabled_rows_after_reopen() {
+        let path = std::env::temp_dir().join(format!("scriptsync-review-{}", id()));
+        let mut store = crate::storage::Store::open(path.clone(), true).unwrap();
+        let p = &mut store.project;
+        commit(p,&json!({"text":"甲\n乙", "lines":parse("甲\n乙").unwrap()})).unwrap();
+        let first = p.segments[0].id.clone();
+        let second = p.segments[1].id.clone();
+        p.segments[0].text = "こう。".into();
+        p.segments[0].skip = true;
+        let text = "追加\n甲\n乙";
+        let mut choices = serde_json::to_value(parse(text).unwrap()).unwrap();
+        choices[0]["previous_line"] = Value::Null;
+        choices[1]["previous_line"] = json!(0);
+        choices[2]["previous_line"] = json!(1);
+        choices[2]["enabled"] = json!(false);
+        commit(p,&json!({"text":text,"lines":choices,"base_generation":p.generation})).unwrap();
+        assert_eq!(p.segments[1].id,first);
+        assert_eq!(p.segments[1].text,"こう。");
+        assert!(p.segments[1].skip);
+        assert_eq!(p.archived_segments[0].id,second);
+        assert_eq!(p.archived_segments[0].source_line,Some(2));
+        store.save().unwrap();drop(store);
+        let mut store = crate::storage::Store::open(path.clone(),false).unwrap();
+        let mut choices = serde_json::to_value(parse(text).unwrap()).unwrap();
+        for i in 0..3 { choices[i]["previous_line"] = json!(i); }
+        commit(&mut store.project,&json!({"text":text,"lines":choices})).unwrap();
+        assert_eq!(store.project.segments[2].id,second);
+        let before = serde_json::to_value(&store.project).unwrap();
+        assert!(commit(&mut store.project,&json!({"text":text,"lines":choices,"base_generation":9999})).is_err());
+        assert_eq!(serde_json::to_value(&store.project).unwrap(),before);
+        choices[1]["previous_line"] = json!(2);
+        assert!(commit(&mut store.project,&json!({"text":text,"lines":choices})).is_err());
+        assert_eq!(serde_json::to_value(&store.project).unwrap(),before);
+        drop(store);std::fs::remove_dir_all(path).unwrap();
+    }
     #[test]
     fn dropped_files_are_sorted_and_invalid_inputs_fail_as_a_whole() {
         let dir = std::env::temp_dir().join(id());

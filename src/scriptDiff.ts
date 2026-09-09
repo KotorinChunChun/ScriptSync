@@ -1,6 +1,6 @@
 export type Difference={kind:"same"|"added"|"removed";text:string};
 export function scriptDifferences(before:string,after:string):Difference[]{
- const a=before?before.replace(/\r\n/g,"\n").split("\n"):[],b=after?after.replace(/\r\n/g,"\n").split("\n"):[];
+ const a=before?before.replace(/\r\n/g,"\n").split("\n").filter(x=>x.trim()):[],b=after?after.replace(/\r\n/g,"\n").split("\n").filter(x=>x.trim()):[];
  let prefix=0;while(prefix<a.length&&prefix<b.length&&a[prefix]===b[prefix])prefix++;
  let endA=a.length,endB=b.length;while(endA>prefix&&endB>prefix&&a[endA-1]===b[endB-1]){endA--;endB--;}
  const rows:Difference[]=a.slice(0,prefix).map(text=>({kind:"same",text}));

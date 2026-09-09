@@ -27,7 +27,7 @@ describe("再設計した作業フロー",()=>{
   api.invoke.mockImplementation(async(c:string,args:any)=>args.action==="markdown_drop"?{text:"結合した本文",lines:[],names:["01.md","02.md"]}:original(c,args));
   const callback=api.listen.mock.calls.filter(c=>c[0]==="tauri://drag-drop").at(-1)![1];
   callback({payload:{paths:["C:/02.md","C:/01.md"]}});await settle();
-  expect(document.querySelector<HTMLTextAreaElement>("#markdown-source")!.value).toBe("結合した本文");
+  expect(document.querySelector<HTMLTextAreaElement>("#markdown-source")!.value).toBe("# 部\n本文\n\n結合した本文");
   expect(document.body.textContent).toContain("01.md → 02.md");
   expect(api.invoke.mock.calls.some(c=>c[1]?.action==="markdown_commit")).toBe(false);
  });
@@ -46,7 +46,7 @@ describe("再設計した作業フロー",()=>{
  it("工程バーは作業領域の外にあり、出力工程では左ペインを表示しない",async()=>{await import("../../src/main");await settle();expect(document.querySelector(".stage-bar")?.parentElement?.id).toBe("app");await tab("結合・出力");expect(document.querySelector(".navigation-aside")).toBeNull();});
  it("台本タブにMarkdown原稿を表示する",async()=>{await import("../../src/main");await settle();expect(document.querySelector<HTMLTextAreaElement>("#markdown-source")?.value).toContain("# 部");});
  it("原稿行をオンオフできる",async()=>{await import("../../src/main");await settle();const row=document.querySelector<HTMLButtonElement>("[data-script-line]")!;row.click();await settle();expect(document.querySelector(".source-line.disabled")).toBeTruthy();});
- it("Markdown確認はRPCへ送る",async()=>{await import("../../src/main");await settle();action("行を確認");await settle();expect(api.invoke.mock.calls.some(x=>x[1]?.action==="markdown_preview")).toBe(true);});
+ it("編集すると確認ボタンなしで自動プレビューする",async()=>{await import("../../src/main");await settle();expect(document.querySelector("[data-action=markdown_preview]")).toBeNull();const input=document.querySelector<HTMLTextAreaElement>("#markdown-source")!;input.value="編集";input.dispatchEvent(new Event("input"));await vi.advanceTimersByTimeAsync(150);expect(api.invoke.mock.calls.some(x=>x[1]?.action==="markdown_preview")).toBe(true);});
  it("Markdown確定は行情報を送る",async()=>{await import("../../src/main");await settle();action("台本を確定");await settle();expect(api.invoke.mock.calls.some(x=>x[1]?.action==="markdown_commit")).toBe(true);});
 it("台本工程の左ペインはフィルターと元Markdown構成を表示する",async()=>{await import("../../src/main");await settle();expect(document.querySelector("#filter")).toBeTruthy();expect(document.querySelector("aside")?.textContent).toContain("部");});
  it("録音工程は元原稿と録音用原稿を並べる",async()=>{await import("../../src/main");await settle();await tab("録音");expect(document.querySelector("#text")).toBeTruthy();expect(document.querySelector(".take-column")).toBeTruthy();});
@@ -197,11 +197,13 @@ it('停止延長は既定0秒で指定値を停止RPCへ渡す',async()=>{
  action('停止して保存');await settle();
  expect(api.invoke).toHaveBeenCalledWith('command',{action:'stop',payload:{delay_seconds:2}});
 });
-it('無効化した確定原稿は即保存し録音から除外する',async()=>{
+it('対象の無効化は下書きに留め、確定時に録音から除外する',async()=>{
  const original=api.invoke.getMockImplementation()!;
  api.invoke.mockImplementation(async(c:string,a:any)=>{if(a.action==='markdown_commit'){snapshot.project.segments=[];snapshot.project.generation++;return null;}return original(c,a);});
  await import('../../src/main');await settle();
  document.querySelector<HTMLButtonElement>('[data-script-line]')!.click();await settle();
+ expect(api.invoke.mock.calls.some(x=>x[1]?.action==='markdown_commit')).toBe(false);
+ action('台本を確定');await settle();
  expect(api.invoke.mock.calls.some(x=>x[1]?.action==='markdown_commit')).toBe(true);
  await tab('録音');expect(document.querySelector('[data-action=record]')).toBeNull();
 });
@@ -280,4 +282,58 @@ it('品質確認は採用が既定でEnterで決定し過剰な文言を表示�
  const button=document.querySelector<HTMLButtonElement>('[data-quality-adopt]')!;
  expect(button.textContent).toBe('採用');expect(button.classList.contains('primary')).toBe(true);expect(document.activeElement).toBe(button);expect(document.body.textContent).not.toContain('欠落した発話は復元できません');
  button.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true}));await settle();expect(api.invoke.mock.calls.filter(c=>c[1]?.action==='select')).toHaveLength(1);
+});
+
+it('3ペインの各変更を判断し、2本目の追加だけを確定できる',async()=>{
+ const original=api.invoke.getMockImplementation()!;
+ api.invoke.mockImplementation(async(c:string,a:any)=>a.action==='markdown_preview'?{lines:a.payload.text.split('\n').map((raw:string,line:number)=>({line,raw,text:raw,kind:0,enabled:true}))}:original(c,a));
+ await import('../../src/main');await settle();
+ expect(document.querySelectorAll('.script-columns>section')).toHaveLength(3);
+ expect(document.querySelector('.script-editor [data-action=markdown_import]')).toBeTruthy();
+ expect(document.querySelector('#test-script')).toBeNull();
+ const input=document.querySelector<HTMLTextAreaElement>('#markdown-source')!;input.value='第2章の本文';input.dispatchEvent(new Event('input'));
+ expect(document.querySelector<HTMLButtonElement>('[data-action=markdown_commit]')!.disabled).toBe(true);
+ await vi.advanceTimersByTimeAsync(150);
+ expect(document.querySelector('#script-target-list')?.textContent).toContain('本文');
+ for(let n=0;n<2;n++){
+  const b=[...document.querySelectorAll<HTMLButtonElement>('.diff-removed [data-decision=reject]')].find(b=>b.getAttribute('aria-pressed')!=='true')!;
+  b.click();await vi.advanceTimersByTimeAsync(150);
+ }
+ document.querySelector<HTMLButtonElement>('.diff-added [data-decision=accept]')!.click();await vi.advanceTimersByTimeAsync(150);
+ expect(document.querySelector('#script-target-list')?.textContent).toContain('第2章の本文');
+ expect(document.querySelector<HTMLButtonElement>('[data-action=markdown_commit]')!.disabled).toBe(false);
+ const boundary=document.querySelector<HTMLElement>('[data-separator]')!;boundary.dispatchEvent(new KeyboardEvent('keydown',{key:'ArrowRight'}));
+ expect(document.querySelector<HTMLElement>('.script-columns')!.style.gridTemplateColumns).toContain('1.08fr');
+ action('台本を確定');await settle();
+ const payload=api.invoke.mock.calls.find(c=>c[1]?.action==='markdown_commit')![1].payload;
+ expect(payload.text).toBe('# 部\n本文\n第2章の本文');
+ expect(payload.lines.map((r:any)=>r.previous_line)).toEqual([0,1,null]);
+});
+it('古い自動プレビューの返答で新しい対象一覧を上書きしない',async()=>{
+ const original=api.invoke.getMockImplementation()!;const pending:((v:any)=>void)[]=[];
+ api.invoke.mockImplementation(async(c:string,a:any)=>a.action==='markdown_preview'?await new Promise(resolve=>pending.push(resolve)):original(c,a));
+ await import('../../src/main');await settle();
+ const input=document.querySelector<HTMLTextAreaElement>('#markdown-source')!;
+ input.value='A';input.dispatchEvent(new Event('input'));await vi.advanceTimersByTimeAsync(150);
+ input.value='B';input.dispatchEvent(new Event('input'));await vi.advanceTimersByTimeAsync(150);
+ pending[1]({lines:[{line:0,text:'最新',raw:'最新',enabled:true}]});await settle();
+ pending[0]({lines:[{line:0,text:'古い',raw:'古い',enabled:true}]});await settle();
+ expect(document.querySelector('#script-target-list')?.textContent).toContain('最新');
+ expect(document.querySelector('#script-target-list')?.textContent).not.toContain('古い');
+});
+it('ネイティブのドラッグ出入りで読込先の表示を切り替える',async()=>{
+ await import('../../src/main');await settle();
+ api.listen.mock.calls.find(c=>c[0]==='tauri://drag-enter')![1]({});
+ expect(document.querySelector('.script-editor.drag-over')).toBeTruthy();
+ api.listen.mock.calls.find(c=>c[0]==='tauri://drag-leave')![1]({});
+ expect(document.querySelector('.script-editor.drag-over')).toBeNull();
+});
+it('確定前に2本目を読み込んでも1本目の下書きを残す',async()=>{
+ const original=api.invoke.getMockImplementation()!;let count=0;
+ api.invoke.mockImplementation(async(c:string,a:any)=>a.action==='markdown_drop'?{text:++count===1?'1本目':'2本目',lines:[],names:['原稿.md']}:original(c,a));
+ await import('../../src/main');await settle();
+ const callback=api.listen.mock.calls.find(c=>c[0]==='tauri://drag-drop')![1];
+ callback({payload:{paths:['原稿.md']}});await settle();callback({payload:{paths:['原稿.md']}});await settle();
+ expect(document.querySelector<HTMLTextAreaElement>('#markdown-source')!.value).toBe('# 部\n本文\n\n1本目\n\n2本目');
+ expect(api.invoke.mock.calls.some(c=>c[1]?.action==='markdown_commit')).toBe(false);
 });

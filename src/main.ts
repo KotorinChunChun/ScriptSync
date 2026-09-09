@@ -1,6 +1,6 @@
 import {waveAmplitude} from "./waveScale";
 import {bindTakeTrim,isTakeTrimDirty,discardTakeTrim,guardTakeTrimMove} from "./takeTrim";
-import {scriptDifferences} from "./scriptDiff";
+import {reviewRows,resolveReview,type Decision} from "./scriptReview";
 import "./scriptWorkspace.css";
 import "./takeTrim.css";
 import {playCue} from "./soundEffects";
@@ -8,7 +8,7 @@ import {installReloadProtection} from "./reloadProtection";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import "./style.css";
-import {testScripts, readingTestHint} from "./readingTest";
+import {readingTestHint} from "./readingTest";
 import { exportView as modernExportView, bindExportView } from "./exportView";
 import "./exportView.css";
 import "./navigation.css";
@@ -102,7 +102,6 @@ function bind(){const extension=document.getElementById("stop-extension") as HTM
  const script=document.getElementById("text")as HTMLTextAreaElement|null;if(script)script.onblur=()=>{draftSave=saveScriptDraft();};const skip=document.getElementById("skip")as HTMLInputElement|null;if(skip)skip.onchange=()=>{void saveScriptDraft();};root.querySelectorAll<HTMLTextAreaElement>('[data-take-memo]').forEach(memo=>memo.onblur=()=>{void saveTakeMemo(memo);});root.querySelectorAll<HTMLSelectElement>("[data-take-score]").forEach(field=>field.onchange=()=>{void saveTakeScore(field);});
  const range=document.getElementById("range-text") as HTMLTextAreaElement|null;if(range)range.onselect=()=>{(document.getElementById("start")as HTMLInputElement).value=String([...range.value.slice(0,range.selectionStart)].length);(document.getElementById("end")as HTMLInputElement).value=String([...range.value.slice(0,range.selectionEnd)].length);};
  root.querySelectorAll<HTMLButtonElement>("[data-action]").forEach(b=>b.onclick=async()=>{const action=b.dataset.action!;const s=current();const sid={segment:s?.id};switch(action){
- case"test_script":{const sample=testScripts.find(x=>x.id===value("test-script"));if(sample){const input=document.getElementById("markdown-source") as HTMLTextAreaElement;if(input.value.trim()){notice("台本の下書きが残っています。内容を確認してからテスト台本を選んでください。",true);break;}input.value=sample.text.trim();input.dispatchEvent(new Event("input"));input.focus();notice("テスト台本を下書きへ入れました。行を確認してから台本を確定してください。");}break;}
  case"talk_export":try{const r=await rpc<{path:string;warning:string}>(action,{...sid,run:b.dataset.run,variant:b.dataset.id});notice(`${r.path} ／ ${r.warning}`);}catch(e){notice(String(e),true);}break;
  case"talk_inspect":try{const r=await rpc<unknown>(action);if(r)document.getElementById("talk-inspection")!.textContent=JSON.stringify(r,null,2);}catch(e){notice(String(e),true);}break;
  case"punctuation":await act("compare",{...sid,punctuation:value("punctuation-text"),base_run:value("punctuation-run")});break;
@@ -215,19 +214,70 @@ function editingView(s:Segment){
 async function loadWave(){const t=current()?.takes.find(t=>t.id===current()?.selected);if(!t)return notice("採用テイクを選んでください",true);const sid=selected;try{const result=await rpc<NonNullable<typeof wave>>("waveform",{file:t.file,hash:t.hash});if(sid!==selected||tab!=="export")return;wave=result;document.getElementById("wave-stats")!.textContent=`${wave.duration.toFixed(2)} 秒 ／ RMS ${wave.rms_db.toFixed(1)} dBFS ／ Peak ${wave.peak_db.toFixed(1)} dBFS`;drawWave();}catch(e){notice(String(e),true);}}
 function drawWave(){const svg=document.getElementById("wave");if(!svg||!wave)return;const w=wave;const a=num("trim_start")/w.duration*800,b=(w.duration-num("trim_end"))/w.duration*800;svg.innerHTML=`<rect x="${a}" width="${Math.max(0,b-a)}" y="0" height="160" fill="#b9dab9"/><path d="${w.peaks.map((p,i)=>`M${i/w.peaks.length*800},${80-p*75}v${p*150}`).join(" ")}" stroke="#304c44" stroke-width="1"/>`;}
 function bindWave(){if(player()){player().onplay=syncTakePlayback;player().onpause=syncTakePlayback;player().addEventListener("ended",syncTakePlayback,{once:true});}syncTakePlayback();const svg=document.getElementById("wave");if(!svg)return;let start=0;const pos=(e:PointerEvent)=>Math.max(0,Math.min(1,(e.clientX-svg.getBoundingClientRect().left)/svg.getBoundingClientRect().width));svg.onpointerdown=e=>{if(!wave)return;start=pos(e);svg.setPointerCapture(e.pointerId);};svg.onpointerup=e=>{if(!wave||!svg.hasPointerCapture(e.pointerId))return;svg.releasePointerCapture(e.pointerId);const end=pos(e);if(Math.abs(end-start)<0.002)return;(document.getElementById("trim_start")as HTMLInputElement).value=(Math.min(start,end)*wave.duration).toFixed(3);(document.getElementById("trim_end")as HTMLInputElement).value=((1-Math.max(start,end))*wave.duration).toFixed(3);drawWave();};for(const id of ["trim_start","trim_end"]){document.getElementById(id)?.addEventListener("input",drawWave);}}
+function ensureScriptDraft(){
+ if(!markdownDraft||markdownDraft.root!==state.root){
+  const p=state.project as any;
+  markdownDraft={root:state.root,text:p?.source_markdown??'',lines:p?.script_lines??[]};
+  scriptBase=p?.source_markdown??'';scriptBaseGeneration=p?.generation??0;
+  scriptDecisions.clear();scriptChoices.clear();scriptPreviewVersion++;scriptPreviewPending=false;scriptPreviewError='';
+  scriptResolved={text:scriptBase,origins:Object.fromEntries((p?.script_lines??[]).map((r:any)=>[r.line,r.line]))};
+ }
+ else if(scriptBase===(state.project as any)?.source_markdown){scriptBaseGeneration=state.project?.generation??0;}
+}
 function scriptTab(){
- const p=state.project as any;
- if(!markdownDraft||markdownDraft.root!==state.root)markdownDraft={root:state.root,text:p?.source_markdown??"",lines:p?.script_lines??[]};
-return `<section class="script-tab script-workspace"><div class="script-heading"><h2>台本</h2><div class="toolbar">${button("markdown_import","Markdownを読み込む")}<label>読込方法<select id="script-import-mode"><option value="replace" ${scriptImportMode==="replace"?"selected":""}>全体を置き換え</option><option value="append" ${scriptImportMode==="append"?"selected":""}>末尾に追加</option></select></label></div></div><div class="script-columns"><section class="script-editor"><h3>読み込む・編集する</h3><p class="muted">Markdown / TXTをドロップできます。複数は名前順に結合します。</p><div id="script-extras"></div><textarea id="markdown-source" aria-label="編集する台本" spellcheck="false">${esc(markdownDraft.text)}</textarea></section><section class="script-review"><h3>確定済み台本との差分</h3><div id="script-difference" class="script-difference" aria-live="polite">${scriptDiffHtml()}</div><details class="script-lines"><summary>読み上げ対象を選ぶ（${markdownDraft.lines.filter(x=>String(x.text??'').trim()).length}行）</summary><div class="source-list">${markdownDraft.lines.filter(x=>String(x.text??'').trim()).map(x=>`<button id="source-line-${x.line}" class="source-line ${x.enabled?"enabled":"disabled"}" data-script-line="${x.line}"><span>${x.line+1}</span><b>${["本文","部","章","節","項"][x.kind]??"本文"}</b><em>${esc(x.text||x.raw)}</em></button>`).join("")}</div></details></section></div><div class="script-bottom"><span>差分は原文の比較です。録音の対応付けマージは準備中です。</span><div class="toolbar">${button("markdown_preview","行を確認・差分を更新")}${button("markdown_commit","台本を確定",'class="primary"')}</div></div></section>`;
+ ensureScriptDraft();
+ return `<section class="script-tab script-workspace"><div class="script-heading"><h2>台本</h2></div><div class="script-columns" style="grid-template-columns:${scriptWidths[0]}fr 8px ${scriptWidths[1]}fr 8px ${scriptWidths[2]}fr"><section class="script-editor"><h3>読み込む・編集する</h3><div class="toolbar script-import">${button('markdown_import','Markdownを読み込む')}<label>読込方法<select id="script-import-mode"><option value="replace" ${scriptImportMode==='replace'?'selected':''}>差分として読み込む</option><option value="append" ${scriptImportMode==='append'?'selected':''}>末尾に追加</option></select></label></div><p class="muted">Markdown / TXTをここにドロップ。複数は名前順に結合します。</p><div class="script-drop-hint">ここに原稿を読み込みます</div><textarea id="markdown-source" aria-label="編集する台本" spellcheck="false">${esc(markdownDraft!.text)}</textarea></section>${scriptSeparator(0)}<section class="script-review"><h3>差分を確認する</h3><div id="script-difference" class="script-difference" aria-live="polite">${scriptDiffHtml()}</div></section>${scriptSeparator(1)}<section class="script-targets"><h3>読み上げ対象を選ぶ</h3><div id="script-target-list" class="source-list">${scriptTargetHtml()}</div></section></div><div class="script-bottom"><span id="script-review-status">${scriptStatus()}</span>${button('markdown_commit','台本を確定',`class="primary" ${scriptBlocked()?'disabled':''}`)}</div></section>`;
 }
-let scriptImportMode="replace";
-async function acceptMarkdown(result:{text:string;lines:any[]}){
- const text=scriptImportMode==="append"&&markdownDraft?.text?markdownDraft.text+"\n\n"+result.text:result.text;
- const lines=text===result.text?result.lines:(await rpc<{lines:any[]}>("markdown_preview",{text})).lines;
- markdownDraft={root:state.root,text,lines};
-}
-function scriptDiffHtml(){const old=(state.project as any)?.source_markdown??state.project?.segments.map(s=>s.source_text??s.text).join("\n")??"";const rows=scriptDifferences(old,markdownDraft?.text??"");const changed=rows.filter(r=>r.kind!=="same");return `<p>追加 ${changed.filter(r=>r.kind==="added").length}行 ／ 削除 ${changed.filter(r=>r.kind==="removed").length}行</p>${changed.length?changed.slice(0,300).map(r=>`<div class="diff-${r.kind}"><b>${r.kind==="added"?"＋ 新":"− 旧"}</b><pre>${esc(r.text||"（空行）")}</pre></div>`).join(""):"<p class=muted>変更はありません。左側に原稿を読み込むと、ここに差分を表示します。</p>"}${changed.length>300?"<p>変更が多いため先頭300行を表示しています。</p>":""}`;}
+let scriptImportMode='append';
+let scriptWidths=[1,1,1];
+let scriptBase='',scriptBaseGeneration=0,scriptPreviewVersion=0,scriptPreviewPending=false,scriptPreviewError='';
+let scriptTimer:ReturnType<typeof setTimeout>|undefined;
+let scriptResolved:{text:string;origins:Record<number,number>}={text:'',origins:{}};
+const scriptDecisions=new Map<string,Decision>(),scriptChoices=new Map<string,boolean>();
 let markdownDraft:{root:string|null;text:string;lines:any[]}|null=null;
+function currentReview(){return reviewRows(scriptBase,markdownDraft?.text??'');}
+function unresolvedScript(){return currentReview().filter(r=>r.kind!=='same'&&!scriptDecisions.has(r.key)).length;}
+function scriptBlocked(){return scriptPreviewPending||!!scriptPreviewError||unresolvedScript()>0||scriptBaseGeneration!==state.project?.generation;}
+function scriptStatus(){return scriptBaseGeneration!==state.project?.generation?'保存済み台本が更新されました。プロジェクトを開き直してください。':scriptPreviewError||`未確認 ${unresolvedScript()}件${scriptPreviewPending?' ／ 読み上げ対象を更新中':' ／ 承認した変更だけを確定します'}`;}
+function scriptSeparator(index:number){return `<div class="script-separator" role="separator" tabindex="0" aria-label="${index+1}番目のペイン境界" aria-orientation="vertical" data-separator="${index}" aria-valuemin="15" aria-valuemax="85" aria-valuenow="50"></div>`;}
+function scriptDiffHtml(){
+ const rows=currentReview(),changed=rows.filter(r=>r.kind!=='same');
+ return `<p class="diff-count">追加 ${changed.filter(r=>r.kind==='added').length}行 ／ 削除 ${changed.filter(r=>r.kind==='removed').length}行</p>${changed.length?rows.map((r,index)=>r.kind==='same'?'':`<div class="diff-row diff-${r.kind}"><b aria-label="${r.kind==='added'?'追加':'削除'}">${r.kind==='added'?'＋':'−'}</b><span class="diff-text">${esc(r.text)}</span><span class="diff-decisions">${(['accept','reject'] as const).map(choice=>`<button data-review-index="${index}" data-decision="${choice}" aria-pressed="${scriptDecisions.get(r.key)===choice}">${choice==='accept'?'承認':'却下'}</button>`).join('')}</span></div>`).join(''):'<p class="muted">変更はありません（空行の増減は無視します）。</p>'}`;
+}
+function scriptTargetHtml(){return (markdownDraft?.lines??[]).filter(x=>String(x.text??'').trim()).map(x=>`<button id="source-line-${x.line}" class="source-line ${x.enabled?'enabled':'disabled'}" aria-pressed="${x.enabled}" data-script-line="${x.line}"><span>${x.enabled?'☑':'☐'}</span><b>${['本文','部','章','節','項'][x.kind]??'本文'}</b><em>${esc(x.text||x.raw)}</em></button>`).join('');}
+function updateScriptPanels(){
+ if(tab!=='script')return;
+ const diff=document.getElementById('script-difference');if(diff)diff.innerHTML=scriptDiffHtml();
+ const targets=document.getElementById('script-target-list');if(targets)targets.innerHTML=scriptTargetHtml();
+ const status=document.getElementById('script-review-status');if(status)status.textContent=scriptStatus();
+ const commit=root.querySelector<HTMLButtonElement>('[data-action=markdown_commit]');if(commit)commit.disabled=busy||state.busy||scriptBlocked();
+ bindScriptDecisions();
+}
+function choiceKey(row:any,origins=scriptResolved.origins){return origins[row.line]!==undefined?`old:${origins[row.line]}`:`new:${row.line}:${row.raw}`;}
+function scheduleScriptPreview(){
+ clearTimeout(scriptTimer);scriptPreviewVersion++;scriptPreviewPending=true;scriptPreviewError='';updateScriptPanels();
+ scriptTimer=setTimeout(()=>void previewScript(),120);
+}
+async function previewScript(){
+ clearTimeout(scriptTimer);const version=++scriptPreviewVersion,draft=markdownDraft;if(!draft)return;
+ scriptPreviewPending=true;scriptPreviewError='';
+ const result=resolveReview(scriptBase,draft.text,currentReview(),scriptDecisions);
+ try{
+  const parsed=await rpc<{lines:any[]}>('markdown_preview',{text:result.text});
+  if(version!==scriptPreviewVersion||draft!==markdownDraft)return;
+  const originals=(state.project as any)?.script_lines??[];
+  draft.lines=parsed.lines.map(row=>({...row,enabled:scriptChoices.get(choiceKey(row,result.origins))??originals.find((r:any)=>r.line===result.origins[row.line])?.enabled??row.enabled}));
+  scriptResolved=result;
+ }catch(e){if(version===scriptPreviewVersion)scriptPreviewError=String(e);}
+ finally{if(version===scriptPreviewVersion){scriptPreviewPending=false;updateScriptPanels();}}
+}
+async function acceptMarkdown(result:{text:string;lines:any[]}){
+ ensureScriptDraft();
+ markdownDraft!.text=scriptImportMode==='append'&&markdownDraft!.text?markdownDraft!.text+'\n\n'+result.text:result.text;
+ const keys=new Set(currentReview().map(r=>r.key));for(const key of scriptDecisions.keys())if(!keys.has(key))scriptDecisions.delete(key);
+ await previewScript();
+}
+function setScriptDrag(active:boolean){root.querySelector('.script-editor')?.classList.toggle('drag-over',active&&tab==='script'&&!busy&&!state.busy);}
 async function loadDroppedMarkdown(paths:string[]){
  if(tab!=="script"||!state.project){notice("プロジェクトを開き、台本画面でドロップしてください",true);return;}
  if(busy||state.busy||dialogAction){notice("処理が終わってからドロップしてください",true);return;}
@@ -241,7 +291,7 @@ async function loadDroppedMarkdown(paths:string[]){
   state.message=`読込順：${result.names.join(" → ")}。台本はまだ確定していません。`;
  }catch(e){state.message=String(e);}finally{busy=false;render();}
 }
-if(desktop){void listen<{paths:string[]}>("tauri://drag-drop",event=>{void loadDroppedMarkdown(event.payload.paths);}).catch(e=>notice(String(e),true));}
+if(desktop){void listen("tauri://drag-enter",()=>setScriptDrag(true));void listen("tauri://drag-leave",()=>setScriptDrag(false));void listen<{paths:string[]}>("tauri://drag-drop",event=>{setScriptDrag(false);void loadDroppedMarkdown(event.payload.paths);}).catch(e=>notice(String(e),true));}
 const collapsed=new Set<string>();
 function scriptTree(segments:Segment[],depth=0):string{
  if(depth>=3)return segments.map(line=>`<button class="segment ${line.id===selected?"selected":""}" data-segment="${line.id}"><span>${String(state.project!.segments.indexOf(line)+1).padStart(4,"0")}</span>${esc(line.text)}</button>`).join("");
@@ -261,14 +311,14 @@ function render(){
  resetNavigation(state.root??p.title);
  const exportContext={project:p,selected,select:(_id:string)=>{},rpc,play:(file:string,hash:string)=>play(file,hash),notice};
  const stage=tab as Stage;
- if(!markdownDraft||markdownDraft.root!==state.root)markdownDraft={root:state.root,text:(p as any).source_markdown??"",lines:(p as any).script_lines??[]};
- const sidebar=tab==="export"||(tab==="script"&&!markdownDraft.lines.length)?"":tab==="script"?`<aside class="navigation-aside"><label>フィルター<select id="filter">${optionsFor("script").map(([value,label])=>`<option value="${value}" ${filterFor(stage)===value?"selected":""}>${label}</option>`).join("")}</select></label><nav data-navigation-scroll aria-label="元Markdownの構成">${renderSourceTree(markdownDraft.lines)}</nav></aside>`:`<aside class="navigation-aside"><label>フィルター<select id="filter">${optionsFor(stage as "recording"|"reading"|"evaluation").map(([value,label])=>`<option value="${value}" ${filterFor(stage)===value?"selected":""}>${label}</option>`).join("")}</select></label><nav data-navigation-scroll aria-label="確定原稿ツリー">${renderSegmentTree(p.segments,stage as "recording"|"reading"|"evaluation",selected)}</nav></aside>`;
+ ensureScriptDraft();
+ const sidebar=tab==="export"||(tab==="script"&&!markdownDraft!.lines.length)?"":tab==="script"?`<aside class="navigation-aside"><label>フィルター<select id="filter">${optionsFor("script").map(([value,label])=>`<option value="${value}" ${filterFor(stage)===value?"selected":""}>${label}</option>`).join("")}</select></label><nav data-navigation-scroll aria-label="元Markdownの構成">${renderSourceTree(markdownDraft!.lines)}</nav></aside>`:`<aside class="navigation-aside"><label>フィルター<select id="filter">${optionsFor(stage as "recording"|"reading"|"evaluation").map(([value,label])=>`<option value="${value}" ${filterFor(stage)===value?"selected":""}>${label}</option>`).join("")}</select></label><nav data-navigation-scroll aria-label="確定原稿ツリー">${renderSegmentTree(p.segments,stage as "recording"|"reading"|"evaluation",selected)}</nav></aside>`;
  root.innerHTML=`<header><strong>読みあわせ</strong><div class="toolbar">${button("new","新規プロジェクト")}${button("open","開く")}</div><div class="statusbar"><span id="notice" role="status">${esc(state.message)}</span><span id="meter"></span></div></header>${renderStageBar(stage,activeSegments().length>0&&activeSegments().every(s=>s.takes.some(t=>t.id===s.selected&&t.status==="ready")))}<div class="layout navigation-layout ${!sidebar?"no-sidebar":""}">${sidebar}<main>${tab==="script"?scriptTab():tab==="export"?modernExportView(exportContext):s?segmentView(s):"<p>台本画面で原稿を追加してください。</p>"}<div id="stage-extras" class="stage-extras"></div></main></div><footer><label>試聴 <audio id="player" controls></audio></label></footer>`;
  if(tab==="script")root.querySelector("footer")?.setAttribute("hidden","");
  if(keepPlayer)document.getElementById("player")?.replaceWith(keepPlayer);
  renderedKey=`${selected}:${tab}`;for(const [id,value]of Object.entries(drafts.get(renderedKey)??{})){const field=document.getElementById(id);if(field instanceof HTMLTextAreaElement&&id!=="markdown-source")field.value=value;}
  if(s&&(tab==="reading"||tab==="evaluation")){enhance(s);comparisonTools(s);ruleView(s);}
- if(tab==="script")testGuide();
+
  if(tab==="reading"||tab==="evaluation")batchView(tab);
  if(tab==="recording"){testGuide();root.querySelector('#text')?.insertAdjacentHTML('afterend',`<div class="toolbar">${button("split","カーソル位置で分割")}${button("merge","次と結合")}</div>`);bindContinuousControls();}
  fitWorkspace();bind();bindScriptTab();bindBatch();updateMeter();void loadTakeWaves();
@@ -283,16 +333,49 @@ function render(){
  if(dialogAction){root.insertAdjacentHTML("beforeend",`<div id="dialog-modal" class="dialog-modal" role="dialog" aria-modal="true"><div><strong>${esc(dialogAction)}</strong><p>選択画面を閉じるまでお待ちください。</p></div></div>`);}
  if(deleteRequest)showDeleteModal(deleteRequest);
 }
+function bindScriptDecisions(){
+ root.querySelectorAll<HTMLButtonElement>('[data-review-index]').forEach(b=>b.onclick=()=>{
+  if(busy||state.busy)return;
+  const row=currentReview()[Number(b.dataset.reviewIndex)];if(!row)return;
+  scriptDecisions.set(row.key,b.dataset.decision as Decision);scheduleScriptPreview();
+ });
+ root.querySelectorAll<HTMLButtonElement>('[data-script-line]').forEach(b=>b.onclick=()=>{
+  if(busy||state.busy||scriptPreviewPending)return;
+  const row=markdownDraft?.lines.find(x=>x.line===Number(b.dataset.scriptLine));if(!row)return;
+  row.enabled=!row.enabled;scriptChoices.set(choiceKey(row),row.enabled);updateScriptPanels();
+ });
+}
 function bindScriptTab(){
  const mode=document.getElementById('script-import-mode') as HTMLSelectElement|null;
  if(mode)mode.onchange=()=>{scriptImportMode=mode.value;};
- const input=document.getElementById("markdown-source") as HTMLTextAreaElement|null;
- if(input)input.oninput=()=>{if(markdownDraft){markdownDraft.text=input.value;markdownDraft.lines=[];const diff=document.getElementById('script-difference');if(diff)diff.innerHTML=scriptDiffHtml();root.querySelector('.script-lines .source-list')?.replaceChildren();const summary=root.querySelector('.script-lines summary');if(summary)summary.textContent='読み上げ対象（行を確認すると更新）';}};
- root.querySelectorAll<HTMLButtonElement>("[data-script-line]").forEach(b=>b.onclick=async()=>{if(busy)return;const row=markdownDraft?.lines.find(x=>x.line===Number(b.dataset.scriptLine));if(row&&markdownDraft){row.enabled=!row.enabled;if(markdownDraft.text===(state.project as any)?.source_markdown){if(!await act("markdown_commit",{text:markdownDraft.text,lines:markdownDraft.lines}))row.enabled=!row.enabled;}render();}});
+ const input=document.getElementById('markdown-source') as HTMLTextAreaElement|null;
+ if(input)input.oninput=()=>{
+  if(!markdownDraft)return;markdownDraft.text=input.value;
+  const keys=new Set(currentReview().map(r=>r.key));for(const key of scriptDecisions.keys())if(!keys.has(key))scriptDecisions.delete(key);
+  scheduleScriptPreview();
+ };
+ const editor=root.querySelector<HTMLElement>('.script-editor');
+ if(editor){editor.ondragover=e=>{if(e.dataTransfer?.types.includes('Files')){e.preventDefault();setScriptDrag(true);}};editor.ondragleave=e=>{if(!editor.contains(e.relatedTarget as Node))setScriptDrag(false);};editor.ondrop=()=>setScriptDrag(false);}
+ bindScriptDecisions();
+ const columns=root.querySelector<HTMLElement>('.script-columns');
+ root.querySelectorAll<HTMLElement>('[data-separator]').forEach(bar=>{
+  const index=Number(bar.dataset.separator);
+  const move=(delta:number)=>{const total=scriptWidths[index]+scriptWidths[index+1];const left=Math.max(.45,Math.min(total-.45,scriptWidths[index]+delta));scriptWidths[index]=left;scriptWidths[index+1]=total-left;if(columns)columns.style.gridTemplateColumns=`${scriptWidths[0]}fr 8px ${scriptWidths[1]}fr 8px ${scriptWidths[2]}fr`;bar.setAttribute('aria-valuenow',String(Math.round(left/total*100)));};
+  bar.onkeydown=e=>{if(e.key==='ArrowLeft'||e.key==='ArrowRight'){e.preventDefault();move(e.key==='ArrowLeft'?-.08:.08);}};
+  let previous=0;
+  bar.onpointerdown=e=>{previous=e.clientX;bar.setPointerCapture(e.pointerId);};
+  bar.onpointermove=e=>{if(!bar.hasPointerCapture(e.pointerId)||!columns)return;move((e.clientX-previous)/Math.max(1,columns.clientWidth-16)*3);previous=e.clientX;};
+  bar.onpointerup=e=>{if(bar.hasPointerCapture(e.pointerId))bar.releasePointerCapture(e.pointerId);};
+ });
  const bindAction=(name:string,callback:()=>Promise<void>)=>{const el=root.querySelector<HTMLButtonElement>(`[data-action="${name}"]`);if(el)el.onclick=()=>void callback();};
- bindAction("markdown_import",async()=>{if(busy)return;busy=true;dialogAction="台本ファイルを選択しています";render();try{const r=await rpc<{text:string;lines:any[]}>("markdown_import");if(r){await acceptMarkdown(r);drafts.delete(`${selected}:script`);}}catch(e){state.message=String(e);}finally{busy=false;dialogAction="";render();}});
- bindAction("markdown_preview",async()=>{try{const text=value("markdown-source"),r=await rpc<{lines:any[]}>("markdown_preview",{text});markdownDraft={root:state.root,text,lines:r.lines};render();}catch(e){notice(String(e),true);}});
- bindAction("markdown_commit",async()=>{const text=value("markdown-source");if(text!==markdownDraft?.text||!markdownDraft?.lines.length){notice("先に行を確認してください",true);return;}if(await act("markdown_commit",{text,lines:markdownDraft.lines})){drafts.clear();tab="recording";render();}});
+ bindAction('markdown_import',async()=>{if(busy)return;busy=true;dialogAction='台本ファイルを選択しています';render();try{const r=await rpc<{text:string;lines:any[]}>('markdown_import');if(r){await acceptMarkdown(r);drafts.delete(`${selected}:script`);}}catch(e){state.message=String(e);}finally{busy=false;dialogAction='';render();}});
+ bindAction('markdown_commit',async()=>{
+  if(busy||state.busy||scriptBlocked())return;
+  const text=scriptResolved.text,lines=markdownDraft!.lines.map(row=>({...row,previous_line:scriptResolved.origins[row.line]??null}));
+  if(await act('markdown_commit',{text,lines,base_generation:scriptBaseGeneration})){
+   markdownDraft=null;scriptPreviewVersion++;drafts.clear();tab='recording';render();
+  }
+ });
 }
 function showDeleteModal(take:string){
  deleteRequest=take;document.querySelector('.delete-modal')?.remove();
@@ -347,7 +430,6 @@ async function initializeUi(){
 
 function testGuide(){
  if(!state.project)return;
-document.querySelector('#script-extras')?.insertAdjacentHTML('beforeend',`<details><summary>読み上げテスト用の台本</summary><p>新しいテスト用プロジェクトで、1、2の順に試してください。各4発話です。</p><label>テスト内容<select id="test-script">${testScripts.map(s=>`<option value="${s.id}">${esc(s.title)}</option>`).join("")}</select></label>${button("test_script","テスト台本を下書きへ")}<p class="muted">下書きを確認して「行を確認・差分を更新」「台本を確定」で登録します。詳しい手順は samples/reading-test/README.md を参照。</p></details>`);
  const hint=readingTestHint(current()?.text??"");
  if(hint&&(tab==="recording"||tab==="reading"))document.querySelector('main .section-head')?.insertAdjacentHTML('afterend',`<details class="panel"><summary>この発話の読み上げテスト手順</summary><p>${esc(hint.check)}</p><p>意図する読み：${esc(hint.reading)}</p><p class="muted">これは録音の手引きです。実際の音声と異なる場合は録り直し、試聴してから正解読みを確定してください。比較・採点中はこの手引きを表示しません。</p></details>`);
 }
