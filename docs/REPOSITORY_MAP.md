@@ -69,3 +69,8 @@ v0.0.2開発版の実装を探すための目録です。全生成物の一覧�
 - src-tauri/src/script_sources.rs：台本下書き・全体確定・空行・旧台本対応付け。
 - src-tauri/src/automatic_asr.rs：録音保存後の認識キューと空欄への入力。
 - src-tauri/src/archive.rs：履歴を含む完全消去と共有音声保護。
+
+### 共通UI基盤
+
+- [src/html.ts](../src/html.ts)：画面共通のHTML本文・引用符付き属性のエスケープ。
+- [src/models.ts](../src/models.ts)：UIで参照するテイク・発話・認識結果・スナップショットの型。保存形式の正本はRust側にある。

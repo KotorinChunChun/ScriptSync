@@ -1,3 +1,4 @@
+import type { Take, Segment, Snapshot } from "./models";
 import { escapeHtml as esc } from "./html";
 import {waveAmplitude} from "./waveScale";
 import {bindTakeTrim,isTakeTrimDirty,discardTakeTrim,guardTakeTrimMove} from "./takeTrim";
@@ -17,13 +18,6 @@ import { exportView as modernExportView, bindExportView } from "./exportView";
 import "./exportView.css";
 import "./navigation.css";
 import {filterFor, matchesSegment, optionsFor, renderSegmentTree, renderSourceTree, renderStageBar, resetNavigation, saveScroll, scrollFor, setCollapsed, setFilter, type Stage} from "./navigation";
-type Take={trim_start?:number;trim_end?:number;script_text?:string;id:string;file:string;hash:string;status:string;duration:number;peak:number;warning:string};
-type Correction={id:string;start:number;end:number;original:string;replacement:string;decision:string};
-type Variant={id:string;label:string;text:string;file:string;hash:string;status:string;error:string;transcript:string;rating:Record<string,number|string|null>|null};
-type Run={kind?:string;id:string;variants:Variant[];order:string[];revealed:boolean;stale?:boolean;reference_kana?:string};
-type Asr={id:string;file:string;audio_hash:string;raw?:string;kana?:string;warning?:string;error?:string;words?:{text:string;start:number;end:number}[]};
-type Segment={kind?:number;hierarchy?:number[];source_text?:string;source_line?:number;take_notes?:Record<string,{memo:string;favorite:boolean;score?:number|null}>;needs_review?:boolean;gain_db?:number;id:string;text:string;revision:number;takes:Take[];selected:string|null;kana:string;confirmed:boolean;mappings:{start:number;end:number;kana:string}[];corrections:Correction[];trim_start:number;trim_end:number;gap:number;skip:boolean;comparisons:Run[];transcriptions?:Asr[]};
-type Snapshot={stop_scheduled?:boolean;recording_peaks?:number[];project:{rules?:{id:string;original:string;reading:string;context:string;dictionary:string;status:string;validations:Run[];source:Run}[];batches?:{id:string;items:{action:string;payload:{segment:string};status:string;error:string}[]}[];archived_segments?:Segment[];title:string;generation:number;segments:Segment[]}|null;root:string|null;busy:boolean;job:string;message:string;peak:number;elapsed:number};
 const root=document.querySelector<HTMLDivElement>("#app")!;
 let state:Snapshot={project:null,root:null,busy:false,job:"",message:"",peak:0,elapsed:0};
 let selected="",tab="script",devices:{endpoint_id:string;friendly_name:string;is_default:boolean}[]=[],endpoint="",playingUrl="",playingTake="";
@@ -61,7 +55,17 @@ function stopTakePlayback(take:string){if(playingTake===take&&!player()?.paused)
 function updateTakeProgress(){if(!playingTake)return;const audio=player(),head=document.getElementById(`take-playhead-${playingTake}`);const duration=current()?.takes.find(t=>t.id===playingTake)?.duration||audio?.duration||0;if(head&&audio)head.style.left=`${duration?Math.min(100,((audio.currentTime||0)+playingOffset)/duration*100):0}%`;}
 async function play(file:string,hash:string,take="",offset=0,limit?:number){try{player().pause();player().ontimeupdate=null;player().loop=false;playingTake=take;playingOffset=offset;notice("音声を読み込んでいます…");playingUrl=await rpc<string>("audio",{file,hash});player().src=playingUrl;player().ontimeupdate=()=>{if(limit!==undefined&&player().currentTime>=limit){player().pause();player().currentTime=limit;}updateTakeProgress();};player().onended=()=>{updateTakeProgress();syncTakePlayback();};await player().play();updateTakeProgress();notice("再生中");}catch(e){notice(String(e),true);}}
 const statusName=(s:string)=>({ready:"録音済み",recording:"録音中",failed:"失敗",interrupted:"中断",cancelled:"取消",pending:"待機",running:"生成中",succeeded:"生成済み"}[s]??esc(s));
-function recordingAsr(segment:Segment,take:Take){const result=(segment.transcriptions??[]).filter((item:any)=>item.take_id===take.id||(item.file===take.file&&item.audio_hash===take.hash)).at(-1) as any;if(!result)return `<div class="recording-asr"><span>自動認識：待機</span>${button('recording_asr','認識する',`data-take="${take.id}"`)}</div>`;const text=result.kana??result.raw??result.error??'',status=result.status==='stale'?'音声変更により無効':statusName(result.status??'pending');return `<div class="recording-asr"><span>自動認識：${esc(status)}</span>${text?`<p>${esc(text)}</p>`:''}${button('recording_asr','再認識',`data-take="${take.id}"`)}</div>`;}
+function recordingAsr(segment: Segment, take: Take) {
+ const result = (segment.transcriptions ?? []).filter(item =>
+  item.take_id === take.id || (item.file === take.file && item.audio_hash === take.hash)
+ ).at(-1);
+ if (!result) {
+  return `<div class="recording-asr"><span>自動認識：待機</span>${button('recording_asr','認識する',`data-take="${take.id}"`)}</div>`;
+ }
+ const text = result.kana ?? result.raw ?? result.error ?? '';
+ const status = result.status === 'stale' ? '音声変更により無効' : statusName(result.status ?? 'pending');
+ return `<div class="recording-asr"><span>自動認識：${esc(status)}</span>${text ? `<p>${esc(text)}</p>` : ''}${button('recording_asr','再認識',`data-take="${take.id}"`)}</div>`;
+}
 function renderRecordingAsrCards(segment:Segment|undefined){if(!segment)return;segment.takes.filter(take=>take.status==='ready').forEach(take=>(document.getElementById(`memo-${take.id}`)?.closest('.take-annotation')??document.getElementById(`take-wave-${take.id}`)?.parentElement)?.insertAdjacentHTML('afterend',recordingAsr(segment,take)));}
 const button=(action:string,label:string,attrs="")=>`<button data-action="${action}" ${attrs}>${label}</button>`;
 function matches(s:Segment){return matchesSegment(tab as Stage,s);}
