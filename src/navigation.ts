@@ -1,3 +1,4 @@
+import { escapeHtml } from "./html";
 export type Stage = "script"|"recording"|"reading"|"evaluation"|"export";
 
 export type NavigationSegment={id:string;text:string;skip:boolean;selected:string|null;confirmed:boolean;needs_review?:boolean;hierarchy?:number[];takes:{status:string}[];corrections:{decision:string}[];comparisons:{stale?:boolean;variants:{status:string;rating:Record<string,unknown>|null}[]}[]};
@@ -56,4 +57,3 @@ export function renderSegmentTree(segments:NavigationSegment[],stage:Exclude<Sta
 }
 function status(stage:Stage,s:NavigationSegment){if(stage==="recording")return `<i>${!s.takes.some(t=>t.status==="ready")?"未収録":!s.selected?"未採用":"●"}</i>`;if(stage==="reading")return `<i>${!s.selected?"音声なし":s.confirmed?"確認済":"未確認"}</i>`;const variants=successfulVariants(s);return `<i>${s.comparisons.some(run=>run.stale)?"要再比較":!variants.length?"未生成":variants.some(hasIncompleteRating)?"未採点":"採点済"}</i>`;}
 function emptyTree(){return `<p class="empty-tree">該当する原稿がありません。<button type="button" data-reset-filter>すべて表示</button></p>`;}
-function escapeHtml(value:unknown){return String(value??"").replace(/[&<>"']/g,char=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[char]!));}

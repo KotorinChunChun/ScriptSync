@@ -1,6 +1,6 @@
+import { escapeHtml as esc } from "./html";
 type ArchiveSegment={id:string;text:string;source_id?:string;takes:{id:string;file:string;hash:string;status:string}[]};
 type Context={project:{archived_segments?:ArchiveSegment[];deletion_records?:{segment_id:string;status:string}[]};rpc:(action:string,payload:unknown)=>Promise<unknown>;play:(file:string,hash:string)=>Promise<void>;refresh:()=>Promise<void>;notice:(text:string,error?:boolean)=>void};
-const esc=(value:string)=>value.replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]!));
 function confirmArchive(segment:ArchiveSegment):Promise<boolean>{return new Promise(resolve=>{
  const overlay=document.createElement('div');overlay.className='delete-modal';overlay.setAttribute('role','dialog');overlay.setAttribute('aria-modal','true');overlay.innerHTML=`<section><h2>廃棄済みの発話を完全消去しますか？</h2><p>${esc(segment.text||'空の発話')}</p><p>この発話の履歴と専用の音声を消去します。他の発話が使う音声は保持します。</p><div class="toolbar"><button data-cancel>キャンセル</button><button data-confirm class="danger">完全消去</button></div></section>`;
  const siblings=[...document.body.children] as HTMLElement[];siblings.forEach(n=>n.inert=true);document.body.append(overlay);

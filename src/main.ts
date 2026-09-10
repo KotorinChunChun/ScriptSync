@@ -1,3 +1,4 @@
+import { escapeHtml as esc } from "./html";
 import {waveAmplitude} from "./waveScale";
 import {bindTakeTrim,isTakeTrimDirty,discardTakeTrim,guardTakeTrimMove} from "./takeTrim";
 import {reviewRows,resolveReview,type Decision} from "./scriptReview";
@@ -35,7 +36,6 @@ let generation=-1;let busy=false;let dialogAction="";let deleteRequest="";let co
 let navigationRenderedStage:Stage="script"; let stopExtension=0;
 const drafts=new Map<string,Record<string,string>>();let renderedKey="";
 const desktop="__TAURI_INTERNALS__"in window;
-const esc=(s:unknown)=>String(s??"").replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]!));
 const value=(id:string)=>(document.getElementById(id) as HTMLInputElement)?.value??"";
 const num=(id:string)=>Number(value(id));
 const activeSegments=()=>state.project?.segments.filter(s=>!s.skip)??[];

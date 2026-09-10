@@ -1,9 +1,9 @@
+import { escapeHtml as escape } from "./html";
 type Line={line:number;text:string;enabled:boolean};
 type Source={id:string;name:string;confirmed_text:string;draft_text:string};
 type Segment={id:string;source_id:string;source_text:string;text:string};
 type Imported={name:string;text:string;lines:Line[]};
 type Context={source:Source;segments:Segment[];rpc:<T>(action:string,payload?:unknown)=>Promise<T>;flush:()=>Promise<void>;base:()=>{base_revision:number;base_generation:number};refresh:()=>Promise<void>;notice:(message:string,error?:boolean)=>void};
-const escape=(value:string)=>value.replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]!));
 
 /** ファイル分割の候補を利用者が確認してから、録音の所属だけを移す。 */
 export function bindLegacySources(container:HTMLElement,context:Context){

@@ -1,3 +1,4 @@
+import { escapeHtml as esc } from "./html";
 export type ExportSegment={id:string;text:string;source_text?:string;hierarchy?:number[];kind?:number};
 export type ExportContext={
  project:{id?:string;segments:ExportSegment[];export_settings?:unknown};selected:string;select:(id:string)=>void;
@@ -14,7 +15,6 @@ let preparation="";
 let settings=defaults(), selectedBlock=0, preview:Preview|undefined, projectKey="", lastOutputId="", playbackBlock=-1;
 let saveQueue:Promise<void>=Promise.resolve(), boundPlayer:HTMLAudioElement|null=null, previewMode="combined", previewStart=0,previewPlaying=false;
 document.addEventListener("play",event=>{if((event.target as HTMLAudioElement).id==="player"){const stop=document.querySelector<HTMLButtonElement>("#export-stop");if(stop)stop.disabled=false;}},true);
-const esc=(v:string)=>v.replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"})[c]!);
 function loaded(value:unknown):Settings{const base=defaults();if(!value||typeof value!=="object"||Array.isArray(value))return base;const v=value as Partial<Settings>;return {...base,...v,boundaries:Array.isArray(v.boundaries)?v.boundaries.filter(x=>typeof x==="string"):[],global_gaps:{...base.global_gaps,...(v.global_gaps??{})},blocks:typeof v.blocks==="object"&&v.blocks? v.blocks: {}};}
 function starts(project:ExportContext["project"]){const all=project.segments; if(!all.length)return[];if(settings.unit==="custom")return [0,...settings.boundaries.map(id=>all.findIndex(s=>s.id===id)).filter(i=>i>0)].sort((a,b)=>a-b);if(settings.unit==="utterance")return all.map((_,i)=>i);if(settings.unit==="all")return[0];const kind:{[key:string]:number}={part:1,chapter:2,section:3},wanted=kind[settings.unit];return [0,...all.map((s,i)=>i&&((!!s.kind&&s.kind<=wanted)||Array.from({length:wanted},(_,level)=>level).some(level=>s.hierarchy?.[level]!==all[i-1].hierarchy?.[level]))?i:-1).filter(i=>i>0)];}
 function blockAt(project:ExportContext["project"],index:number){const points=starts(project);const start=points[index]??0;return {start,end:points[index+1]??project.segments.length};}
