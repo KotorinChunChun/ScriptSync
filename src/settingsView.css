@@ -5,3 +5,4 @@
 .settings-dialog button{font-family:var(--button-font,system-ui);font-size:14px;line-height:1.2;height:var(--button-medium-height,34px);min-height:var(--button-medium-height,34px);padding:6px 12px}.settings-dialog .button-large{height:var(--button-large-height,42px);font-size:16px;padding:8px 16px}
 
 .settings-dialog textarea{width:100%;min-width:0;font:inherit;font-size:16px;resize:vertical}.settings-dialog footer button{min-width:132px}
+.settings-codex{display:grid;gap:12px}.settings-codex h3{margin:0}

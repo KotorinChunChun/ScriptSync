@@ -15,6 +15,8 @@ it('プロンプトを保存した成功時に閉じる。上部の閉じると�
  await openSettings({rpc:rpc as never,notice:vi.fn()});
  expect(document.querySelector('header [data-close]')).toBeNull();
  expect(document.querySelector('[name="asr_provider"]')).toBeNull();
+ expect(document.querySelector('[name="codex_prompt"]')?.closest('details')).toBeNull();
+ expect(document.querySelector('.settings-codex')?.textContent).toContain('現在の原稿テキスト');
  expect(document.querySelector('[name="entra_client_id"]')).toBeNull();
  document.querySelector<HTMLTextAreaElement>('[name="codex_prompt"]')!.value='数値を保持。\n誤字のみ。';
  document.querySelector<HTMLButtonElement>('[data-save]')!.click();await flush();
