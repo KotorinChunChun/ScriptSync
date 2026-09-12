@@ -13,9 +13,10 @@ $exe = (Resolve-Path -LiteralPath $ExecutablePath).Path
 $config = Get-Content -LiteralPath (Join-Path $source 'src-tauri/tauri.conf.json') -Raw | ConvertFrom-Json
 $package = Get-Content -LiteralPath (Join-Path $source 'package.json') -Raw | ConvertFrom-Json
 if ($config.version -ne $package.version -or $config.version -notmatch '^\d+\.\d+\.\d+$') { throw '版番号が一致しません。' }
-$version = "$($config.version).0"
+. (Join-Path $PSScriptRoot "msix-version.ps1")
+$version = Get-ScriptSyncMsixVersion $SourceDirectory
 $exeVersion = [version](Get-Item -LiteralPath $exe).VersionInfo.FileVersion
-if ($exeVersion -ne [version]$version -and $exeVersion -ne [version]$config.version) { throw 'EXEとパッケージの版番号が一致しません。' }
+if ($exeVersion -ne [version]"$($config.version).0" -and $exeVersion -ne [version]$config.version) { throw 'EXEとパッケージの版番号が一致しません。' }
 $output = [IO.Path]::GetFullPath($OutputDirectory)
 $msix = Join-Path $output "ScriptSync_${version}_x64.msix"
 if (Test-Path -LiteralPath $msix) { throw '既存のMSIXは上書きしません。' }

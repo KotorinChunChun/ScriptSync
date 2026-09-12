@@ -4,6 +4,8 @@ param([string]$OutputDirectory)
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 $source = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../..'))
+. (Join-Path $PSScriptRoot "msix-version.ps1")
+$msixVersion = Get-ScriptSyncMsixVersion $source
 $package = Get-Content -LiteralPath (Join-Path $source 'package.json') -Raw | ConvertFrom-Json
 if (-not $OutputDirectory) {
     $OutputDirectory = Join-Path $source ("release/msix-v{0}/{1}" -f $package.version,(Get-Date -Format 'yyyyMMdd-HHmmss'))
@@ -16,7 +18,7 @@ try {
     if (-not $?) { throw 'MSIXの作成または署名検証に失敗しました。' }
     $revision = & git rev-parse HEAD
     $dirty = @(& git status --porcelain)
-    [pscustomobject]@{ version=$package.version; commit=$revision; dirty=($dirty.Count -gt 0); executable_sha256=(Get-FileHash (Join-Path $source 'src-tauri/target/release/scriptsync.exe')).Hash } |
+    [pscustomobject]@{ version=$package.version; msix_version=$msixVersion; commit=$revision; dirty=($dirty.Count -gt 0); executable_sha256=(Get-FileHash (Join-Path $source 'src-tauri/target/release/scriptsync.exe')).Hash } |
         ConvertTo-Json | Set-Content -LiteralPath (Join-Path $OutputDirectory 'build-info.json') -Encoding utf8
     Write-Host "署名済みMSIX: $OutputDirectory"
 } finally { Pop-Location }

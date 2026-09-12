@@ -86,3 +86,7 @@ npm run release:msix
 ## Web配布
 
 MarkdownViewerと同じbeta配布先を使用する。[リリース・アップロード手順](../dev/RELEASE_RULE.md)を参照。
+
+## MSIX再配布番号
+アプリ版0.0.5とMSIX版0.0.5.1を区別する。正本はdev/msix-version.json。初回配布はrevision=0、リリース後に修正して再ビルド・再配布するたびに末尾を1増やしてコミットしてから生成する。今回1、次回2。アプリ版が変わった場合はapplicationVersionを合わせrevision=0へ戻す。失敗したビルドの再試行では増やさない。
+package.json・Cargo・Tauriのアプリ版は維持する。MSIX manifest・ファイル名・App Installerは共通関数から4桁版を取得する。
