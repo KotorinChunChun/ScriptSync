@@ -90,3 +90,10 @@ body:has(.archive-manager)>.delete-modal{z-index:1100}
 .script-restore{margin-bottom:8px}.script-editor.collapsed .script-restore{display:none}
 #project-name-button{font-size:18px;font-weight:700;border:0;background:transparent;max-width:38vw;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:left}
 #project-name{font-size:18px;max-width:38vw;width:280px}
+
+.script-bottom{justify-content:flex-start;gap:8px;flex-wrap:wrap}
+.script-bottom #script-review-status{font-size:12px}
+.script-info{position:relative;display:inline-flex;vertical-align:middle;margin-left:6px;font-weight:400}
+#app .script-info>button{border-radius:50%;width:22px;height:22px;min-width:22px;min-height:22px;padding:0;font-size:14px;line-height:20px}
+.script-info>[role=tooltip]{display:none;position:fixed;z-index:100;max-width:min(380px,calc(100vw - 32px));white-space:normal;background:#173e34;color:#fff;padding:12px;border-radius:6px;font-size:14px;line-height:1.6;text-align:left;box-shadow:0 3px 12px #0003}
+.script-info:hover>[role=tooltip],.script-info:focus-within>[role=tooltip],.script-info:has([aria-expanded=true])>[role=tooltip]{display:block}

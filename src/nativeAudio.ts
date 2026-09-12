@@ -3,12 +3,41 @@ type Rpc=<T>(action:string,payload?:unknown)=>Promise<T>;
 type Source={file:string;hash:string};
 type Snapshot={playing:boolean;position:number;duration:number;file:string;error?:string|null};
 const sources=new Map<string,Source>();
+let nativeRpc:Rpc|null=null;
+let nativeNotice:((message:string,error?:boolean)=>void)|null=null;
+const cueSamples=new Map<string,Promise<number[]>>();
+export function hasNativeAudio(){return nativeRpc!==null;}
+/** 復号のみをWeb Audioで行い、出力は独立したWASAPIプレーヤーへ渡す。 */
+export async function playNativeCue(url:string,volume:number):Promise<void>{
+ if(!nativeRpc)return;
+ try{
+  let decoded=cueSamples.get(url);
+  if(!decoded){
+   decoded=(async()=>{
+    const response=await fetch(url);if(!response.ok)throw new Error('効果音を読み込めません');
+    const context=new OfflineAudioContext(2,1,48000);
+    const buffer=await context.decodeAudioData(await response.arrayBuffer());
+    const left=buffer.getChannelData(0),right=buffer.getChannelData(buffer.numberOfChannels>1?1:0);
+    const samples:number[]=[];for(let i=0;i<buffer.length;i++){samples.push(Math.max(-1,Math.min(1,left[i])),Math.max(-1,Math.min(1,right[i])));}
+    return samples;
+   })();cueSamples.set(url,decoded);
+  }
+  await nativeRpc('playback_cue',{samples:await decoded,volume});
+  for(let i=0;i<60;i++){
+   await new Promise(resolve=>setTimeout(resolve,100));
+   const state=await nativeRpc<Snapshot>('playback_cue_state');
+   if(state.error)throw new Error(state.error);
+   if(!state.playing)return;
+  }
+ }catch(error){cueSamples.delete(url);nativeNotice?.(String(error),true);}
+}
 let installed=false;
 function key(url:string){try{return new URL(url,document.baseURI).href;}catch{return url;}}
 export function registerNativeAudio(url:string,file:string,hash:string){sources.set(key(url),{file,hash});}
 
 export function installNativeAudio(rpc:Rpc,notice:(message:string,error?:boolean)=>void){
  if(installed)return;installed=true;
+ nativeRpc=rpc;nativeNotice=notice;
  const originalPlay=HTMLMediaElement.prototype.play,originalPause=HTMLMediaElement.prototype.pause;
  let active:HTMLMediaElement|null=null,generation=0,queue:Promise<unknown>=Promise.resolve(),polling=false;
  const bound=new WeakSet<HTMLMediaElement>(),synchronizing=new WeakMap<HTMLMediaElement,number>();

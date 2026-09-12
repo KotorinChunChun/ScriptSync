@@ -16,12 +16,27 @@ beforeEach(async()=>{
  rpc=vi.fn(async()=>snapshot());notice=vi.fn();bridge=await import("../../src/nativeAudio");
  bridge.installNativeAudio(rpc,notice);bridge.registerNativeAudio("http://localhost/preview/a","takes/a/audio.wav","hash-a");
 });
-afterEach(()=>{vi.clearAllTimers();vi.useRealTimers();vi.restoreAllMocks();});
-it("登録済み音声を常時無音化してnativeへ送り、未登録の効果音は従来再生する",async()=>{
+afterEach(()=>{vi.clearAllTimers();vi.useRealTimers();vi.restoreAllMocks();vi.unstubAllGlobals();});
+it("登録済み音声を常時無音化してnativeへ送り、未登録の汎用メディアは従来再生する",async()=>{
  const registered=audio();await registered.play();
  expect(registered.muted).toBe(true);expect(rpc).toHaveBeenCalledWith("playback_play",{file:"takes/a/audio.wav",hash:"hash-a",start:0});
  expect(browserPlay).toHaveBeenCalledTimes(1);
  rpc.mockClear();await audio("http://localhost/sound.wav").play();expect(rpc).not.toHaveBeenCalled();
+});
+it("効果音は独立したnative経路で再生して主音声を停止しない",async()=>{
+ vi.stubGlobal('fetch',vi.fn(async()=>({ok:true,arrayBuffer:async()=>new ArrayBuffer(1)})));
+ vi.stubGlobal('OfflineAudioContext',class {decodeAudioData=async()=>({numberOfChannels:1,length:2,getChannelData:()=>new Float32Array([.5,-.5])});});
+ rpc.mockImplementation(async()=>snapshot({playing:false}));
+ const pending=bridge.playNativeCue('/sounds/start.ogg',.2);await settle();await vi.advanceTimersByTimeAsync(100);await pending;
+ expect(rpc).toHaveBeenCalledWith('playback_cue',{samples:[.5,.5,-.5,-.5],volume:.2});
+ expect(rpc).not.toHaveBeenCalledWith('playback_stop');expect(browserPlay).not.toHaveBeenCalled();
+});
+it("効果音の指定デバイス失敗は通知しブラウザー既定出力へ逃がさない",async()=>{
+ vi.stubGlobal('fetch',vi.fn(async()=>({ok:true,arrayBuffer:async()=>new ArrayBuffer(1)})));
+ vi.stubGlobal('OfflineAudioContext',class {decodeAudioData=async()=>({numberOfChannels:1,length:1,getChannelData:()=>new Float32Array([0])});});
+ rpc.mockRejectedValue(Error('指定デバイスなし'));
+ await bridge.playNativeCue('/sounds/start.ogg',.2);
+ expect(notice).toHaveBeenCalledWith('Error: 指定デバイスなし',true);expect(browserPlay).not.toHaveBeenCalled();
 });
 it("src切替直後にcurrentSrcが旧音声でも新しい音声を再生する",async()=>{
  bridge.registerNativeAudio("http://localhost/preview/b","takes/b/audio.wav","hash-b");

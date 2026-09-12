@@ -90,6 +90,8 @@ export type Segment = {
     transcriptions?: Asr[];
 };
 export type Snapshot = {
+    recording_error?: string | null;
+    script_export_ready_source_ids?: string[];
     stop_scheduled?: boolean;
     recording_peaks?: number[];
     project: {

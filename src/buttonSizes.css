@@ -29,6 +29,10 @@
 #app .script-bottom select{width:auto;min-width:120px;max-width:160px;height:34px;margin:0;padding:6px 10px}
 #app .script-bottom button{white-space:nowrap;flex-shrink:0}
 
-#app .recording-workspace>.record-controls{grid-column:1/-1;margin:0}
+
 #app .record-controls .input-level-label{flex-basis:auto;margin-left:auto}
-@media(min-width:1101px){#app .recording-workspace{grid-template-rows:auto minmax(0,1fr)}}
+#app>header{display:grid;grid-template-columns:minmax(0,1fr) auto;grid-template-rows:auto auto;gap:6px 12px}
+#app>header>#project-name-button,#app>header>#project-name{grid-column:1;grid-row:1;justify-self:start;max-width:100%}
+#app>header>.toolbar{grid-column:2;grid-row:1;order:initial;margin:0;justify-content:flex-end}
+#app>header>.statusbar{grid-column:1/-1;grid-row:2;order:initial;margin:0;padding:4px 0;background:transparent;min-width:0;max-width:none;width:100%}
+#app>header>.statusbar [data-action=save_project]{margin-left:auto}

@@ -121,12 +121,12 @@ describe("収録の状態遷移",()=>{
  });
 });
 
-it('録音操作は原稿より前、連続操作は発話ナビゲーションに配置する',async()=>{
+it('録音操作と連続操作は左列の原稿パネルより前に配置する',async()=>{
  await import('../../src/main');await settle();await tab('録音');
- const column=document.querySelector('.recording-workspace')!;
+ const column=document.querySelector('.recording-script')!;
  expect(column.firstElementChild?.classList.contains('record-controls')).toBe(true);
- expect(document.querySelector('.utterance-heading #continuous-start')).toBeTruthy();
- expect(document.querySelector('.record-controls #continuous-start')).toBeNull();
+ expect(document.querySelector('.utterance-heading #continuous-start')).toBeNull();
+ expect(document.querySelector('.record-controls #continuous-start')).toBeTruthy();
  expect(document.querySelector('#recording-wave')).toBeTruthy();
  snapshot.recording_peaks=[.01,.3,.9];snapshot.elapsed=1234;
  await vi.advanceTimersByTimeAsync(700);await settle();
@@ -392,8 +392,8 @@ it('録音中の編集を原稿差分へ戻し、再確定後の各工程から�
  snapshot.busy=false;snapshot.job='';await vi.advanceTimersByTimeAsync(710);await settle();await tab('台本');
  expect(document.querySelector<HTMLTextAreaElement>('#markdown-source')?.value).toBe('新しい原稿');expect(document.querySelector('#script-difference')?.textContent).toContain('市場へ行きます。');
  action('すべて承認');await vi.advanceTimersByTimeAsync(400);await settle();action('台本確定');await settle();
- expect(document.querySelector('[data-tab=recording]')?.getAttribute('aria-selected')).toBe('true');
- expect(document.querySelector<HTMLTextAreaElement>('#text')?.value).toBe('新しい原稿');
+ expect(document.querySelector('[data-tab=script]')?.getAttribute('aria-selected')).toBe('true');
+ await tab('録音');expect(document.querySelector<HTMLTextAreaElement>('#text')?.value).toBe('新しい原稿');
  for(const name of ['録音','読み確認','比較・採点']){await tab(name);expect(document.querySelector('[aria-label="確定原稿ツリー"]')?.textContent).toContain('新しい原稿');expect(document.querySelector('[aria-label="確定原稿ツリー"]')?.textContent).not.toContain('市場へ行きます。');}
  await tab('台本');document.querySelector<HTMLButtonElement>('[data-script-line]')!.click();await vi.advanceTimersByTimeAsync(400);await settle();action('台本確定');await settle();for(const name of ['録音','読み確認','比較・採点']){await tab(name);expect(document.querySelectorAll('[data-segment]')).toHaveLength(0);}
 });
