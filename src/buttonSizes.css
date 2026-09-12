@@ -59,3 +59,16 @@
 #app .take-transcription-row>[data-take-duration],#app .take-transcription-row>button{flex-shrink:0}
 #app .take-transcription-row>.take-transcription{min-width:0;overflow-wrap:anywhere}
 #app .take-column .take-annotation{width:226px;justify-self:end}
+
+/* テイク操作はDOM順と表示順を一致させ、重なるグリッド領域を廃止する。 */
+#app .take-column .take{display:flex;flex-direction:column;align-items:stretch;gap:8px}
+#app .take-header{display:flex;align-items:center;justify-content:space-between;gap:8px;min-width:0}
+#app .take-header .take-summary{display:flex;align-items:center;gap:6px;flex-wrap:wrap;min-width:0;padding:0}
+#app .take-header .take-summary strong{display:inline;flex-basis:auto;min-height:0;padding:0;white-space:nowrap}
+#app .take-header [data-take-duration]{white-space:nowrap}
+#app .take-header .take-annotation{flex:0 0 226px;width:226px;min-width:0}
+#app .take-wave-wrap{width:100%}
+#app .take-column .take-actions{align-self:flex-end}
+#app .take-trim-fields{justify-content:flex-start}
+
+#app .take-header .take-summary{flex-wrap:nowrap}

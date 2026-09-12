@@ -1,3 +1,4 @@
+import {showTransientError} from './transientError';
 import {installNativeAudio,registerNativeAudio} from "./nativeAudio";
 import {openCloudUpload} from "./cloudUploadView";
 import {chooseExchange,mapExchange,type ExchangePreview} from "./exchangeView";
@@ -69,7 +70,7 @@ async function play(file:string,hash:string,take="",offset=0,limit?:number){try{
 const statusName=(s:string)=>({ready:"録音済み",recording:"録音中",failed:"失敗",interrupted:"中断",cancelled:"取消",pending:"待機",running:"生成中",succeeded:"生成済み"}[s]??esc(s));
 function recordingAsr(segment:Segment,take:Take){
  const result=(segment.transcriptions??[]).filter(item=>item.take_id===take.id||(item.file===take.file&&item.audio_hash===take.hash)).at(-1);
- return result?.raw&&result.status!=='stale'&&!result.error?`<span class="take-transcription">${esc(result.raw)}</span>`:button('recording_asr','Whisperで文字起こし',`data-take="${take.id}"`);
+ return result?.raw&&result.status!=='stale'&&!result.error?`<span class="take-transcription">${esc(result.raw)}</span>`:button('recording_asr','Whisperで文字起こし',`data-take="${take.id}" ${result?.status==='queued'||result?.status==='running'?'disabled':''}`);
 }
 function renderRecordingAsrCards(segment:Segment|undefined){if(!segment)return;segment.takes.filter(take=>take.status==='ready').forEach(take=>document.querySelector(`[data-take-duration="${take.id}"]`)?.insertAdjacentHTML('afterend',recordingAsr(segment,take)));}
 const button=(action:string,label:string,attrs="")=>`<button data-action="${action}" ${attrs}>${label}</button>`;
@@ -158,7 +159,7 @@ function bind(){const extension=document.getElementById("stop-extension") as HTM
   await refresh(true);selected=state.project?.segments.find(row=>!previous.has(row.id))?.id??selected;render();
  }catch(e){notice(String(e),true);}break;
  case"improve_text":await improveRecordingText();break;
- case"recording_asr":try{await rpc('automatic_asr',{segment:selected,take:b.dataset.take});}catch(e){notice(String(e),true);}break;
+ case"recording_asr":try{await rpc('automatic_asr',{segment:selected,take:b.dataset.take});await refresh(true);}catch(e){showTransientError('Whisperの文字起こしに失敗しました。設定画面の「Whisper」で導入状況を確認し、未導入の場合は導入してください。\n'+String(e));}break;
  case"record":await startRecording();break;
  case"compare":player().pause();await act(action,sid);break;
  case"select":await adoptTake(b.dataset.id!);break;
@@ -203,7 +204,7 @@ const takeWaveLoading=new Set<string>();
 function drawTakeWave(id:string,peaks:number[]){const svg=document.getElementById(`take-wave-${id}`);if(!svg||!peaks.length)return;svg.innerHTML=peaks.map((peak,index)=>{const height=waveAmplitude(peak)*11;if(!height)return "";return `<line x1="${index+.5}" x2="${index+.5}" y1="${12-height}" y2="${12+height}"/>`;}).join("");}
 async function loadTakeWaves(){if(tab!=="recording")return;const s=current();if(!s)return;await Promise.all(s.takes.filter(t=>t.status==="ready").map(async take=>{const cached=takeWaveCache.get(take.hash);if(cached){drawTakeWave(take.id,cached);return;}if(takeWaveLoading.has(take.hash))return;takeWaveLoading.add(take.hash);try{const wave=await rpc<{peaks:number[]}>("waveform",{file:take.file,hash:take.hash});if(!wave?.peaks?.length)return;const peaks=Array.from({length:100},(_,index)=>{const from=Math.floor(index*wave.peaks.length/100),to=Math.max(from+1,Math.floor((index+1)*wave.peaks.length/100));return Math.max(...wave.peaks.slice(from,to));});takeWaveCache.set(take.hash,peaks);if(selected===s.id)s.takes.filter(other=>other.hash===take.hash).forEach(other=>drawTakeWave(other.id,peaks));}catch{}finally{takeWaveLoading.delete(take.hash);}}));}
 let refreshing=false;
-async function refresh(force=false){if(refreshing||(busy&&!force))return;refreshing=true;try{const next=await rpc<Snapshot>("state");const needs=force||(next.project?.generation??-1)!==generation||next.root!==state.root||next.busy!==state.busy||next.job!==state.job||next.stop_scheduled!==state.stop_scheduled||next.recording_error!==state.recording_error;if(state.busy&&!next.busy&&recordingSegment===selected){focusTake=next.project?.segments.find(s=>s.id===selected)?.takes.filter(t=>t.status==="ready").at(-1)?.id??"";if(focusTake&&!recordedBefore.has(focusTake)){await playCue("saved");recordedBefore.add(focusTake);}}state=next;if(next.recording_error&&continuousRecording)await endContinuous();if(!current())selected=activeSegments()[0]?.id??"";generation=state.project?.generation??-1;if(needs)render();else{updateMeter();if(state.busy)notice(state.message);}}catch(e){notice(String(e),true)}finally{refreshing=false;}if(pendingRerecord&&!state.busy&&!busy&&continuousRecording){const sid=pendingRerecord;pendingRerecord="";if(selected===sid)await startRecording();}}
+async function refresh(force=false){if(refreshing||(busy&&!force))return;refreshing=true;try{const next=await rpc<Snapshot>("state");const needs=force||(next.project?.generation??-1)!==generation||next.root!==state.root||next.busy!==state.busy||next.job!==state.job||next.stop_scheduled!==state.stop_scheduled||next.recording_error!==state.recording_error;if(state.busy&&!next.busy&&recordingSegment===selected){focusTake=next.project?.segments.find(s=>s.id===selected)?.takes.filter(t=>t.status==="ready").at(-1)?.id??"";if(focusTake&&!recordedBefore.has(focusTake)){await playCue("saved");recordedBefore.add(focusTake);}}if(state.root===next.root&&state.project){const previous=new Map(state.project.segments.flatMap(segment=>(segment.transcriptions??[]).map(result=>[result.id,result.status])));const failed=next.project?.segments.flatMap(segment=>segment.transcriptions??[]).find(result=>result.status==='failed'&&previous.get(result.id)!=='failed');if(failed)showTransientError('Whisperの文字起こしに失敗しました。設定画面の「Whisper」で導入状況を確認し、未導入の場合は導入してください。\n'+(failed.error??'認識結果を保存できませんでした。'));}if(next.message?.startsWith('文字起こし結果を保存できません:')&&next.message!==state.message)showTransientError(next.message);state=next;if(next.recording_error&&continuousRecording)await endContinuous();if(!current())selected=activeSegments()[0]?.id??"";generation=state.project?.generation??-1;if(needs)render();else{updateMeter();if(state.busy)notice(state.message);}}catch(e){notice(String(e),true)}finally{refreshing=false;}if(pendingRerecord&&!state.busy&&!busy&&continuousRecording){const sid=pendingRerecord;pendingRerecord="";if(selected===sid)await startRecording();}}
 async function loadDevices(){try{devices=await rpc("devices");endpoint=devices.find(d=>d.is_default)?.endpoint_id??devices[0]?.endpoint_id??"";}catch(e){notice(String(e),true)}}
 document.addEventListener("keydown",e=>{if(e.repeat||document.querySelector("[role=dialog]"))return;if(e.key==="Escape"&&state.busy){player()?.pause();pendingRerecord="";void (async()=>{await endContinuous();await act(state.job==="recording"?"cancel_record":"stop");})();}});
 document.addEventListener("keydown",e=>{if(e.repeat||document.querySelector("[role=dialog]")||e.target instanceof HTMLInputElement||e.target instanceof HTMLTextAreaElement||e.target instanceof HTMLSelectElement||(e.target as HTMLElement)?.isContentEditable)return;if(e.ctrlKey&&e.key==="Enter"){e.preventDefault();void adoptNext();}else if(e.altKey&&["ArrowLeft","ArrowRight"].includes(e.key)){e.preventDefault();void cycleTake(e.key==="ArrowLeft"?-1:1);}else if(e.code==="Space"){e.preventDefault();if(!state.busy){if(player()&&!player().paused)player().pause();else if(player())void cycleTake(0);}}});
@@ -351,7 +352,7 @@ function render(){
  const p=state.project;if(!p&&sourceRoot!==undefined){sourceEpoch++;sourcePreviewVersion++;sourceSaveScheduled=false;sourceSavePromise=Promise.resolve();sourceDrafts.clear();sourceOrder=[];selectedSource="";sourceRoot=undefined;sourceDirty=false;sourceSaveError='';clearTimeout(sourcePreviewTimer);clearTimeout(sourceSaveTimer);}root.classList.toggle("welcome-root",!p);root.style.gridTemplateRows=p?"auto auto minmax(0,1fr) auto":"";
  const oldPlayer=document.getElementById("player")as HTMLAudioElement|null;
  const keepPlayer=oldPlayer&&!oldPlayer.paused?oldPlayer:null;
- if(!p){root.innerHTML=`<main class="welcome"><h1>読みあわせ</h1><div class="welcome-options"><section>${button("new","新規プロジェクト",'class="primary"')}</section><section>${button("open","開く")}</section></div><ol class="flow-graphic">${["台本","録音","読み確認・補正","比較・採点","結合・出力"].map((x,i)=>`<li><b>${i+1}</b> ${x}</li>`).join("")}</ol><span id="notice" role="status">${esc(state.message)}</span></main>`;renderedKey="";bind();}
+ if(!p){root.innerHTML=`<main class="welcome"><h1>読みあわせ</h1><div class="welcome-options"><section>${button("new","新規プロジェクト",'class="primary"')}</section><section>${button("open","開く")}</section></div><ol class="flow-graphic">${["台本","録音","読み確認・補正","比較・採点","結合・出力"].map((x,i)=>`<li><b>${i+1}</b> ${x}</li>`).join("")}</ol><span id="notice" role="status">${esc(state.message?.startsWith('文字起こし結果を保存できません:')?'':state.message)}</span></main>`;renderedKey="";bind();}
  else{
  if(!current())selected=activeSegments()[0]?.id??"";const s=current();
  resetNavigation(state.root??p.title);
@@ -359,7 +360,7 @@ function render(){
  const stage=tab as Stage;
  ensureScriptDraft();
  const sidebar=tab==="export"||(tab==="script"&&(hasSourceMode()||!markdownDraft!.lines.length))?"":tab==="script"?`<aside class="navigation-aside"><label>フィルター<select id="filter">${optionsFor("script").map(([value,label])=>`<option value="${value}" ${filterFor(stage)===value?"selected":""}>${label}</option>`).join("")}</select></label><nav data-navigation-scroll aria-label="元Markdownの構成">${renderSourceTree(markdownDraft!.lines)}</nav></aside>`:`<aside class="navigation-aside"><label>フィルター<select id="filter">${optionsFor(stage as "recording"|"reading"|"evaluation").map(([value,label])=>`<option value="${value}" ${filterFor(stage)===value?"selected":""}>${label}</option>`).join("")}</select></label><nav data-navigation-scroll aria-label="確定原稿ツリー">${renderSegmentTree(p.segments,stage as "recording"|"reading"|"evaluation",selected)}</nav></aside>`;
- root.innerHTML=`<header>${projectNameEditing?`<input id="project-name" aria-label="プロジェクト名" value="${esc(projectNameValue)}">`:`<button id="project-name-button" title="クリックしてプロジェクト名を変更">${esc(p.title)}</button>`}<div class="statusbar"><span id="notice" role="status">${esc(state.message)}</span><span id="meter"></span>${button("save_project","保存")}${button("close_project","閉じる",'class="button-large"')}${button("settings","設定",'class="button-large"')}</div></header>${renderStageBar(stage,activeSegments().length>0&&activeSegments().every(s=>s.takes.some(t=>t.id===s.selected&&t.status==="ready")))}<div class="layout navigation-layout ${!sidebar?"no-sidebar":""}">${sidebar}<main>${tab==="script"?scriptTab():tab==="export"?modernExportView(exportContext):s?segmentView(s):"<p>台本画面で原稿を追加してください。</p>"}<div id="stage-extras" class="stage-extras"></div></main></div><footer><label>試聴 <audio id="player" controls></audio></label></footer>`;
+ root.innerHTML=`<header>${projectNameEditing?`<input id="project-name" aria-label="プロジェクト名" value="${esc(projectNameValue)}">`:`<button id="project-name-button" title="クリックしてプロジェクト名を変更">${esc(p.title)}</button>`}<div class="statusbar"><span id="notice" role="status">${esc(state.message?.startsWith('文字起こし結果を保存できません:')?'':state.message)}</span><span id="meter"></span>${button("save_project","保存")}${button("close_project","閉じる",'class="button-large"')}${button("settings","設定",'class="button-large"')}</div></header>${renderStageBar(stage,activeSegments().length>0&&activeSegments().every(s=>s.takes.some(t=>t.id===s.selected&&t.status==="ready")))}<div class="layout navigation-layout ${!sidebar?"no-sidebar":""}">${sidebar}<main>${tab==="script"?scriptTab():tab==="export"?modernExportView(exportContext):s?segmentView(s):"<p>台本画面で原稿を追加してください。</p>"}<div id="stage-extras" class="stage-extras"></div></main></div><footer><label>試聴 <audio id="player" controls></audio></label></footer>`;
  if(tab==="script")root.querySelector("footer")?.setAttribute("hidden","");
  if(keepPlayer)document.getElementById("player")?.replaceWith(keepPlayer);
  renderedKey=`${selected}:${tab}`;for(const [id,value]of Object.entries(drafts.get(renderedKey)??{})){const field=document.getElementById(id);if(field instanceof HTMLTextAreaElement&&id!=="markdown-source")field.value=value;}
@@ -370,6 +371,7 @@ function render(){
  fitWorkspace();bind();bindProjectName();bindSourceScriptTab();bindBatch();updateMeter();void loadTakeWaves();
  if(tab==="recording"&&s)bindTakeTrim({segment:s,rpc:async<T>(action:string,payload?:unknown)=>{const result=await rpc<T>(action,payload);if(action!=="trim_take")return result;const latest=await rpc<Snapshot>("state");return latest.project?.segments.find(x=>x.id===s.id)?.takes.find(x=>x.id===(payload as {take:string}).take) as T;},play,isPlaying:take=>playingTake===take&&!player()?.paused,stop:()=>{player()?.pause();syncTakePlayback();},notice,onSaved:async()=>{player()?.pause();await refresh(true);}});
  if(player()){player().onplay=syncTakePlayback;player().onpause=syncTakePlayback;player().onended=()=>{updateTakeProgress();syncTakePlayback();};}syncTakePlayback();
+ if(tab==='recording')arrangeTakeControls();
  bindTrimNavigation();
  if(tab==="export")bindExportView(exportContext);
  navigationRenderedStage=stage;const navScroll=root.querySelector<HTMLElement>('[data-navigation-scroll]');if(navScroll)navScroll.scrollTop=scrollFor(stage);
@@ -727,8 +729,8 @@ async function mergeExchangeAudio(){if(!pendingExchange||sourceDirty)return;try{
 
 async function improveRecordingText(){
  const segment=current();
- if(improvingText||busy||state.busy||!segment||!value('text').trim())return;
- await saveScriptDraft();
+ if(improvingText||busy||state.busy||!segment)return;if(!value('text').trim()){showTransientError('改善する原稿を入力してください。');return;}
+ try{await saveScriptDraft();}catch(error){showTransientError(String(error));return;}
  const projectRoot=state.root,segmentId=segment.id,original=value('text'),editVersion=recordingEditVersion,viewVersion=recordingViewVersion,raw=original;
  improvingText=true;render();
  try{
@@ -737,5 +739,15 @@ async function improveRecordingText(){
   if(!improved.text?.trim())throw new Error('Codex CLIの改善結果が空です');
   const input=document.getElementById('text') as HTMLTextAreaElement;input.value=improved.text;
   await saveScriptDraft();drafts.delete(segmentId+':recording');notice('改善結果を原稿に反映しました。台本画面で差分を確認して再確定してください。');
- }catch(error){notice(String(error),true);}finally{improvingText=false;root.querySelectorAll<HTMLButtonElement>('[data-action=improve_text]').forEach(button=>{button.disabled=busy||state.busy||!value('text').trim();});root.querySelectorAll('.improve-status').forEach(el=>el.remove());}
+ }catch(error){showTransientError('Codex CLIによる文章改善に失敗しました。\n'+String(error));}finally{improvingText=false;root.querySelectorAll<HTMLButtonElement>('[data-action=improve_text]').forEach(button=>{button.disabled=busy||state.busy||!value('text').trim();});root.querySelectorAll('.improve-status').forEach(el=>el.remove());}
+}
+
+function arrangeTakeControls(){
+ root.querySelectorAll<HTMLElement>('.take').forEach(card=>{
+  const summary=card.querySelector<HTMLElement>('.take-summary'),annotation=card.querySelector<HTMLElement>('.take-annotation');
+  if(summary&&annotation){const header=document.createElement('div');header.className='take-header';card.prepend(header);header.append(summary,annotation);const diagnostic=summary.querySelector('.take-diagnostic');if(diagnostic)header.after(diagnostic);}
+  const duration=card.querySelector('[data-take-duration]');if(duration&&summary?.querySelector('strong'))summary.querySelector('strong')!.after(duration);
+  const row=card.querySelector('.take-transcription-row'),fields=card.querySelector('.take-trim-fields');
+  if(row&&fields){while(row.firstChild)fields.append(row.firstChild);row.remove();}
+ });
 }

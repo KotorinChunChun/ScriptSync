@@ -1,6 +1,6 @@
 import {afterEach,describe,expect,it,vi} from 'vitest';
 import {openSettings, type MachineSettings} from '../../src/settingsView';
-const settings:MachineSettings={capture_endpoint:'missing',render_endpoint:'',asr_provider:'local',asr_model:'small',codex_path:'',codex_prompt:'誤字だけ修正してください。'};
+const settings:MachineSettings={capture_endpoint:'missing',render_endpoint:'',asr_provider:'local',asr_model:'small',codex_path:'',codex_model:'gpt-5.6-luna',codex_prompt:'誤字だけ修正してください。'};
 const snapshot=()=>({settings:{...settings},web_url:'https://dev-k.sakura.ne.jp/tools/scriptsyncweb/',runtime_root:'C:/user/asr',ready:false,setup:{running:false,phase:'',message:''}});
 const flush=()=>new Promise(resolve=>setTimeout(resolve,0));
 afterEach(()=>{document.body.innerHTML='';vi.restoreAllMocks();});
@@ -22,4 +22,17 @@ it('プロンプトを保存した成功時に閉じる。上部の閉じると�
  document.querySelector<HTMLButtonElement>('[data-save]')!.click();await flush();
  expect(rpc.mock.calls.find(c=>c[0]==='settings_save')?.[1].settings.codex_prompt).toBe('数値を保持。\n誤字のみ。');
  expect(document.getElementById('settings-manager')).toBeNull();
+});
+it('未保存のモデルとプロンプトで合成テストし、設定や原稿を変更しない',async()=>{
+ const rpc=vi.fn(async(action:string,payload?:any)=>action==='settings_devices'?{capture:[],render:[]}:action==='text_improve_test'?{input:'合成入力',text:'合成結果',model:payload.settings.codex_model}:snapshot());
+ await openSettings({rpc:rpc as never,notice:vi.fn()});
+ expect(document.querySelector<HTMLSelectElement>('[name="codex_model"]')!.value).toBe('gpt-5.6-luna');
+ document.querySelector<HTMLSelectElement>('[name="codex_model"]')!.value='gpt-5.6-terra';
+ document.querySelector<HTMLTextAreaElement>('[name="codex_prompt"]')!.value='編集中の指示';
+ document.querySelector<HTMLButtonElement>('[data-codex-test]')!.click();await flush();
+ const payload=rpc.mock.calls.find(c=>c[0]==='text_improve_test')?.[1];
+ expect(payload.settings.codex_model).toBe('gpt-5.6-terra');expect(payload.settings.codex_prompt).toBe('編集中の指示');
+ expect(rpc.mock.calls.some(c=>c[0]==='settings_save'||c[0]==='recording_draft')).toBe(false);
+ expect(document.querySelector('[data-codex-test-result]')?.textContent).toContain('合成結果');
+ expect(document.getElementById('settings-manager')).not.toBeNull();
 });
