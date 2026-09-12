@@ -42,6 +42,17 @@ fn valid_path(name: &str) -> bool {
     !name.is_empty() && name.len() <= 512 && !name.contains(['\\', ':', '\0'])
         && name.split('/').all(|part| !part.is_empty() && part != "." && part != "..")
 }
+fn validate_manifest_limits(manifest: &Manifest) -> Result<()> {
+    // WebのString.lengthと同じUTF-16コード単位で判定する（絵文字は通常2）。
+    if manifest.title.encode_utf16().count() > 100 { return Err("Webの作品名は100文字以内にしてください（絵文字等は2文字分）".into()); }
+    if !(1..=1000).contains(&manifest.lines.len()) { return Err("Webへ渡す読み上げ行は1～1000行にしてください".into()); }
+    if manifest.source_file_name.as_ref().is_some_and(|name| name.encode_utf16().count() > 255) { return Err("交換原稿ファイル名が255文字を超えています".into()); }
+    for line in &manifest.lines {
+        if line.text.encode_utf16().count() > 20000 { return Err(format!("{}行目がWebの20000文字上限を超えています（絵文字等は2文字分）",line.order)); }
+        if line.takes.len() > 200 { return Err(format!("{}行目のテイク数が200件を超えています",line.order)); }
+    }
+    Ok(())
+}
 fn verify_audio(info: &AudioInfo, bytes: &[u8]) -> Result<()> {
     if info.mime != "audio/wav" || info.sample_rate != 48000 || info.bits_per_sample != 16
         || !(1..=2).contains(&info.channels) || !info.duration.is_finite() || info.duration <= 0.0
@@ -89,6 +100,7 @@ pub fn inspect_zip(path: &Path, password: Option<&str>) -> Result<ValidatedExcha
         files.insert(name, bytes);
     }
     let manifest: Manifest = serde_json::from_slice(files.get("project.json").ok_or("project.jsonがありません")?).map_err(|e| e.to_string())?;
+    validate_manifest_limits(&manifest)?;
     if manifest.format != "scriptsyncweb-exchange-1" || !["all", "selected"].contains(&manifest.scope.as_str()) || manifest.lines.len() > 1000 {
         return Err("未対応の交換形式、範囲、行数です".into());
     }
@@ -127,6 +139,7 @@ pub fn export_script(project: &Project, source_id: &str, path: &Path, exported_a
     let filename = format!("{}.md", if stem.trim_matches([' ', '.']).is_empty() { "原稿" } else { stem.trim_matches([' ', '.']) });
     let manifest = Manifest { format:"scriptsyncweb-exchange-1".into(), title:project.title.clone(), source:source.confirmed_text.clone(),
         source_file_name:Some(filename.clone()), script_path:Some(format!("scripts/{filename}")), exported_at:exported_at.into(), scope:"all".into(), lines };
+    validate_manifest_limits(&manifest)?;
     let json = serde_json::to_vec(&manifest).map_err(|e| e.to_string())?;
     if json.len() as u64 > 4 * MIB { return Err("交換原稿が4MiBを超えています".into()); }
     let mut zip = zip::ZipWriter::new(Cursor::new(Vec::new()));

@@ -33,3 +33,12 @@ fn create_native_v004_fixture() {
  for segment in &mut store.project.segments { for _ in 0..2 { let take=crate::app::take_from_file(&root,&wav,"synthetic".into()).unwrap();segment.takes.push(take); } segment.selected=Some(segment.takes[0].id.clone()); }
  store.save().unwrap();
 }
+
+#[test]
+#[ignore = "ネイティブ検証fixtureの確定原稿をWeb互換試験へ出力して保持する"]
+fn export_native_v004_fixture() {
+ let path=std::path::PathBuf::from(std::env::var("SCRIPTSYNC_V004_FIXTURE").expect("fixtureが必要です"));
+ let output=path.parent().unwrap().join("desktop.zip");let manifest:serde_json::Value=serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
+ let project:Project=serde_json::from_slice(&std::fs::read(path.parent().unwrap().join(manifest["data_directory"].as_str().unwrap()).join("project.json")).unwrap()).unwrap();
+ crate::exchange::export_script(&project,&project.script_sources[0].id,&output,"2026-09-12T09:30:00.000Z").unwrap();
+}

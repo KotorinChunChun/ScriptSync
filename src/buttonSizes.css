@@ -1,7 +1,7 @@
 /* 全工程共通の操作階層。幅はラベルに従い、高さと書体を統一する。 */
 :root{--button-small-height:28px;--button-medium-height:34px;--button-large-height:42px;--button-font:system-ui,"Yu Gothic UI",sans-serif;--command-green:#23734e}
 #app button,.action-confirm button{font-family:var(--button-font);font-size:14px;line-height:1.2;min-height:var(--button-medium-height);box-sizing:border-box;padding:6px 12px}
-#app .button-large,#app>header .toolbar button,#app .welcome-options button,#app [data-action="script_archives"]{height:var(--button-large-height);font-size:16px;padding:8px 16px}
+#app .button-large,#app>header .toolbar button,#app .welcome-options button,#app [data-action="script_archives"],#app #recording-archives,#app [data-action="save_project"]{height:var(--button-large-height);font-size:16px;padding:8px 16px}
 #app .button-small,#app [data-asr-retry],#app [data-review-index],#app .take-download{height:var(--button-small-height);min-height:var(--button-small-height);font-size:12px;padding:3px 8px}
 #app .script-source-actions button,#app .script-restore button,#app .script-bottom button,#app .script-review button{height:var(--button-medium-height);min-height:var(--button-medium-height);font-size:14px;padding:6px 12px}
 #app .stage-bar button{background:#dceee4;color:#164c39;min-height:44px}
@@ -23,3 +23,12 @@
 #app .take-column .take-actions{align-self:start;min-height:36px;align-items:center;max-width:none;flex-wrap:nowrap}
 #app .take-trim-handle{min-height:0;height:auto;padding:0;width:11px}
 #app [data-action="recording_asr"]{height:var(--button-small-height);min-height:var(--button-small-height);font-size:12px;padding:3px 8px}
+
+#app>header .statusbar{order:2;margin-left:auto}
+#app>header>.toolbar{order:3;margin-left:12px}
+#app .script-bottom select{width:auto;min-width:120px;max-width:160px;height:34px;margin:0;padding:6px 10px}
+#app .script-bottom button{white-space:nowrap;flex-shrink:0}
+
+#app .recording-workspace>.record-controls{grid-column:1/-1;margin:0}
+#app .record-controls .input-level-label{flex-basis:auto;margin-left:auto}
+@media(min-width:1101px){#app .recording-workspace{grid-template-rows:auto minmax(0,1fr)}}

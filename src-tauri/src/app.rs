@@ -160,7 +160,8 @@ impl App {
             if hash_file(&from)?!=take.hash {return Err("音声が変更されています".into());}
             if let Some(to)=rfd::FileDialog::new().add_filter("WAV",&["wav"]).set_file_name("テイク.wav").save_file(){
                 let parent=to.parent().ok_or("保存先が不正です")?.canonicalize().map_err(|e|e.to_string())?;
-                if parent.starts_with(root.canonicalize().map_err(|e|e.to_string())?) {return Err("プロジェクト外の保存先を選んでください".into());}
+                let canonical_root=root.canonicalize().map_err(|e|e.to_string())?;
+                if parent.starts_with(&canonical_root) || (to.exists() && to.canonicalize().map_err(|e|e.to_string())?.starts_with(&canonical_root)) {return Err("プロジェクト外の保存先を選んでください".into());}
                 std::fs::copy(from,to).map_err(|e|e.to_string())?;
             }
             return Ok(Value::Null);

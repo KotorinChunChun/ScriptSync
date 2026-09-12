@@ -92,3 +92,37 @@ fn export_uses_confirmed_source_and_preserves_reading_order() {
     assert!(inspected.manifest.lines.iter().all(|line|line.takes.is_empty()&&line.selected.is_none()));
     std::fs::remove_dir_all(root).unwrap();
 }
+
+#[test]
+fn export_rejects_web_limits_before_creating_zip_and_counts_utf16() {
+    let (root,_,_)=fixture();
+    let mut project=Project::new("作品".into());
+    project.script_sources.push(ScriptSource { id:"source".into(),name:"原稿.md".into(),kind:"markdown".into(),confirmed_text:"本文".into(),draft_text:"本文".into(),lines:vec![],draft_lines:vec![],blank_rows:vec![],approved_text:None });
+    let path=root.join("limits.zip");
+    assert!(export_script(&project,"source",&path,"2026-09-12T00:00:00Z").is_err());assert!(!path.exists());
+    let mut segment=Segment::new("本文".into());segment.source_id="source".into();
+    project.segments=vec![segment.clone();1001];
+    assert!(export_script(&project,"source",&path,"2026-09-12T00:00:00Z").is_err());assert!(!path.exists());
+    project.segments=vec![segment];project.title="😀".repeat(51);
+    assert!(export_script(&project,"source",&path,"2026-09-12T00:00:00Z").is_err());assert!(!path.exists());
+    project.title="😀".repeat(50);project.segments[0].text="😀".repeat(10001);
+    assert!(export_script(&project,"source",&path,"2026-09-12T00:00:00Z").is_err());assert!(!path.exists());
+    project.segments[0].text="😀".repeat(10000);
+    export_script(&project,"source",&path,"2026-09-12T00:00:00Z").unwrap();
+    assert!(inspect_zip(&path,None).is_ok());
+    std::fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn import_enforces_web_utf16_limits_too() {
+    let (root,mut manifest,bytes)=fixture();
+    manifest.title="😀".repeat(51);
+    assert!(inspect_zip(&archive(&root,&manifest,&bytes,None),None).is_err());
+    manifest.title="作品".into();manifest.lines[0].text="😀".repeat(10001);
+    assert!(inspect_zip(&archive(&root,&manifest,&bytes,None),None).is_err());
+    manifest.lines[0].text="本文".into();manifest.source_file_name=Some("😀".repeat(128));
+    assert!(inspect_zip(&archive(&root,&manifest,&bytes,None),None).is_err());
+    manifest.source_file_name=None;manifest.lines[0].takes=vec![manifest.lines[0].takes[0].clone();201];
+    assert!(validate_manifest_limits(&manifest).unwrap_err().contains("200件"));
+    std::fs::remove_dir_all(root).unwrap();
+}

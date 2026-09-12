@@ -123,7 +123,7 @@ describe("収録の状態遷移",()=>{
 
 it('録音操作は原稿より前、連続操作は発話ナビゲーションに配置する',async()=>{
  await import('../../src/main');await settle();await tab('録音');
- const column=document.querySelector('.recording-script')!;
+ const column=document.querySelector('.recording-workspace')!;
  expect(column.firstElementChild?.classList.contains('record-controls')).toBe(true);
  expect(document.querySelector('.utterance-heading #continuous-start')).toBeTruthy();
  expect(document.querySelector('.record-controls #continuous-start')).toBeNull();
