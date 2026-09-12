@@ -11,7 +11,7 @@ v0.0.2は2026-09-12に終了しました。現タスクの課題はユーザー�
 | コードを探す | [ファイル構成目録](REPOSITORY_MAP.md)、[現行アーキテクチャ](architecture.md) |
 | AIによる保守 | [AGENTS](../AGENTS.md)、[技術知見](../dev/KNOWLEDGE.md) |
 | AIの検証・リリース手順 | [変更検証スキル](../.agents/skills/scriptsync-project-validation/SKILL.md)、[リリース確定スキル](../.agents/skills/scriptsync-project-release/SKILL.md) |
-| 現行版の実装・検証記録 | [v0.0.3実装記録](../dev/v0.0.3-imp.md)、[進捗](../dev/v0.0.3-task.md)、[検証計画・記録](validation.md) |
+| v0.0.3の実装・検証記録 | [v0.0.3実装記録](../dev/history/v0.0.3/v0.0.3-imp.md)、[進捗](../dev/history/v0.0.3/v0.0.3-task.md)、[検証計画・記録](validation.md) |
 | v0.0.2の実装・検証を確認する | [v0.0.2入口](../dev/history/v0.0.2/v0.0.2-README.md)、[要求](../dev/history/v0.0.2/v0.0.2-req.md)、[計画](../dev/history/v0.0.2/v0.0.2-imp.md)、[進捗](../dev/history/v0.0.2/v0.0.2-task.md) |
 | 録音ノイズを検証する | [修正・検証手順](../dev/audio-recording-noise-fix-procedure.md) |
 | プレゼンテーションソフトへ音声の時間情報を渡す | [音声・字幕・ブロックマップ連携仕様](EXPORT_BLOCK_MAP.md) |
@@ -21,4 +21,8 @@ v0.0.2は2026-09-12に終了しました。現タスクの課題はユーザー�
 
 初期案・モックアップは現行機能一覧ではありません。仕様の判断には対象版の要求、実装記録、実コードを照合します。過去の試験結果は実施日・条件と一緒に読み、今回の検証結果と混同しません。
 
-v0.0.3：[要求](../dev/v0.0.3-req.md)／[実装計画](../dev/v0.0.3-imp.md)。
+v0.0.3：[要求](../dev/history/v0.0.3/v0.0.3-req.md)／[実装計画](../dev/history/v0.0.3/v0.0.3-imp.md)。
+
+## v0.0.4
+
+[要求](../dev/v0.0.4-req.md)・[実装記録](../dev/v0.0.4-imp.md)・[Web交換ZIP](web-exchange.md)・[クラウド設定](cloud-upload.md)。

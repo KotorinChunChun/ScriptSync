@@ -86,3 +86,14 @@ v0.0.2完成版の実装を探すための目録です。全生成物の一覧�
 追加操作：`src/pointerReorder.ts` は一覧のPointer並び替え、`src/fullScriptDiff.ts` は全文左右整列、`src-tauri/src/project_open.rs` は起動引数、`src-tauri/src/project_rename.rs` はプロジェクト改名。
 
 - `src/recordingFeedback.ts`：録音中の修正原稿を原稿ファイルの差分へ戻す位置照合。
+
+## v0.0.4追加モジュール
+
+- `src/buttonSizes.css`：大・中・小のボタン共通規格。
+- `src/confirmAction.ts`：破壊操作の確認。
+- `src/settingsView.ts`、`src-tauri/src/machine_settings.rs`：端末設定とWindowsデバイス。
+- `src-tauri/src/asr_runtime.rs`、`asr_authenticode.rs`：専用認識環境の導入と署名検証。
+- `src/nativeAudio.ts`、`src-tauri/src/native_playback.rs`：指定デバイスへの試聴。
+- `src/exchangeView.ts`、`src-tauri/src/exchange.rs`：Web ZIPと音声対応/追加。
+- `src/cloudUploadView.ts`、`src-tauri/src/cloud_upload.rs`：認証・クラウド送信。
+- `dev/v0.0.4-req.md`、`dev/v0.0.4-imp.md`：要求と実装検証記録。
