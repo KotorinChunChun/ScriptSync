@@ -1,10 +1,14 @@
 use crate::domain::Result;
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 pub fn validate(value: &Value) -> Result<Value> {
     if !value.is_object() {
         return Err("出力設定が必要です".into());
     }
     let mut v = value.clone();
+    // 旧版の保存設定には字幕形式がなく、従来どおりVTTを出力する。
+    if v.get("subtitle_format").is_none() {
+        v["subtitle_format"] = json!("vtt");
+    }
     for (key, choices) in [
         (
             "unit",
@@ -12,6 +16,7 @@ pub fn validate(value: &Value) -> Result<Value> {
         ),
         ("naming", &["none", "jp", "number"][..]),
         ("format", &["wav", "flac"][..]),
+        ("subtitle_format", &["vtt", "none"][..]),
     ] {
         if !v[key].as_str().is_some_and(|s| choices.contains(&s)) {
             return Err(format!("{key}の設定が不正です"));
@@ -48,11 +53,15 @@ mod tests {
     fn default_drops_cached_manual_value() {
         let input = json!({"unit":"all","naming":"jp","format":"flac","global_gaps":{"normal":0.3,"part":1.2,"chapter":0.8,"section":0.5,"head":0.1,"tail":0.3},"blocks":{"a":{"gaps":{"normal":{"mode":"default","value":5.0},"tail":{"mode":"manual","value":1.5}}}}});
         let saved = validate(&input).unwrap();
-        assert!(
-            saved["blocks"]["a"]["gaps"]["normal"]
-                .get("value")
-                .is_none()
-        );
+        assert!(saved["blocks"]["a"]["gaps"]["normal"]
+            .get("value")
+            .is_none());
         assert_eq!(saved["blocks"]["a"]["gaps"]["tail"]["value"], 1.5);
+        assert_eq!(saved["subtitle_format"], "vtt");
+        let mut explicit = input.clone();
+        explicit["subtitle_format"] = json!("none");
+        assert_eq!(validate(&explicit).unwrap()["subtitle_format"], "none");
+        explicit["subtitle_format"] = json!("unknown");
+        assert!(validate(&explicit).is_err());
     }
 }

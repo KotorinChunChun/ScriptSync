@@ -3,7 +3,7 @@ use crate::{app::App, domain::*, storage::*};
 use serde_json::{json, Value};
 use std::{
     path::PathBuf,
-    process::{Command, Stdio},
+    process::Stdio,
     time::{Duration, Instant},
 };
 
@@ -123,14 +123,7 @@ enum Outcome {
 }
 fn recognize(app: &App, job: &Job) -> Outcome {
     let work = (|| -> Result<Option<Value>> {
-        let tools = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .parent()
-            .unwrap()
-            .join("tools/asr");
-        let python = tools.join("venv/Scripts/python.exe");
-        if !python.exists() {
-            return Err("文字起こしの準備が必要です（dev/scripts/setup-asr.ps1）".into());
-        }
+        let (runtime_root, settings) = { let a = app.0.lock().map_err(|e| e.to_string())?; (a.machine_settings.runtime_root.clone(), a.machine_settings.settings.clone()) };
         let input = safe(&job.root, &job.file)?;
         if hash_file(&input)? != job.hash {
             return Err("音声が変更されています".into());
@@ -139,11 +132,8 @@ fn recognize(app: &App, job: &Job) -> Outcome {
         std::fs::create_dir_all(&folder).map_err(|e| e.to_string())?;
         let out = std::fs::File::create(folder.join("result.json")).map_err(|e| e.to_string())?;
         let err = std::fs::File::create(folder.join("stderr.txt")).map_err(|e| e.to_string())?;
-        let mut command = Command::new(python);
+        let mut command = crate::asr_runtime::command(&runtime_root, &settings, &input)?;
         command
-            .arg(tools.join("transcribe.py"))
-            .arg("--audio")
-            .arg(&input)
             .stdout(Stdio::from(out))
             .stderr(Stdio::from(err));
         #[cfg(windows)]
@@ -152,6 +142,7 @@ fn recognize(app: &App, job: &Job) -> Outcome {
             command.creation_flags(0x08000000);
         }
         let mut child = command.spawn().map_err(|e| e.to_string())?;
+        let _process_tree = crate::asr_runtime::ProcessTree::attach(&mut child)?;
         let start = Instant::now();
         loop {
             if !current(app, job) {

@@ -11,6 +11,9 @@ use std::sync::{
 
 #[derive(Default)]
 pub struct Inner {
+    pub native_playback: crate::native_playback::NativePlayback,
+    pub machine_settings: crate::machine_settings::MachineSettings,
+    pub exchange: Option<crate::exchange::ValidatedExchange>,
     pub auto_asr_queue: std::collections::VecDeque<crate::automatic_asr::Job>,
     pub auto_asr_running: bool,
     pub project_location: crate::project_location::ProjectLocation,
@@ -82,6 +85,86 @@ impl App {
         )
     }
     pub fn dispatch(&self, action: &str, v: Value) -> Result<Value> {
+        if let Some(result)=crate::cloud_upload::dispatch(self,action,&v){return result;}
+        if action.starts_with("playback_") {
+            let mut a=self.0.lock().map_err(|e|e.to_string())?;
+            let result=match action {
+                "playback_play"=>{
+                    let root=a.store.as_ref().ok_or("プロジェクトを開いてください")?.root.clone();
+                    let endpoint=a.machine_settings.settings.render_endpoint.clone();
+                    a.native_playback.play(&root,&string(&v,"file")?,&string(&v,"hash")?,&endpoint,v["start"].as_f64().unwrap_or(0.0),v["end"].as_f64())?
+                },
+                "playback_pause"=>a.native_playback.pause(),
+                "playback_stop"=>a.native_playback.stop(),
+                "playback_volume"=>a.native_playback.set_volume(v["volume"].as_f64().ok_or("音量が必要です")?)?,
+                "playback_seek"=>a.native_playback.seek(v["position"].as_f64().ok_or("再生位置が必要です")?)?,
+                "playback_state"=>a.native_playback.snapshot(),
+                _=>return Err("不明な再生操作です".into())
+            };return serde_json::to_value(result).map_err(|e|e.to_string());
+        }
+        if let Some(result)=crate::machine_settings::dispatch(self,action,&v){return result;}
+        if action == "exchange_inspect" {
+            let path=if let Some(path)=v["path"].as_str(){std::path::PathBuf::from(path)}else{
+                let Some(path)=rfd::FileDialog::new().add_filter("Web交換ZIP",&["zip"]).pick_file()else{return Ok(Value::Null)};path
+            };
+            let inspected=crate::exchange::inspect_zip(&path,v["password"].as_str())?;
+            let summary=inspected.summary();
+            let mut a=self.0.lock().map_err(|e|e.to_string())?;
+            if a.busy{return Err("処理中です".into());}
+            a.store.as_ref().ok_or("プロジェクトを開いてください")?;
+            a.exchange=Some(inspected);return Ok(summary);
+        }
+        if action == "exchange_export" {
+            let project={let a=self.0.lock().map_err(|e|e.to_string())?;a.store.as_ref().ok_or("プロジェクトを開いてください")?.project.clone()};
+            let Some(path)=rfd::FileDialog::new().add_filter("Web交換ZIP",&["zip"]).set_file_name("台本.zip").save_file()else{return Ok(Value::Null)};
+            crate::exchange::export_script(&project,&string(&v,"source_id")?,&path,&string(&v,"exported_at")?)?;
+            return Ok(json!({"path":path}));
+        }
+        if action == "exchange_merge" {
+            let mut a=self.0.lock().map_err(|e|e.to_string())?;
+            if a.busy{return Err("処理中です".into());}
+            let exchange=a.exchange.take().ok_or("ZIPを選び直してください")?;
+            let result=(||{
+                if Some(exchange.token.as_str())!=v["token"].as_str(){return Err("ZIPが変わっています".into());}
+                let store=a.store.as_mut().ok_or("プロジェクトを開いてください")?;
+                if v["script_revision"].as_u64()!=Some(store.project.script_revision){return Err("台本が変わっています".into());}
+                let mappings: Vec<crate::exchange::LineMapping>=serde_json::from_value(v["mappings"].clone()).map_err(|e|format!("行対応が不正です: {e}"))?;
+                serde_json::to_value(crate::exchange::merge_audio(store,&exchange,&mappings)?).map_err(|e|e.to_string())
+            })();
+            if result.is_err(){a.exchange=Some(exchange);}return result;
+        }
+        if action == "script_draft" || action == "script_validate_draft" {
+            let a = self.0.lock().map_err(|e| e.to_string())?;
+            let store = a.store.as_ref().ok_or("プロジェクトを開いてください")?;
+            if v["project_id"].as_str().is_some_and(|id| id != store.project.id) { return Err("プロジェクトが変わりました".into()); }
+            let mut draft = store.project.clone();
+            crate::script_sources::update_draft(&mut draft, &v)?;
+            return Ok(json!({"generation":store.project.generation,"script_revision":store.project.script_revision}));
+        }
+        if action == "close_project" || action == "save_project" {
+            let mut a = self.0.lock().map_err(|e| e.to_string())?;
+            if a.busy || a.auto_asr_running || a.queue_stop.is_some() { return Err("処理が終わってから操作してください".into()); }
+            if action == "close_project" {
+                a.auto_asr_queue.clear();a.native_playback.close();a.store=None;a.exchange=None;a.media.clear();a.message.clear();
+            } else { a.store.as_mut().ok_or("プロジェクトを開いてください")?.save()?; }
+            return Ok(Value::Null);
+        }
+        if action == "download_take" {
+            let (root, take) = {
+                let a=self.0.lock().map_err(|e|e.to_string())?;
+                let store=a.store.as_ref().ok_or("プロジェクトを開いてください")?;
+                let s=store.project.segments.iter().find(|s|Some(s.id.as_str())==v["segment"].as_str()).ok_or("発話がありません")?;
+                (store.root.clone(),s.takes.iter().find(|t|Some(t.id.as_str())==v["take"].as_str()).ok_or("テイクがありません")?.clone())
+            };
+            let from=safe(&root,&take.file)?;
+            if hash_file(&from)?!=take.hash {return Err("音声が変更されています".into());}
+            if let Some(to)=rfd::FileDialog::new().add_filter("WAV",&["wav"]).set_file_name("テイク.wav").save_file(){
+                let parent=to.parent().ok_or("保存先が不正です")?.canonicalize().map_err(|e|e.to_string())?;
+                if parent.starts_with(root.canonicalize().map_err(|e|e.to_string())?) {return Err("プロジェクト外の保存先を選んでください".into());}
+                std::fs::copy(from,to).map_err(|e|e.to_string())?;
+            }
+            return Ok(Value::Null);
+        }
         if action == "ui_attach" {
             return Ok(json!({"recovering":crate::ui_session::attach(self)}));
         }
@@ -112,6 +195,7 @@ impl App {
             return crate::markdown::read_dropped_files(&paths.iter().map(|p|p.to_string_lossy().into_owned()).collect::<Vec<_>>());
         }
         if matches!(action, "export_blocks" | "preview_blocks") {
+            let v = if action == "export_blocks" {crate::export_settings::validate(&v)?} else {v};
             let (root, project) = {
                 let mut a = self.0.lock().map_err(|e| e.to_string())?;
                 if a.busy {
@@ -131,6 +215,12 @@ impl App {
             let mut a = self.0.lock().map_err(|e| e.to_string())?;
             a.busy = false;
             a.job.clear();
+            if action == "export_blocks" && result.is_ok() {
+                let store=a.store.as_mut().ok_or("プロジェクトを開いてください")?;
+                let previous=store.project.clone();
+                store.project.export_settings=crate::export_settings::validate(&v)?;
+                if let Err(error)=store.save(){store.project=previous;return Err(error);}
+            }
             a.message = result.as_ref().err().cloned().unwrap_or_default();
             return result;
         }
@@ -292,6 +382,7 @@ impl App {
                 } else {
                     Store::open_project_file(path.clone())?
                 };
+                a.native_playback.close();a.exchange=None;a.media.clear();
                 a.store = Some(store);
                 a.message = a
                     .project_location
@@ -483,7 +574,18 @@ impl App {
                 "recording_draft" => crate::script_sources::recording_draft(&mut store.project, &v)?,
                 "recording_feedback" => crate::script_sources::recording_feedback(&mut store.project, &v)?,
                 "script_draft" => crate::script_sources::update_draft(&mut store.project, &v)?,
-                "script_commit" => crate::script_sources::commit(&mut store.project, &v)?,
+                "script_commit" => {
+                    // 新規原稿も確定と同じトランザクションで登録する。
+                    crate::script_sources::update_draft(&mut store.project, &v)?;
+                    crate::script_sources::commit(&mut store.project, &v)?;
+                    if let Some(feedback)=v["feedback"].as_array(){
+                        for item in feedback {
+                            if let Some(s)=store.project.segments.iter_mut().find(|s|Some(s.id.as_str())==item["id"].as_str()) {
+                                if s.recording_draft.as_deref()==item["text"].as_str(){s.recording_draft=None;}
+                            }
+                        }
+                    }
+                },
                 "script_insert_empty" => crate::script_sources::insert_empty(&mut store.project, &v)?,
                 "script_rebind_legacy" => crate::script_sources::rebind_legacy(&mut store.project, &v)?,
                 "append" | "import_script" => {
@@ -748,7 +850,7 @@ impl App {
             return Err("処理中です".into());
         }
         let sid = string(&v, "segment")?;
-        let endpoint = string(&v, "endpoint")?;
+        let endpoint = a.machine_settings.settings.capture_endpoint.clone();
         let store = a.store.as_mut().ok_or("プロジェクトを開いてください")?;
         let tid = id();
         let file = format!("takes/{tid}/audio.wav");
@@ -870,6 +972,7 @@ impl App {
                             ));
                         }
                         let quality = !warnings.is_empty();
+                        if d.startup_discontinuity_count > 0 {warnings.push(format!("開始時の通知 {}回（継続中の不連続とは別）",d.startup_discontinuity_count));}
 
                         if t.peak >= 0.999 {
                             warnings.push("クリッピングの可能性".into());

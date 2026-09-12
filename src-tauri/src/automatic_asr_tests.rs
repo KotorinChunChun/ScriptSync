@@ -233,6 +233,7 @@ fn real_worker_saves_transcript_and_preserves_baseline() {
     store.project.segments.last_mut().unwrap().takes.push(take);
     store.save().unwrap();
     let app = App::default();
+    app.0.lock().unwrap().machine_settings.runtime_root = std::env::var("SCRIPTSYNC_ASR_RUNTIME_ROOT").map(std::path::PathBuf::from).expect("設定画面で導入したASRのパスをSCRIPTSYNC_ASR_RUNTIME_ROOTに指定してください");
     app.0.lock().unwrap().store = Some(store);
     app.enqueue_recording_asr(&sid, &tid).unwrap();
     let start = Instant::now();

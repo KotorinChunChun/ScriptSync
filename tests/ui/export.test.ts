@@ -35,6 +35,7 @@ async function mount(value = project("project-a")) {
     rpc,
     play,
     notice: vi.fn(),
+    confirm: undefined as undefined | ((message: string) => boolean | Promise<boolean>),
     player,
   };
   document.body.insertAdjacentHTML("beforeend", view.exportView(context));
@@ -103,7 +104,9 @@ describe("結合・出力ビュー", () => {
     document.querySelector<HTMLButtonElement>("[data-unit=section]")!.click();
     document.querySelector<HTMLButtonElement>("[data-boundary=h2]")!.click();
     await settle();
-    const save = rpc.mock.calls.filter(call => call[0] === "export_settings").at(-1)![1].settings;
+    expect(rpc.mock.calls.filter(call => call[0] === "export_settings")).toHaveLength(0);
+    document.querySelector<HTMLButtonElement>("#export-output")!.click();await settle();
+    const save = rpc.mock.calls.filter(call => call[0] === "export_blocks").at(-1)![1];
     expect(save.unit).toBe("custom");
     expect(save.boundaries).toEqual(["h3"]);
   });
@@ -129,7 +132,9 @@ describe("結合・出力ビュー", () => {
     expect(document.querySelector<HTMLInputElement>("[data-gap-value=normal]")!.value).toBe("1.7");
     await settle();
     const saves = rpc.mock.calls.filter(call => call[0] === "export_settings");
-    expect(saves.some(call => call[1].settings.blocks.h1.gaps.normal.mode === "default")).toBe(true);
+    expect(saves).toHaveLength(0);
+    document.querySelector<HTMLButtonElement>("#export-output")!.click();await settle();
+    expect(rpc.mock.calls.filter(call => call[0] === "export_blocks").at(-1)![1].blocks.h1.gaps.normal).toEqual({mode:"manual",value:1.7});
   });
 
   it("選択ブロック番号をプレビューRPCへ送る", async () => {
@@ -198,8 +203,95 @@ it('ファイル名を禁止文字除去と20文字制限で表示・保存す�
  const p=project('filename');p.segments[0].source_text='題名?'.repeat(20);await mount(p);
  expect(Array.from(document.querySelector<HTMLInputElement>('#export-name')!.value)).toHaveLength(20);
  const input=document.querySelector<HTMLInputElement>('#export-name')!;input.value='編集:*題名'+ '文'.repeat(30);input.dispatchEvent(new Event('change'));await settle();
- const saved=rpc.mock.calls.filter(c=>c[0]==='export_settings').at(-1)![1].settings.blocks.h1.name;expect(saved).not.toMatch(/[:*]/);expect(Array.from(saved)).toHaveLength(20);expect(document.querySelector<HTMLInputElement>('#export-name')!.value).toBe(saved);
+ expect(rpc.mock.calls.filter(c=>c[0]==='export_settings')).toHaveLength(0);document.querySelector<HTMLButtonElement>('#export-output')!.click();await settle();const saved=rpc.mock.calls.filter(c=>c[0]==='export_blocks').at(-1)![1].blocks.h1.name;expect(saved).not.toMatch(/[:*]/);expect(Array.from(saved)).toHaveLength(20);expect(document.querySelector<HTMLInputElement>('#export-name')!.value).toBe(saved);
 });
 it('無音時間は部・章・節・発話・先頭・末尾の順に表示する',async()=>{
  await mount();expect([...document.querySelectorAll<HTMLElement>('[data-global-gap]')].map(e=>e.dataset.globalGap)).toEqual(['part','chapter','section','normal','head','tail']);expect([...document.querySelectorAll<HTMLElement>('[data-gap-mode]')].map(e=>e.dataset.gapMode)).toEqual(['part','chapter','section','normal','head','tail']);expect(document.querySelector('.export-defaults h3')?.textContent).toContain('挿入する無音時間');
+});
+
+it('手動境界から自動へ変更する前に確認しキャンセルでは全境界を保持する',async()=>{
+ const context=await mount();context.confirm=vi.fn(async()=>false);
+ document.querySelector<HTMLButtonElement>('[data-unit=section]')!.click();
+ document.querySelector<HTMLButtonElement>('[data-boundary=h2]')!.click();
+ document.querySelector<HTMLButtonElement>('[data-unit=utterance]')!.click();await settle();
+ expect(context.confirm).toHaveBeenCalledOnce();
+ expect(document.querySelector('[data-unit=custom]')?.getAttribute('aria-pressed')).toBe('true');
+ expect(document.querySelector('[data-boundary=h2]')?.textContent).toBe('✂');
+ expect(document.querySelector('[data-boundary=h3]')?.textContent).toBe('🔗');
+ expect(rpc).not.toHaveBeenCalled();
+});
+
+it('確認待ちに自動分割を適用せず承認後に適用しCtrl+Zで手動境界を復元する',async()=>{
+ const context=await mount();let accept!:(value:boolean)=>void;
+ context.confirm=vi.fn(()=>new Promise<boolean>(resolve=>accept=resolve));
+ document.querySelector<HTMLButtonElement>('[data-unit=section]')!.click();
+ document.querySelector<HTMLButtonElement>('[data-boundary=h2]')!.click();
+ document.querySelector<HTMLButtonElement>('[data-unit=utterance]')!.click();
+ expect(document.querySelector('[data-unit=custom]')?.getAttribute('aria-pressed')).toBe('true');
+ expect(document.querySelector<HTMLButtonElement>('[data-unit=all]')!.disabled).toBe(true);
+ accept(true);await settle();
+ expect(document.querySelector('[data-unit=utterance]')?.getAttribute('aria-pressed')).toBe('true');
+ // 再描画後にボタンのフォーカスがbodyへ戻ってもCtrl+Zを使える。
+ document.body.dispatchEvent(new KeyboardEvent('keydown',{key:'z',ctrlKey:true,bubbles:true}));
+ expect(document.querySelector('[data-unit=custom]')?.getAttribute('aria-pressed')).toBe('true');
+ expect(document.querySelector('[data-boundary=h2]')?.textContent).toBe('✂');
+ expect(document.querySelector('[data-boundary=h3]')?.textContent).toBe('🔗');
+});
+
+it('自動から手動に切り替える際は表示中の境界を保ちボタンから元に戻せる',async()=>{
+ await mount();document.querySelector<HTMLButtonElement>('[data-unit=section]')!.click();
+ document.querySelector<HTMLButtonElement>('[data-unit=custom]')!.click();
+ expect(document.querySelector('[data-boundary=h3]')?.textContent).toBe('🔗');
+ document.querySelector<HTMLButtonElement>('#export-undo')!.click();
+ expect(document.querySelector('[data-unit=section]')?.getAttribute('aria-pressed')).toBe('true');
+ document.querySelector<HTMLButtonElement>('#export-undo')!.click();
+ expect(document.querySelector('[data-unit=all]')?.getAttribute('aria-pressed')).toBe('true');
+});
+
+it('入力欄のCtrl+Zは通常の文字編集に任せ分割設定を戻さない',async()=>{
+ await mount();document.querySelector<HTMLButtonElement>('[data-unit=section]')!.click();
+ const event=new KeyboardEvent('keydown',{key:'z',ctrlKey:true,bubbles:true,cancelable:true});
+ document.querySelector('#export-name')!.dispatchEvent(event);
+ expect(event.defaultPrevented).toBe(false);
+ expect(document.querySelector('[data-unit=section]')?.getAttribute('aria-pressed')).toBe('true');
+});
+
+it('設定を編集しても正本のオブジェクトを変更せず同じプロジェクトを開き直すと破棄する',async()=>{
+ const p=project('draft',{unit:'all',blocks:{h1:{name:'確定名'}}});await mount(p);
+ const input=document.querySelector<HTMLInputElement>('#export-name')!;input.value='未確定';input.dispatchEvent(new Event('change'));
+ expect(p.export_settings).toEqual({unit:'all',blocks:{h1:{name:'確定名'}}});
+ expect(document.querySelector('.export-draft-status')?.textContent).toContain('未出力');
+ view.resetExportDraft();await mount(p);
+ expect(document.querySelector<HTMLInputElement>('#export-name')!.value).toBe('確定名');
+ expect(document.querySelector<HTMLButtonElement>('#export-undo')!.disabled).toBe(true);
+});
+
+it('字幕の既定はVTTでなしを選べて音声形式と区別する',async()=>{
+ await mount();expect(document.querySelector<HTMLSelectElement>('#export-subtitle-format')!.value).toBe('vtt');
+ expect(document.querySelector('#export-format')!.parentElement!.textContent).toContain('音声形式');
+ const input=document.querySelector<HTMLSelectElement>('#export-subtitle-format')!;input.value='none';input.dispatchEvent(new Event('change'));
+ document.querySelector<HTMLButtonElement>('#export-output')!.click();await settle();
+ expect(rpc).toHaveBeenCalledWith('export_blocks',expect.objectContaining({subtitle_format:'none'}));
+ expect(document.querySelector('.export-draft-status')?.textContent).toBe('');
+});
+
+it('出力失敗時はドラフトと未出力表示を保持し成功した設定だけ開き直した際に残る',async()=>{
+ const p=project('output');const context=await mount(p);
+ const input=document.querySelector<HTMLSelectElement>('#export-format')!;input.value='wav';input.dispatchEvent(new Event('change'));
+ rpc.mockRejectedValueOnce(new Error('出力失敗'));document.querySelector<HTMLButtonElement>('#export-output')!.click();await settle();
+ expect(p.export_settings).toBeNull();expect(document.querySelector('.export-draft-status')?.textContent).toContain('未出力');
+ expect(context.notice).toHaveBeenCalledWith('Error: 出力失敗',true);
+ document.querySelector<HTMLButtonElement>('#export-output')!.click();await settle();
+ expect(p.export_settings).toMatchObject({format:'wav'});
+ view.resetExportDraft();await mount(p);expect(document.querySelector<HTMLSelectElement>('#export-format')!.value).toBe('wav');
+});
+
+it('確認待ちに閉じたプロジェクトの変更を新しいプロジェクトへ反映しない',async()=>{
+ const context=await mount();let accept!:(value:boolean)=>void;
+ context.confirm=vi.fn(()=>new Promise<boolean>(resolve=>accept=resolve));
+ document.querySelector<HTMLButtonElement>('[data-boundary=h2]')!.click();
+ document.querySelector<HTMLButtonElement>('[data-unit=utterance]')!.click();
+ view.resetExportDraft();await mount(project('other'));accept(true);await settle();
+ expect(document.querySelector('[data-unit=all]')?.getAttribute('aria-pressed')).toBe('true');
+ expect(document.querySelector('.export-draft-status')?.textContent).toBe('');
 });

@@ -1,4 +1,11 @@
+mod machine_settings;
+mod native_playback;
+mod cloud_upload;
+#[cfg(test)]
+mod v004_tests;
+mod asr_runtime;
 mod export_settings;
+mod exchange;
 mod project_location;
 mod project_open;
 mod project_rename;
@@ -51,7 +58,7 @@ async fn command(
     let result = tauri::async_runtime::spawn_blocking(move || {
         if matches!(
             action.as_str(),
-            "new" | "open" | "talk_inspect" | "import_script" | "import_audio" | "markdown_import"
+            "new" | "open" | "talk_inspect" | "import_script" | "import_audio" | "markdown_import" | "exchange_inspect" | "exchange_export" | "download_take"
         ) {
             std::thread::Builder::new()
                 .name("scriptsync-dialog".into())
@@ -72,6 +79,7 @@ async fn command(
             }
         }
     }
+    if result.is_ok() && title_action == "close_project" { let _ = window.set_title("読みあわせ (ScriptSync)"); }
     result
 }
 
@@ -130,6 +138,7 @@ pub fn run() {
                 .lock()
                 .unwrap()
                 .project_location = project_location::ProjectLocation::load(config);
+            application.state::<app::App>().0.lock().unwrap().machine_settings = machine_settings::MachineSettings::load(application.path().app_config_dir()?.join("machine-settings.json"), application.path().app_local_data_dir()?.join("asr"));
             let window = application
                 .get_webview_window("main")
                 .ok_or_else(|| std::io::Error::other("メインウィンドウが見つかりません"))?;

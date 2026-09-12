@@ -1,6 +1,6 @@
 [package]
 name = "scriptsync"
-version = "0.0.3"
+version = "0.0.4"
 description = "人間音声と合成音声の読みを照合する制作支援ツール"
 authors = ["amekoro"]
 edition = "2024"
@@ -23,7 +23,11 @@ hound = "3.5"
 rfd = "0.15"
 fs2 = "0.4"
 base64 = "0.22"
+zip = { version = "2", default-features = false, features = ["deflate", "aes-crypto"] }
+reqwest = { version = "0.12", default-features = false, features = ["blocking", "json", "rustls-tls", "multipart"] }
+pbkdf2 = "0.12"
 
 
 [target.'cfg(windows)'.dependencies]
+windows = { version = "0.62", features = ["Win32_Security_WinTrust", "Win32_Security_Cryptography", "Win32_Security_Cryptography_Catalog", "Win32_Security_Cryptography_Sip", "Win32_Foundation", "Win32_Storage_FileSystem", "Win32_UI_Shell", "Win32_UI_WindowsAndMessaging", "Win32_System_JobObjects", "Win32_System_Threading"] }
 windows-sys = { version = "0.61.2", features = ["Win32_Foundation", "Win32_UI_Input_KeyboardAndMouse", "Win32_UI_WindowsAndMessaging", "Win32_System_Threading"] }

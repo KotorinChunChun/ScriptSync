@@ -422,6 +422,14 @@ pub fn export_blocks(root: &Path, project: &Project, v: &Value) -> Result<Value>
     if format != "wav" && format != "flac" {
         return Err("出力形式はFLACまたはWAVです".into());
     }
+    let subtitle_format = match v.get("subtitle_format") {
+        None => "vtt",
+        Some(Value::String(value)) => value.as_str(),
+        _ => return Err("字幕ファイル出力形式が不正です".into()),
+    };
+    if subtitle_format != "vtt" && subtitle_format != "none" {
+        return Err("字幕ファイル出力形式はVTTまたはなしです".into());
+    }
     let b = boundaries(project, v)?;
     let gap = gaps(
         v.get("global_gaps")
@@ -456,24 +464,40 @@ pub fn export_blocks(root: &Path, project: &Project, v: &Value) -> Result<Value>
             write_wav(&path, &data, normalize)?
         };
         let subtitle_path = path.with_extension("vtt");
-        crate::storage::write_new(&subtitle_path, subtitles.as_bytes())?;
-        let subtitle_file = std::path::Path::new(&rel)
-            .with_extension("vtt")
-            .to_string_lossy()
-            .replace('\\', "/");
+        let (subtitle_file, subtitle_name, subtitle_hash) = if subtitle_format == "vtt" {
+            crate::storage::write_new(&subtitle_path, subtitles.as_bytes())?;
+            (
+                Some(
+                    std::path::Path::new(&rel)
+                        .with_extension("vtt")
+                        .to_string_lossy()
+                        .replace('\\', "/"),
+                ),
+                Some(
+                    subtitle_path
+                        .file_name()
+                        .unwrap()
+                        .to_string_lossy()
+                        .into_owned(),
+                ),
+                Some(hash_file(&subtitle_path)?),
+            )
+        } else {
+            (None, None, None)
+        };
         let frames = data.len() / CHANNELS;
         let full_text = utterances
             .iter()
             .filter_map(|u| u["text"].as_str())
             .collect::<Vec<_>>()
             .join("\n");
-        blocks.push(json!({"block_index":i,"slide_number":i+1,"audio_file":path.file_name().unwrap().to_string_lossy(),"subtitle_file":subtitle_path.file_name().unwrap().to_string_lossy(),"audio_hash":hash,"duration_frames":frames,"duration_seconds":frames as f64/RATE as f64,"sequence_start_frame":cumulative_frames,"sequence_end_frame":cumulative_frames+frames,"sequence_start_seconds":cumulative_frames as f64/RATE as f64,"sequence_end_seconds":(cumulative_frames+frames) as f64/RATE as f64,"utterance_start_seconds":utterances.first().map(|u|u["start_seconds"].clone()),"utterance_end_seconds":utterances.last().map(|u|u["end_seconds"].clone()),"text":full_text,"utterances":utterances}));
+        blocks.push(json!({"block_index":i,"slide_number":i+1,"audio_file":path.file_name().unwrap().to_string_lossy(),"subtitle_file":subtitle_name,"audio_hash":hash,"duration_frames":frames,"duration_seconds":frames as f64/RATE as f64,"sequence_start_frame":cumulative_frames,"sequence_end_frame":cumulative_frames+frames,"sequence_start_seconds":cumulative_frames as f64/RATE as f64,"sequence_end_seconds":(cumulative_frames+frames) as f64/RATE as f64,"utterance_start_seconds":utterances.first().map(|u|u["start_seconds"].clone()),"utterance_end_seconds":utterances.last().map(|u|u["end_seconds"].clone()),"text":full_text,"utterances":utterances}));
         cumulative_frames += frames;
-        files.push(json!({"subtitle_file":subtitle_file,"subtitle_hash":hash_file(&subtitle_path)?,"block":i,"range":{"start":start,"end":end},"file":rel,"hash":hash,"stem":stem(v,project,start,i),"name":format!("{}.{}",safe_name(&output_name),ext),"frames":data.len()/CHANNELS,"clipped_samples":clipped}));
+        files.push(json!({"subtitle_file":subtitle_file,"subtitle_hash":subtitle_hash,"block":i,"range":{"start":start,"end":end},"file":rel,"hash":hash,"stem":stem(v,project,start,i),"name":format!("{}.{}",safe_name(&output_name),ext),"frames":data.len()/CHANNELS,"clipped_samples":clipped}));
     }
     let block_map = json!({"schema":"scriptsync.block-map","schema_version":1,"export_id":export_id,"project_id":project.id,"generation":project.generation,"split_unit":v["unit"].as_str().unwrap_or("all"),"sample_rate":RATE,"channels":CHANNELS,"total_duration_frames":cumulative_frames,"total_duration_seconds":cumulative_frames as f64/RATE as f64,"blocks":blocks});
     json_new(&folder.join("block-map.json"), &block_map)?;
-    let manifest = json!({"block_map":"block-map.json","id":export_id,"format":format,"project":project.id,"generation":project.generation,"files":files});
+    let manifest = json!({"block_map":"block-map.json","id":export_id,"format":format,"subtitle_format":subtitle_format,"project":project.id,"generation":project.generation,"files":files});
     json_new(&folder.join("manifest.json"), &manifest)?;
     Ok(manifest)
 }
@@ -638,6 +662,43 @@ mod tests {
             "0001_script"
         );
         assert_eq!(prefix(&json!({"naming":"none"}), &p, 0, 8), "0009_");
+    }
+
+    #[test]
+    fn subtitle_none_writes_only_audio_and_keeps_timeline_metadata() {
+        let root = std::env::temp_dir().join(format!("scriptsync-no-subtitle-{}", id()));
+        std::fs::create_dir_all(&root).unwrap();
+        let path = root.join("input.wav");
+        write_wav(&path, &vec![0.1; 9600], false).unwrap();
+        let take = crate::app::take_from_file(&root, &path, "test".into()).unwrap();
+        let mut project = Project::new("字幕なし".into());
+        let mut segment = Segment::new("字幕なしの音声".into());
+        segment.selected = Some(take.id.clone());
+        segment.takes.push(take);
+        project.segments.push(segment);
+        for format in ["wav", "flac"] {
+            let options = json!({"format":format,"subtitle_format":"none"});
+            let manifest = export_blocks(&root, &project, &options).unwrap();
+            let output = safe(&root, manifest["files"][0]["file"].as_str().unwrap()).unwrap();
+            assert!(output.is_file());
+            assert!(!output.with_extension("vtt").exists());
+            assert_eq!(manifest["subtitle_format"], "none");
+            assert!(manifest["files"][0]["subtitle_file"].is_null());
+            assert!(manifest["files"][0]["subtitle_hash"].is_null());
+            let map: Value = serde_json::from_slice(
+                &std::fs::read(output.parent().unwrap().join("block-map.json")).unwrap(),
+            )
+            .unwrap();
+            assert!(map["blocks"][0]["subtitle_file"].is_null());
+            assert_eq!(map["blocks"][0]["text"], "字幕なしの音声");
+            assert_eq!(
+                map["blocks"][0]["utterances"][0]["segment_id"],
+                project.segments[0].id
+            );
+        }
+        assert!(export_blocks(&root, &project, &json!({"subtitle_format":"srt"})).is_err());
+        assert!(export_blocks(&root, &project, &json!({"subtitle_format":null})).is_err());
+        std::fs::remove_dir_all(root).unwrap();
     }
 
     #[test]

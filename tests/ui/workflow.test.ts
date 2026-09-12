@@ -1,3 +1,4 @@
+vi.mock("../../src/confirmAction",()=>({confirmAction:vi.fn(async()=>true)}));
 vi.mock("../../src/soundEffects",()=>({playCue:vi.fn(async()=>{})}));
 import { beforeEach, afterEach, describe, expect, it, vi } from "vitest";
 
@@ -406,3 +407,7 @@ it('自動認識の状態更新でも採用確認を閉じない',async()=>{
  document.querySelector('[data-quality-adopt]')!.dispatchEvent(new KeyboardEvent('keydown',{key:'F4',bubbles:true}));await settle();
  expect(api.invoke.mock.calls.filter(x=>x[1]?.action==='select')).toHaveLength(1);
 });
+
+it.each(['Enter','Delete'])('削除確認は番号と復元不可を示し%sで決定する',async(key)=>{await import('../../src/main');await settle();await tab('録音');action('削除');expect(document.querySelector('#delete-title')?.textContent).toBe('テイク1を削除しますか？');expect(document.querySelector('.delete-modal')?.textContent).toContain('復元できません');expect(document.activeElement?.id).toBe('delete-confirm');document.querySelector('#delete-confirm')!.dispatchEvent(new KeyboardEvent('keydown',{key,bubbles:true}));await settle();expect(api.invoke.mock.calls.filter(x=>x[1]?.action==='delete_take')).toHaveLength(1);});
+it('削除確認のEscapeは削除しない',async()=>{await import('../../src/main');await settle();await tab('録音');action('削除');document.querySelector('#delete-confirm')!.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true}));await settle();expect(document.querySelector('.delete-modal')).toBeNull();expect(api.invoke.mock.calls.some(x=>x[1]?.action==='delete_take')).toBe(false);});
+it('開いた画面は閉じるを表示し起動画面に戻る',async()=>{await import('../../src/main');await settle();expect(document.querySelector('[data-action=new]')).toBeNull();expect(document.querySelector('[data-action=open]')).toBeNull();const original=api.invoke.getMockImplementation()!;api.invoke.mockImplementation(async(cmd,args:any)=>{if(args.action==='close_project'){snapshot.project=null;snapshot.root=null;return null;}return original(cmd,args);});action('閉じる');await settle();expect(document.querySelector('.welcome [data-action=new]')).toBeTruthy();expect(document.querySelector('.welcome [data-action=open]')).toBeTruthy();});

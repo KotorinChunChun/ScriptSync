@@ -5,7 +5,7 @@ use crate::{
 };
 use serde_json::{Value, json};
 use std::{
-    process::{Command, Stdio},
+    process::Stdio,
     sync::{
         Arc,
         atomic::{AtomicBool, Ordering},
@@ -39,23 +39,17 @@ impl App {
         let run_id = id();
         let folder = safe(&store.root, &format!("asr/{run_id}"))?;
         std::fs::create_dir_all(&folder).map_err(|e| e.to_string())?;
-        let tools = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .parent()
-            .unwrap()
-            .join("tools/asr");
-        let python = tools.join("venv/Scripts/python.exe");
-        if !python.exists() {
-            return Err(
-                "ローカル認識の準備が必要です。dev/scripts/setup-asr.ps1を実行してください".into(),
-            );
-        }
+        let runtime_root = a.machine_settings.runtime_root.clone();
+        let settings = a.machine_settings.settings.clone();
+        let mut command = crate::asr_runtime::command(&runtime_root, &settings, &input)?;
+        let store = a.store.as_mut().ok_or("プロジェクトを開いてください")?;
         segment(&mut store.project,&sid)?.transcriptions.push(json!({"id":run_id,"file":file,"audio_hash":expected,"status":"running","started":now(),"needs_review":true}));
         store.save()?;
         let stop = Arc::new(AtomicBool::new(false));
         a.stop = Some(stop.clone());
         a.busy = true;
         a.job = "asr".into();
-        a.message = "ローカルで音声を認識しています。音声は外部送信しません".into();
+        a.message = if settings.asr_provider == "codex" { "Codex CLIからローカル認識ツールを実行します。認識結果はCodexへ送信されます" } else { "ローカルで音声を認識しています。音声は外部送信しません" }.into();
         let app = self.clone();
         std::thread::spawn(move || {
             let result = (|| -> Result<Value> {
@@ -63,11 +57,7 @@ impl App {
                     std::fs::File::create(folder.join("result.json")).map_err(|e| e.to_string())?;
                 let err =
                     std::fs::File::create(folder.join("stderr.txt")).map_err(|e| e.to_string())?;
-                let mut command = Command::new(python);
                 command
-                    .arg(tools.join("transcribe.py"))
-                    .arg("--audio")
-                    .arg(&input)
                     .stdout(Stdio::from(out))
                     .stderr(Stdio::from(err));
                 #[cfg(windows)]
@@ -76,6 +66,7 @@ impl App {
                     command.creation_flags(0x08000000);
                 }
                 let mut child = command.spawn().map_err(|e| e.to_string())?;
+                let _process_tree = crate::asr_runtime::ProcessTree::attach(&mut child)?;
                 let start = Instant::now();
                 loop {
                     if stop.load(Ordering::Acquire) || start.elapsed() > Duration::from_secs(600) {
