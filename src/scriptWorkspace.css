@@ -29,3 +29,20 @@
 .script-bottom .toolbar{flex-shrink:0}
 .navigation-layout:has(.script-workspace) #stage-extras{display:none}
 @media(max-width:1000px){.script-heading,.script-bottom{flex-wrap:wrap}.script-files,.script-editor,.script-review,.script-targets{padding:6px}.diff-decisions{flex-direction:column}}
+
+.script-pane-heading{display:flex;align-items:center;gap:4px;min-width:0;margin-bottom:8px;flex:none}
+.script-pane-heading h3{flex:1;min-width:0;white-space:nowrap;overflow:hidden;margin:0}
+.script-pane-heading button{flex:none;padding:2px 7px;min-width:28px;min-height:30px;font-size:20px}
+.script-source b{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;overflow-wrap:normal;flex:1}
+.script-source span{flex:none;font-size:12px}
+.script-files.collapsed .script-source-actions,.script-editor.collapsed textarea{display:none}
+.script-files.collapsed{padding:6px}
+.script-files.collapsed .script-source{gap:5px;padding:5px 3px}
+.script-files.collapsed .script-source b{flex:0 0 3em;text-overflow:clip}
+.script-editor.collapsed{padding:6px}
+.script-editor.collapsed .script-pane-heading{gap:0}
+.script-review-toolbar{display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;position:sticky;top:0;background:white;padding-bottom:8px;z-index:1}
+.script-review-toolbar .diff-count{font-size:16px;margin:0}
+.script-review-toolbar .script-review-all{margin:0;margin-left:auto;gap:6px}
+.script-review-all button{font-size:16px;min-height:36px;padding:6px 10px;color:#176b57;background:#fff;border:1px solid #176b57}
+.script-review-all button[aria-pressed=true]{background:#176b57;color:#fff}

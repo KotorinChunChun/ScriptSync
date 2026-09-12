@@ -28,6 +28,15 @@ it('source mode keeps per-file drafts, approvals, ordering, and committed baseli
  await import('../../src/main');await settle();
  expect(document.querySelectorAll('.script-columns>section')).toHaveLength(4);
  expect(document.querySelectorAll('.script-source')).toHaveLength(2);
+ expect([...document.querySelectorAll('.script-columns h3')].map(node=>node.textContent)).toEqual(['原稿を登録する','原稿を閲覧／編集する','差分を確認する','読み上げ対象を選択する']);
+ const before=document.querySelector<HTMLElement>('.script-columns')!.style.gridTemplateColumns;
+ document.querySelector<HTMLButtonElement>('[data-collapse-pane="0"]')!.click();
+ expect(document.querySelector('.script-files.collapsed .script-source span')?.textContent).toBe('確認済み');
+ document.querySelector<HTMLButtonElement>('[data-collapse-pane="1"]')!.click();
+ expect(document.querySelectorAll('.collapsed')).toHaveLength(2);
+ document.querySelector<HTMLButtonElement>('[data-collapse-pane="0"]')!.click();
+ document.querySelector<HTMLButtonElement>('[data-collapse-pane="1"]')!.click();
+ expect(document.querySelector<HTMLElement>('.script-columns')!.style.gridTemplateColumns).toBe(before);
  click('ファイルを登録');await settle();await vi.advanceTimersByTimeAsync(400);await settle();
  expect(document.querySelectorAll('.script-source')).toHaveLength(4);
  expect(document.querySelector('#markdown-source')?.textContent??document.querySelector<HTMLTextAreaElement>('#markdown-source')?.value).toBe('D1');
@@ -35,7 +44,10 @@ it('source mode keeps per-file drafts, approvals, ordering, and committed baseli
  expect(document.querySelectorAll('.diff-row button').length).toBeGreaterThan(0);
  click('すべて承認');await vi.advanceTimersByTimeAsync(150);await settle();
  expect(document.querySelector<HTMLButtonElement>('[data-action=script_commit]')!.disabled).toBe(true);
- click('すべて解除');await settle();expect(document.querySelector<HTMLButtonElement>('[data-action=script_commit]')!.disabled).toBe(true);
+ expect(document.querySelector('[data-action=script_approve_all]')?.getAttribute('aria-pressed')).toBe('true');
+ expect(document.querySelector('.script-review-toolbar .script-review-all')).toBeTruthy();
+ click('すべて解除');await settle();
+ expect(document.querySelector('[data-action=script_approve_all]')?.getAttribute('aria-pressed')).toBe('false');expect(document.querySelector<HTMLButtonElement>('[data-action=script_commit]')!.disabled).toBe(true);
  click('すべて承認');await vi.advanceTimersByTimeAsync(400);await settle();
  await vi.advanceTimersByTimeAsync(700);await settle();
  expect(document.querySelector<HTMLTextAreaElement>('#markdown-source')!.value).toBe('D2');
