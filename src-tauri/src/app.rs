@@ -915,7 +915,6 @@ impl App {
                     }
                 })
                 .map_err(|e| e.to_string());
-            let captured_ok = result.is_ok();
             if let Ok(mut state) = app.0.lock() {
                 state.job = "saving".into();
             }
@@ -944,21 +943,13 @@ impl App {
                     }
                     return Ok(());
                 }
-                if !captured_ok {
-                    remove_provisional_take(&mut store.project, &sid, &tid)?;
-                    // 保存済みの正常テイクと、失敗時に残った音声ファイルは保持する。
-                    let error=result.err().unwrap_or_else(|| "録音に失敗しました".into());
-                    // 録音中の原稿編集で保存された仮テイクも最新世代から除く。
-                    if let Err(save_error)=store.save(){return Err(format!("{error}\n失敗テイクの除外を保存できません：{save_error}"));}
-                    return Err(error);
-                }
+                let (report, duration, peak, hash) = recording_result_or_preserve(store, &sid, &tid, &path, result)?;
                 let t = segment(&mut store.project, &sid)?
                     .takes
                     .iter_mut()
                     .find(|t| t.id == tid)
                     .ok_or("テイクがありません")?;
-                match result {
-                    Ok((report, duration, peak, hash)) => {
+                {
                         t.duration = duration;
                         t.peak = peak;
                         t.hash = hash;
@@ -1007,12 +998,6 @@ impl App {
                             if quality { "要確認：" } else { "" },
                             warnings.join("\n")
                         );
-                    }
-                    Err(e) => {
-                        t.status = "failed".into();
-                        t.warning = format!("音声は保持されています。保存処理を確認してください：{e}");
-                        return Err(e);
-                    }
                 }
                 store.save()
             })();
@@ -1052,9 +1037,45 @@ fn remove_provisional_take(project: &mut Project, sid: &str, tid: &str) -> Resul
     Ok(())
 }
 
+/// 収録・後処理の失敗はテイク一覧へ残さず、実音声は復旧用に保持する。
+fn recording_result_or_preserve<T>(store: &mut Store, sid: &str, tid: &str, path: &std::path::Path, result: Result<T>) -> Result<T> {
+    match result {
+        Ok(value) => Ok(value),
+        Err(mut error) => {
+            if path.is_file() {
+                error.push_str(&format!("\n収録済み音声は復旧用に保持しています：{}", path.display()));
+            }
+            remove_provisional_take(&mut store.project, sid, tid)?;
+            // 録音中の原稿編集で保存された仮テイクも最新世代から除く。
+            if let Err(save_error)=store.save() {error.push_str(&format!("\n失敗テイクの除外を保存できません：{save_error}"));}
+            Err(error)
+        }
+    }
+}
+
 #[cfg(test)]
 mod recording_failure_tests {
     use super::*;
+    #[test]
+    fn postprocess_failure_removes_take_but_preserves_captured_audio() {
+        let root=std::env::temp_dir().join(format!("scriptsync-postprocess-failure-{}",id()));
+        let mut store=Store::open(root.clone(),true).unwrap();
+        let mut row=Segment::new("収録後処理の失敗試験".into());let sid=row.id.clone();let tid=id();
+        let file=format!("takes/{tid}/audio.wav");let path=safe(&root,&file).unwrap();
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        // 正常なPCM WAVだが、録音後処理が要求するFloat32ではないため確実に失敗する。
+        let mut writer=hound::WavWriter::create(&path,hound::WavSpec {channels:1,sample_rate:48000,bits_per_sample:16,sample_format:hound::SampleFormat::Int}).unwrap();
+        for sample in [0i16,100,0,-100] {writer.write_sample(sample).unwrap();}writer.finalize().unwrap();
+        let original_hash=hash_file(&path).unwrap();
+        row.takes.push(Take {id:tid.clone(),file,hash:String::new(),status:"recording".into(),duration:0.0,peak:0.0,warning:String::new(),created:now(),endpoint:"fixture".into(),script_text:row.text.clone(),trim_start:0.0,trim_end:0.0});
+        store.project.segments.push(row);store.save().unwrap();
+        let failed=audio::clean_recording(&path);assert!(failed.is_err());
+        let error=recording_result_or_preserve(&mut store,&sid,&tid,&path,failed).unwrap_err();
+        assert!(error.contains("復旧用に保持"));assert!(error.contains(&path.display().to_string()));
+        assert!(store.project.segments[0].takes.is_empty());assert_eq!(hash_file(&path).unwrap(),original_hash);
+        drop(store);let saved=Store::open(root.clone(),false).unwrap();assert!(saved.project.segments[0].takes.is_empty());
+        assert_eq!(hash_file(&path).unwrap(),original_hash);drop(saved);std::fs::remove_dir_all(root).unwrap();
+    }
     #[test]
     fn missing_default_microphone_reports_error_without_creating_take() {
         let app=App::default();
