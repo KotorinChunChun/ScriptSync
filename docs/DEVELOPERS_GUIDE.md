@@ -68,10 +68,12 @@ cargo test --manifest-path src-tauri/Cargo.toml --lib synthetic_asr_measurement 
 
 ## バージョンと文書更新
 
-要求は `dev/vX.Y.Z-req.md`、設計・実装結果は `dev/vX.Y.Z-imp.md`、進捗は `dev/vX.Y.Z-task.md` に日本語で記録します。次版へ進む際は旧版を `dev/history/` に残します。v0.0.2はdev/history/v0.0.2へ保存済みです。次版は未開始で、アプリ版は0.0.2を維持します。
+要求は `dev/vX.Y.Z-req.md`、設計・実装結果は `dev/vX.Y.Z-imp.md`、進捗は `dev/vX.Y.Z-task.md` に日本語で記録します。次版へ進む際は旧版を `dev/history/` に残します。v0.0.2はdev/history/v0.0.2へ保存済みです。v0.0.3は要件整理・設計中で、アプリ版は0.0.2を維持します。
 
 キー変更時は[キー定義](../dev/SHORTCUT_KEYS.md)、効果音変更時は[効果音定義](../dev/SOUND_EFFECTS.md)、画面操作変更時は利用者ガイドとサンプル手順も更新します。生成物、個人原稿・音声、認証情報、ユーザー提供の `dev/sample/` を文書整理のために追加・削除しないでください。
 
 ## CLI移行時の互換性確認
 
 実行パスの変更と通信契約の変更は別です。ユーザー指定によりplan形式識別子は `ttscli.speech-plan`、ログ出力先環境変数は `TTSCLI_LOG_DIR` に統一しています。コードと検証スクリプトへ反映済みです。新CLIとの実接続および設定省略時の動作は別途確認が必要です。Cargoのauthorsは作者の帰属情報でありCLIの名称ではありません。
+
+進行中のv0.0.3設計：[要求](../dev/v0.0.3-req.md)／[実装計画](../dev/v0.0.3-imp.md)。
