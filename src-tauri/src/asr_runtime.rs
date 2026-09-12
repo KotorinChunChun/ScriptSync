@@ -19,6 +19,18 @@ const PYTHON_URL: &str = "https://www.python.org/ftp/python/3.12.10/python-3.12.
 // 2026-09-12 Python公式HTTPS配布から取得し、実行ファイルのPSF署名も検証した固定配布物。
 const PYTHON_SHA256: &str = "4acbed6dd1c744b0376e3b1cf57ce906f9dc9e95e68824584c8099a63025a3c3";
 
+// CTranslate2はWindowsのverbatim接頭辞付きモデルパスを開けない。
+fn runtime_path(root: &Path) -> Result<std::path::PathBuf> {
+    let resolved=std::fs::canonicalize(root).map_err(|e| e.to_string())?;
+    #[cfg(windows)]
+    {
+        let text=resolved.to_string_lossy();
+        if let Some(unc)=text.strip_prefix(r"\\?\UNC\") { return Ok(format!(r"\\{unc}").into()); }
+        if let Some(local)=text.strip_prefix(r"\\?\") { return Ok(local.into()); }
+    }
+    Ok(resolved)
+}
+
 pub fn is_ready(root: &Path, model: &str) -> bool {
     !root.as_os_str().is_empty()
         && root.join("python/python.exe").is_file()
@@ -32,7 +44,7 @@ pub fn command(root: &Path, settings: &Settings, input: &Path) -> Result<Command
                 .into(),
         );
     }
-    let resolved = std::fs::canonicalize(root).map_err(|e| e.to_string())?;
+    let resolved = runtime_path(root)?;
     let mut command = adapter_command(&resolved);
     command
         .arg("--audio")
@@ -177,7 +189,7 @@ fn setup(app: &App, root: &Path, settings: &Settings) -> Result<()> {
         return Err("自動導入はWindows x64に対応しています".into());
     }
     std::fs::create_dir_all(root).map_err(|e| e.to_string())?;
-    let resolved = std::fs::canonicalize(root).map_err(|e| e.to_string())?;
+    let resolved = runtime_path(root)?;
     let root = resolved.as_path();
     let python = root.join("python/python.exe");
     if !python.is_file() {
@@ -456,6 +468,12 @@ mod tests {
         assert_eq!(args[3], root.join("transcribe.py").to_string_lossy());
         // Windowsのコマンドライン上限に十分な余白を保つ。
         assert!(args.iter().map(|s| s.encode_utf16().count()).sum::<usize>() < 16_000);
+    }
+    #[test]
+    fn runtime_path_is_absolute_and_not_verbatim() {
+        let path=runtime_path(&std::env::temp_dir()).unwrap();
+        assert!(path.is_absolute());
+        assert!(!path.to_string_lossy().starts_with(r"\\?\"));
     }
     #[test]
     fn unavailable_runtime_never_uses_development_checkout() {
