@@ -40,4 +40,7 @@ it('確定後は台本に残り、再編集で出力を無効化し、Codexは�
  expect(project.segments[0].recording_draft).toBe('発言の修正');expect(project.segments[0].transcriptions[0].raw).toBe('発言の誤字');
  button('improve_text').click();await settle();const original=document.querySelector<HTMLTextAreaElement>('#text')!;original.value='ユーザーの編集中';original.dispatchEvent(new Event('input'));
  resolveImprove({text:'上書き禁止'});await settle();expect(original.value).toBe('ユーザーの編集中');
+ project.segments[0].transcriptions=[];project.generation++;await vi.advanceTimersByTimeAsync(750);await settle();
+ button('recording_asr').click();await settle();
+ expect(api.invoke).toHaveBeenCalledWith('command',{action:'recording_asr',payload:{segment:'s',take:'t'}});
 },30000);

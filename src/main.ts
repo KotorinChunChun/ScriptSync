@@ -159,7 +159,7 @@ function bind(){const extension=document.getElementById("stop-extension") as HTM
   await refresh(true);selected=state.project?.segments.find(row=>!previous.has(row.id))?.id??selected;render();
  }catch(e){notice(String(e),true);}break;
  case"improve_text":await improveRecordingText();break;
- case"recording_asr":try{await rpc('automatic_asr',{segment:selected,take:b.dataset.take});await refresh(true);}catch(e){showTransientError('Whisperの文字起こしに失敗しました。設定画面の「Whisper」で導入状況を確認し、未導入の場合は導入してください。\n'+String(e));}break;
+ case"recording_asr":try{await rpc('recording_asr',{segment:selected,take:b.dataset.take});await refresh(true);}catch(e){showTransientError('Whisperの文字起こしに失敗しました。設定画面の「Whisper」で導入状況を確認し、未導入の場合は導入してください。\n'+String(e));}break;
  case"record":await startRecording();break;
  case"compare":player().pause();await act(action,sid);break;
  case"select":await adoptTake(b.dataset.id!);break;
