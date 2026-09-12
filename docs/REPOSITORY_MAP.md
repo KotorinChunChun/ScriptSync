@@ -74,3 +74,11 @@ v0.0.2完成版の実装を探すための目録です。全生成物の一覧�
 
 - [src/html.ts](../src/html.ts)：画面共通のHTML本文・引用符付き属性のエスケープ。
 - [src/models.ts](../src/models.ts)：UIで参照するテイク・発話・認識結果・スナップショットの型。保存形式の正本はRust側にある。
+
+## v0.0.3の変更箇所
+
+- src/scriptSources.ts：同名取込の下書き生成、行対応の候補と新規選択。
+- src/main.ts、src/scriptWorkspace.css：原稿名編集、削除予定、ペイン縮小、差分操作。
+- src/recordingArchives.ts：原稿・行のアーカイブ管理画面、試聴、確認付き完全消去。
+- src-tauri/src/script_sources.rs、domain.rs、storage.rs：保存形式5、原稿削除の確定と保持。
+- src-tauri/src/archive.rs：原稿・行の全世代消去と再試行。

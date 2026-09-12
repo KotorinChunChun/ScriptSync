@@ -1,6 +1,6 @@
 # 開発者ガイド
 
-対象は2026-09-12に終了したv0.0.2完成版です。現タスクの課題はユーザー確認済み・問題なしです。[実装記録](../dev/history/v0.0.2/v0.0.2-imp.md)で過去の自動検証と終了時のユーザー確認を区別してください。
+対象はv0.0.3です。[実装記録](../dev/v0.0.3-imp.md)で自動試験・ネイティブ操作確認・未確認範囲を確認してください。v0.0.2の終了記録はdev/history/v0.0.2に保存しています。
 
 ## 開発起動とビルド
 
@@ -68,7 +68,7 @@ cargo test --manifest-path src-tauri/Cargo.toml --lib synthetic_asr_measurement 
 
 ## バージョンと文書更新
 
-要求は `dev/vX.Y.Z-req.md`、設計・実装結果は `dev/vX.Y.Z-imp.md`、進捗は `dev/vX.Y.Z-task.md` に日本語で記録します。次版へ進む際は旧版を `dev/history/` に残します。v0.0.2はdev/history/v0.0.2へ保存済みです。v0.0.3は要件整理・設計中で、アプリ版は0.0.2を維持します。
+要求は `dev/vX.Y.Z-req.md`、設計・実装結果は `dev/vX.Y.Z-imp.md`、進捗は `dev/vX.Y.Z-task.md` に日本語で記録します。次版へ進む際は旧版を `dev/history/` に残します。v0.0.2はdev/history/v0.0.2へ保存済みです。v0.0.3の実装・検証は完了しています。アプリ版は0.0.3、保存形式は5です。
 
 キー変更時は[キー定義](../dev/SHORTCUT_KEYS.md)、効果音変更時は[効果音定義](../dev/SOUND_EFFECTS.md)、画面操作変更時は利用者ガイドとサンプル手順も更新します。生成物、個人原稿・音声、認証情報、ユーザー提供の `dev/sample/` を文書整理のために追加・削除しないでください。
 
@@ -76,4 +76,4 @@ cargo test --manifest-path src-tauri/Cargo.toml --lib synthetic_asr_measurement 
 
 実行パスの変更と通信契約の変更は別です。ユーザー指定によりplan形式識別子は `ttscli.speech-plan`、ログ出力先環境変数は `TTSCLI_LOG_DIR` に統一しています。コードと検証スクリプトへ反映済みです。新CLIとの実接続および設定省略時の動作は別途確認が必要です。Cargoのauthorsは作者の帰属情報でありCLIの名称ではありません。
 
-進行中のv0.0.3設計：[要求](../dev/v0.0.3-req.md)／[実装計画](../dev/v0.0.3-imp.md)。
+v0.0.3：[要求](../dev/v0.0.3-req.md)／[実装計画](../dev/v0.0.3-imp.md)。
