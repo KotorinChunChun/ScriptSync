@@ -121,12 +121,12 @@ describe("収録の状態遷移",()=>{
  });
 });
 
-it('録音操作と連続操作は左列の原稿パネルより前に配置する',async()=>{
+it('録音操作は左列、連続操作は前へ次への右に配置する',async()=>{
  await import('../../src/main');await settle();await tab('録音');
  const column=document.querySelector('.recording-script')!;
  expect(column.firstElementChild?.classList.contains('record-controls')).toBe(true);
- expect(document.querySelector('.utterance-heading #continuous-start')).toBeNull();
- expect(document.querySelector('.record-controls #continuous-start')).toBeTruthy();
+ expect(document.querySelector('.utterance-heading #continuous-start')).toBeTruthy();
+ expect(document.querySelector('.record-controls #continuous-start')).toBeNull();
  expect(document.querySelector('#recording-wave')).toBeTruthy();
  snapshot.recording_peaks=[.01,.3,.9];snapshot.elapsed=1234;
  await vi.advanceTimersByTimeAsync(700);await settle();

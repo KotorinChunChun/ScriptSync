@@ -34,9 +34,9 @@ it('確定後は台本に残り、再編集で出力を無効化し、Codexは�
  expect(document.querySelector('.recording-script>.record-controls')).not.toBeNull();
  expect(document.querySelector('.recording-original #text')).not.toBeNull();expect(document.querySelector('.recording-original [data-action=split]')).not.toBeNull();
  const startKey=new KeyboardEvent('keydown',{key:'F5',bubbles:true,cancelable:true});document.dispatchEvent(startKey);await settle();expect(startKey.defaultPrevented).toBe(true);expect(api.invoke).toHaveBeenCalledWith('continuous_hotkeys',{enabled:true});document.dispatchEvent(new KeyboardEvent('keydown',{key:'F6',bubbles:true,cancelable:true}));await settle();expect(api.invoke).toHaveBeenCalledWith('continuous_hotkeys',{enabled:false});
- expect(button('recording_asr').textContent).toBe('Whisperで文字起こし');
+ expect(document.querySelector('[data-action=recording_asr]')).toBeNull();expect(document.querySelector('.take-summary')?.textContent).toContain('発言の誤字');expect(document.querySelector('.recording-original [data-action=improve_text]')).not.toBeNull();
  expect(api.invoke.mock.calls.some(call=>(call[1] as any)?.action==='text_improve')).toBe(false);
- button('improve_text').click();await settle();resolveImprove({text:'発言の修正'});await settle();
+ button('improve_text').click();await settle();expect(api.invoke).toHaveBeenCalledWith('command',{action:'text_improve',payload:{text:'原稿'}});resolveImprove({text:'発言の修正'});await settle();
  expect(project.segments[0].recording_draft).toBe('発言の修正');expect(project.segments[0].transcriptions[0].raw).toBe('発言の誤字');
  button('improve_text').click();await settle();const original=document.querySelector<HTMLTextAreaElement>('#text')!;original.value='ユーザーの編集中';original.dispatchEvent(new Event('input'));
  resolveImprove({text:'上書き禁止'});await settle();expect(original.value).toBe('ユーザーの編集中');

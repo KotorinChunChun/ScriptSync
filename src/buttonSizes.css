@@ -36,3 +36,26 @@
 #app>header>.toolbar{grid-column:2;grid-row:1;order:initial;margin:0;justify-content:flex-end}
 #app>header>.statusbar{grid-column:1/-1;grid-row:2;order:initial;margin:0;padding:4px 0;background:transparent;min-width:0;max-width:none;width:100%}
 #app>header>.statusbar [data-action=save_project]{margin-left:auto}
+
+/* 最終画面確認の配置修正 */
+#app>header{display:flex;flex-wrap:nowrap;gap:12px}
+#app>header>.statusbar{width:auto;flex:1;justify-content:flex-end;gap:8px;padding:0}
+#app>header>.statusbar [data-action=save_project]{margin-left:0}
+#app>header #notice{min-width:0;overflow-wrap:anywhere}
+#app .welcome-options button{height:auto;min-height:88px;font-size:24px;padding:22px 32px}
+#app .take-column{margin:0;padding:12px;max-height:none}
+#app .take-summary{padding-right:0;display:flex;align-items:center;flex-wrap:wrap;gap:6px}
+#app .take-summary strong{flex-basis:100%}
+#app .take-annotation{align-self:start;align-items:center}
+#app .take-annotation .take-download{position:static;flex-shrink:0}
+#app .take-annotation .take-memo,#app .take-annotation select,#app .take-annotation .take-download{height:30px;min-height:30px;margin:0}
+#app .take-annotation .take-score{margin:0}
+#app .take-transcription{font-size:13px;white-space:pre-wrap}
+#app .utterance-heading .continuous-controls{display:inline-flex;padding:0;margin:0}
+
+#app .take-column .take-summary{grid-column:1/-1;display:block}
+#app .take-summary strong{display:flex;align-items:center;min-height:30px;padding-right:235px}
+#app .take-transcription-row{display:flex;align-items:center;gap:6px;flex-wrap:nowrap;min-width:0;margin-top:4px}
+#app .take-transcription-row>[data-take-duration],#app .take-transcription-row>button{flex-shrink:0}
+#app .take-transcription-row>.take-transcription{min-width:0;overflow-wrap:anywhere}
+#app .take-column .take-annotation{width:226px;justify-self:end}
