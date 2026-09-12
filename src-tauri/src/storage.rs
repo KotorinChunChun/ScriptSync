@@ -227,7 +227,7 @@ impl Store {
             return Err("ScriptSyncプロジェクトではありません".into());
         };
         if project.version != 1 && project.version != 2 && project.version != 3 && project.version != 4 && project.version != 5 {
-            return Err("未対応のプロジェクト版です".into());
+            return Err(format!("データ本体の形式{}には対応していません。このアプリはv{}で、対応する本体形式は1～5です。より新しいアプリで開いてください。元データは変換していません。", project.version, env!("CARGO_PKG_VERSION")));
         }
         validate_project(&root, &project)?;
         let mut s = Self {
@@ -373,7 +373,7 @@ impl Store {
         let project_file: ProjectFile = serde_json::from_slice(&bytes)
             .map_err(|e| format!("プロジェクトファイルを読めません: {e}"))?;
         if project_file.version != PROJECT_FILE_VERSION {
-            return Err("未対応のプロジェクトファイル版です".into());
+            return Err(format!("入口ファイルの形式{}には対応していません。このアプリはv{}で、対応する入口形式は{}です。入口のversionとデータ本体のversionは別です。最新アプリで開いてください。", project_file.version, env!("CARGO_PKG_VERSION"), PROJECT_FILE_VERSION));
         }
         let parent = path
             .parent()
@@ -585,6 +585,60 @@ mod tests {
         fs::write(root.join("project.json"), b"{}").unwrap();
         assert!(Store::open_project_file(root.join("project.json")).is_err());
         assert!(!root.join("project.scriptsync").exists());
+        fs::remove_dir_all(root).unwrap();
+    }
+}
+
+#[cfg(test)]
+mod legacy_compatibility_tests {
+    use super::*;
+    #[test]
+    fn entry_v1_opens_all_supported_data_versions_without_losing_audio_or_old_revisions() {
+        for version in 1..=5 {
+            let parent=std::env::temp_dir().join(id());
+            let entry=parent.join("旧版の原稿.scriptsync");
+            let mut store=Store::create_project_file(entry.clone()).unwrap();
+            let root=store.root.clone();
+            let wav=root.join("test.wav");
+            let mut writer=hound::WavWriter::create(&wav,hound::WavSpec{channels:1,sample_rate:48000,bits_per_sample:16,sample_format:hound::SampleFormat::Int}).unwrap();
+            for _ in 0..480 { writer.write_sample(123i16).unwrap(); } writer.finalize().unwrap();
+            let take=crate::app::take_from_file(&root,&wav,"fixture".into()).unwrap();
+            let mut segment=Segment::new("旧版の確認用本文".into());
+            segment.selected=Some(take.id.clone());segment.takes.push(take.clone());
+            let segment_id=segment.id.clone();
+            store.project.segments.push(segment);
+            let source_id=id();
+            if version>=4 {
+                store.project.script_sources.push(ScriptSource{id:source_id.clone(),name:"元の原稿.md".into(),kind:"markdown".into(),confirmed_text:"旧版の確認用本文".into(),draft_text:"旧版の確認用本文".into(),lines:crate::markdown::parse("旧版の確認用本文").unwrap(),draft_lines:vec![],blank_rows:vec![],approved_text:None});
+                store.project.segments[0].source_id=source_id.clone();
+            }
+            let mut old=serde_json::to_value(&store.project).unwrap();old["version"]=version.into();old["generation"]=(store.project.generation+1).into();
+            if version<4 { for key in ["script_sources","script_revision","archived_sources","export_settings"] { old.as_object_mut().unwrap().remove(key); } }
+            let revision=root.join(format!("revisions/{:020}.json",store.project.generation+1));
+            let old_bytes=serde_json::to_vec(&old).unwrap();fs::write(&revision,&old_bytes).unwrap();
+            drop(store);
+            // ユーザー提示と同じ、data_directoryがversionより先の入口形式。
+            let entry_bytes="{\"data_directory\":\"旧版の原稿.scriptsync.data\",\"version\":1}".as_bytes();
+            fs::write(&entry,entry_bytes).unwrap();
+            let opened=Store::open_project_file(entry.clone()).unwrap();
+            assert_eq!(opened.project.version,5);assert_eq!(opened.project.segments[0].id,segment_id);
+            assert_eq!(opened.project.segments[0].selected.as_deref(),Some(take.id.as_str()));
+            assert_eq!(hash_file(&root.join(&take.file)).unwrap(),take.hash);
+            assert_eq!(opened.project.script_sources.len(),1);
+            if version>=4 { assert_eq!(opened.project.script_sources[0].id,source_id); }
+            assert_eq!(fs::read(&revision).unwrap(),old_bytes);assert_eq!(fs::read(&entry).unwrap(),entry_bytes);
+            drop(opened);fs::remove_dir_all(parent).unwrap();
+        }
+    }
+    #[test]
+    fn unknown_data_version_reports_app_and_format_without_rewriting_saved_data() {
+        let root=std::env::temp_dir().join(id());let store=Store::open(root.clone(),true).unwrap();
+        let path=root.join(format!("revisions/{:020}.json",store.project.generation));
+        let mut json=serde_json::to_value(&store.project).unwrap();json["version"]=99.into();drop(store);
+        let bytes=serde_json::to_vec(&json).unwrap();fs::write(&path,&bytes).unwrap();
+        let error=Store::open(root.clone(),false).err().unwrap();
+        assert!(error.contains("本体の形式99"));assert!(error.contains(env!("CARGO_PKG_VERSION")));
+        assert_eq!(fs::read(path).unwrap(),bytes);assert_eq!(fs::read_dir(root.join("revisions")).unwrap().count(),1);
         fs::remove_dir_all(root).unwrap();
     }
 }

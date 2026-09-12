@@ -39,12 +39,12 @@ try {
     }
     $manifest = @"
 <?xml version="1.0" encoding="utf-8"?>
-<Package xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10" xmlns:uap="http://schemas.microsoft.com/appx/manifest/uap/windows10" xmlns:rescap="http://schemas.microsoft.com/appx/manifest/foundation/windows10/restrictedcapabilities" IgnorableNamespaces="uap rescap">
+<Package xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10" xmlns:uap="http://schemas.microsoft.com/appx/manifest/uap/windows10" xmlns:rescap="http://schemas.microsoft.com/appx/manifest/foundation/windows10/restrictedcapabilities" xmlns:uap3="http://schemas.microsoft.com/appx/manifest/uap/windows10/3" IgnorableNamespaces="uap rescap uap3">
   <Identity Name="jp.kotorinchunchun.scriptsync" Publisher="CN=KotorinChunChun" Version="$version" ProcessorArchitecture="x64" />
   <Properties><DisplayName>読みあわせ (ScriptSync)</DisplayName><PublisherDisplayName>KotorinChunChun</PublisherDisplayName><Description>発話別録音と台本管理</Description><Logo>Assets\StoreLogo.png</Logo></Properties>
   <Dependencies><TargetDeviceFamily Name="Windows.Desktop" MinVersion="10.0.19041.0" MaxVersionTested="10.0.26100.0" /></Dependencies>
   <Resources><Resource Language="ja-jp" /></Resources>
-  <Applications><Application Id="ScriptSync" Executable="scriptsync.exe" EntryPoint="Windows.FullTrustApplication"><uap:VisualElements DisplayName="読みあわせ (ScriptSync)" Description="発話別録音と台本管理" BackgroundColor="transparent" Square150x150Logo="Assets\Square150x150Logo.png" Square44x44Logo="Assets\Square44x44Logo.png" /></Application></Applications>
+  <Applications><Application Id="ScriptSync" Executable="scriptsync.exe" EntryPoint="Windows.FullTrustApplication"><uap:VisualElements DisplayName="読みあわせ (ScriptSync)" Description="発話別録音と台本管理" BackgroundColor="transparent" Square150x150Logo="Assets\Square150x150Logo.png" Square44x44Logo="Assets\Square44x44Logo.png" /><Extensions><uap:Extension Category="windows.fileTypeAssociation" EntryPoint="Windows.FullTrustApplication"><uap3:FileTypeAssociation Name="scriptsync" Parameters="&quot;%1&quot;"><uap:SupportedFileTypes><uap:FileType>.scriptsync</uap:FileType></uap:SupportedFileTypes></uap3:FileTypeAssociation></uap:Extension></Extensions></Application></Applications>
   <Capabilities><rescap:Capability Name="runFullTrust" /><DeviceCapability Name="microphone" /></Capabilities>
 </Package>
 "@

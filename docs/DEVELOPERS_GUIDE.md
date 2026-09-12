@@ -81,12 +81,8 @@ cargo test --manifest-path src-tauri/Cargo.toml --lib synthetic_asr_measurement 
 v0.0.3：[要求](../dev/history/v0.0.3/v0.0.3-req.md)／[実装計画](../dev/history/v0.0.3/v0.0.3-imp.md)。
 
 
-### Windowsインストーラー生成
+### Windows配布は署名済みMSIX
 
-NSIS形式は次のコマンドで生成する。
+標準コマンドは `npm run release:msix`。リリースEXEをビルドし、既存共通証明書でMSIXを署名・検証する。TauriのNSIS/MSI自動生成は無効化した。`--no-bundle`によるEXEは中間成果物で、配布完了の代わりにしない。
 
-```powershell
-npm run tauri build -- --bundles nsis
-```
-
-出力は `src-tauri/target/release/bundle/nsis/`。v0.0.3の検証ではNSIS生成に成功し、MSIはWiX light実行に失敗した。.scriptsync関連付けはインストーラーに含むが、生成成功とインストール後の関連付け動作確認は区別する。
+詳細は[MSIX作成手順](MSIX.md)。インストール・証明書の信頼登録・公開は作成と区別する。
