@@ -46,10 +46,7 @@ pub fn command(root: &Path, settings: &Settings, input: &Path) -> Result<Command
         .arg("--model")
         .arg(&settings.asr_model)
         .arg("--provider")
-        .arg(&settings.asr_provider);
-    if !settings.codex_path.is_empty() {
-        command.arg("--codex").arg(&settings.codex_path);
-    }
+        .arg("local");
     command.current_dir(root).env("PYTHONUTF8", "1");
     hide(&mut command);
     Ok(command)

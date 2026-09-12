@@ -130,6 +130,72 @@ pub fn inspect_zip(path: &Path, password: Option<&str>) -> Result<ValidatedExcha
     Ok(ValidatedExchange { token: id(), manifest, audio: files })
 }
 
+/// 出力は現在の確定台本に限る。録音画面の修正も確定待ちとして扱う。
+pub fn script_fingerprint(project: &Project) -> String {
+    let sources: Vec<_> = project.script_sources.iter().map(|source| {
+        let rows: Vec<_> = source.lines.iter().map(|line| {
+            let choice = source.draft_lines.iter().find(|c|c["line"].as_u64()==Some(line.line as u64));
+            json!([line.line,choice.and_then(|c|c["enabled"].as_bool()).unwrap_or(line.enabled),
+                choice.and_then(|c|c["reading_order"].as_u64()).unwrap_or(line.line as u64),
+                choice.and_then(|c|c["previous_id"].as_str()),
+                choice.and_then(|c|c["force_new"].as_bool()).unwrap_or(false),
+                choice.and_then(|c|c["keep"].as_bool()).unwrap_or(false)])
+        }).collect();
+        json!([source.id,source.name,source.kind,source.draft_text,rows])
+    }).collect();
+    let segments: Vec<_> = project.segments.iter().map(|s|json!([s.id,s.source_id,s.source_line,s.text,s.skip])).collect();
+    crate::storage::hash_bytes(json!([sources,segments,project.pending_source_deletions]).to_string().as_bytes())
+}
+pub fn ensure_export_ready(project: &Project, source_id: &str) -> Result<()> {
+    if project.script_revision == 0 || !project.pending_source_deletions.is_empty()
+        || project.segments.iter().any(|s| s.recording_draft.as_ref().is_some_and(|draft| draft != &s.text)) {
+        return Err("台本を確定してから出力してください".into());
+    }
+    if project.script_export_fingerprint.as_ref().is_some_and(|fingerprint| fingerprint != &script_fingerprint(project)) {
+        return Err("変更した台本を再確定してから出力してください".into());
+    }
+    for source in &project.script_sources {
+        if source.draft_text != source.confirmed_text {
+            return Err("変更した原稿を再確定してから出力してください".into());
+        }
+        let mut ordered = Vec::new();
+        for line in &source.lines {
+            let choice = source.draft_lines.iter().find(|c| c["line"].as_u64() == Some(line.line as u64));
+            let enabled = choice.and_then(|c| c["enabled"].as_bool()).unwrap_or(line.enabled);
+            if enabled != line.enabled { return Err("読み上げ対象を再確定してください".into()); }
+            if enabled && !line.text.trim().is_empty() {
+                ordered.push((choice.and_then(|c| c["reading_order"].as_u64()).unwrap_or(line.line as u64),line.line));
+            }
+        }
+        ordered.sort();
+        let expected: Vec<_> = ordered.into_iter().map(|(_,line)|line).collect();
+        let actual: Vec<_> = project.segments.iter().filter(|s| s.source_id == source.id && !s.skip && !s.text.trim().is_empty())
+            .filter_map(|s| s.source_line).collect();
+        if actual != expected { return Err("読み上げ順を再確定してください".into()); }
+        if project.segments.iter().filter(|s| s.source_id == source.id && !s.text.trim().is_empty())
+            .any(|s| source.lines.iter().find(|line| Some(line.line)==s.source_line).is_none_or(|line| line.text!=s.text)) {
+            return Err("録音原稿を再確定してください".into());
+        }
+    }
+    let source = project.script_sources.iter().find(|s| s.id == source_id).ok_or("出力する原稿がありません")?;
+    if source.confirmed_text.trim().is_empty() || !project.segments.iter().any(|s|s.source_id==source_id && !s.skip && !s.text.trim().is_empty()) {
+        return Err("確定済みの読み上げ対象がありません".into());
+    }
+    Ok(())
+}
+pub fn ready_source_ids(project: &Project) -> Vec<String> {
+    project.script_sources.iter().filter(|s|ensure_export_ready(project,&s.id).is_ok()).map(|s|s.id.clone()).collect()
+}
+pub fn validate_export_request(project: &Project, value: &Value) -> Result<()> {
+    if value["project_id"].as_str().is_some_and(|id| id != project.id)
+        || value["base_generation"].as_u64().is_some_and(|generation|generation != project.generation)
+        || value["base_revision"].as_u64().is_some_and(|revision|revision != project.script_revision) {
+        return Err("台本が更新されています。画面を開き直して出力してください".into());
+    }
+    let source_id = value["source_id"].as_str().ok_or("出力する原稿がありません")?;
+    ensure_export_ready(project, source_id)
+}
+
 pub fn export_script(project: &Project, source_id: &str, path: &Path, exported_at: &str) -> Result<()> {
     let source = project.script_sources.iter().find(|source| source.id == source_id).ok_or("出力する台本がありません")?;
     let lines: Vec<_> = project.segments.iter().filter(|segment| segment.source_id == source_id && !segment.skip && !segment.text.trim().is_empty())

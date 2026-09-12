@@ -1,6 +1,6 @@
 //! Windowsの選択済み再生デバイスへ、既存録音基盤を通して試聴する。
 use crate::{audio, domain::Result, storage::{hash_file, safe}};
-use audio_mixer_backend::{audio::buffer::AudioRingBuffer, windows::{devices::{resolve_endpoint_id, DeviceDirection, DEFAULT_CONSOLE_ENDPOINT}, wasapi_render::{start_render, RenderHandle}}};
+use audio_mixer_backend::{audio::buffer::AudioRingBuffer, windows::{devices::{resolve_endpoint_id, list_devices, DeviceDirection, DEFAULT_CONSOLE_ENDPOINT}, wasapi_render::{start_render, RenderHandle}}};
 use serde::Serialize;
 use std::{path::Path, sync::{Arc, atomic::{AtomicBool, AtomicUsize, AtomicU32, Ordering}}, thread::{self, JoinHandle}, time::Duration};
 
@@ -31,6 +31,23 @@ impl Drop for Active {
 #[derive(Default)]
 pub struct NativePlayback { loaded: Option<Loaded>, active: Option<Active>, error: Option<String> }
 
+/// 空設定は開始時のWindows既定を解決する。明示指定を別機器へ切り替えない。
+pub fn resolve_selected_endpoint(endpoint: &str, direction: DeviceDirection) -> Result<String> {
+    resolve_selected_with(endpoint, direction, |selector, direction| {
+        resolve_endpoint_id(selector,direction).map_err(|e|e.to_string())
+    }, |id, direction| {
+        let devices=list_devices(direction).map_err(|e|e.to_string())?;
+        if devices.iter().any(|device|device.endpoint_id==id) {Ok(())}
+        else {Err("指定された音声デバイスが見つかりません。設定を確認してください".into())}
+    })
+}
+fn resolve_selected_with(endpoint: &str, direction: DeviceDirection,
+    resolve: impl FnOnce(&str, DeviceDirection)->Result<String>,
+    validate: impl FnOnce(&str, DeviceDirection)->Result<()>) -> Result<String> {
+    let id=resolve(if endpoint.is_empty(){DEFAULT_CONSOLE_ENDPOINT}else{endpoint},direction)?;
+    validate(&id,direction)?;
+    Ok(id)
+}
 fn sample_position(seconds: f64, duration: f64) -> Result<usize> {
     if !seconds.is_finite() || seconds < 0.0 || seconds > duration { return Err("試聴位置が音声の範囲外です".into()); }
     Ok((seconds * 48000.0).floor() as usize * 2)
@@ -44,9 +61,19 @@ impl NativePlayback {
         let begin=sample_position(start,duration)?;
         let finish=sample_position(end.unwrap_or(duration),duration)?.min(samples.len());
         if begin>=finish { return Err("試聴区間は開始より終了を後にしてください".into()); }
-        let resolved=resolve_endpoint_id(if endpoint.is_empty(){DEFAULT_CONSOLE_ENDPOINT}else{endpoint},DeviceDirection::Render).map_err(|e|e.to_string())?;
+        let resolved=resolve_selected_endpoint(endpoint,DeviceDirection::Render)?;
         self.stop();
         self.loaded=Some(Loaded {samples:Arc::new(samples),gain:Arc::new(AtomicU32::new(1.0f32.to_bits())),file:file.into(),endpoint:resolved,position:begin,end:finish});
+        self.resume()
+    }
+    pub fn play_samples(&mut self, samples: Vec<f32>, endpoint: &str, volume: f64) -> Result<PlaybackSnapshot> {
+        if samples.is_empty() || samples.len()>96000*5 || samples.len()%2!=0 || samples.iter().any(|v|!v.is_finite() || v.abs()>1.0) {
+            return Err("効果音データが不正です".into());
+        }
+        if !volume.is_finite() || !(0.0..=1.0).contains(&volume) {return Err("効果音の音量が不正です".into());}
+        let endpoint=resolve_selected_endpoint(endpoint,DeviceDirection::Render)?;
+        let end=samples.len();self.close();
+        self.loaded=Some(Loaded {samples:Arc::new(samples),gain:Arc::new(AtomicU32::new((volume as f32).to_bits())),file:"cue".into(),endpoint,position:0,end});
         self.resume()
     }
     pub fn resume(&mut self) -> Result<PlaybackSnapshot> {
@@ -121,6 +148,28 @@ impl NativePlayback {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn selected_endpoint_preserves_direction_and_never_falls_back() {
+        for direction in [DeviceDirection::Capture,DeviceDirection::Render] {
+            let resolved=resolve_selected_with("",direction,|selector,actual|{
+                assert_eq!(selector,DEFAULT_CONSOLE_ENDPOINT);assert_eq!(actual,direction);Ok("current-device".into())
+            },|id,actual|{assert_eq!(id,"current-device");assert_eq!(actual,direction);Ok(())}).unwrap();
+            assert_eq!(resolved,"current-device");
+            let explicit=resolve_selected_with("chosen-device",direction,|selector,actual|{
+                assert_eq!(selector,"chosen-device");assert_eq!(actual,direction);Ok(selector.into())
+            },|id,_|{assert_eq!(id,"chosen-device");Err("missing".into())});
+            assert_eq!(explicit.unwrap_err(),"missing");
+            let missing_default=resolve_selected_with("",direction,|_,_|Err("no default".into()),|_,_|panic!("unexpected validation"));
+            assert_eq!(missing_default.unwrap_err(),"no default");
+        }
+    }
+    #[test]
+    fn malformed_cue_does_not_replace_loaded_main_audio() {
+        let mut player=NativePlayback::default();
+        assert!(player.play_samples(vec![f32::NAN,0.0],"",0.2).is_err());
+        assert!(player.play_samples(vec![0.0,0.0],"",2.0).is_err());
+        assert!(player.loaded.is_none());
+    }
     #[test]
     fn seek_bounds_and_stereo_alignment() {
         assert_eq!(sample_position(0.25,1.0).unwrap(),24000);

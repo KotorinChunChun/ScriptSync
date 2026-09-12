@@ -11,6 +11,8 @@ use std::sync::{
 
 #[derive(Default)]
 pub struct Inner {
+    pub cue_playback: crate::native_playback::NativePlayback,
+    pub recording_error: Option<String>,
     pub native_playback: crate::native_playback::NativePlayback,
     pub machine_settings: crate::machine_settings::MachineSettings,
     pub exchange: Option<crate::exchange::ValidatedExchange>,
@@ -81,14 +83,21 @@ impl App {
     pub fn snapshot(&self) -> Result<Value> {
         let a = self.0.lock().map_err(|e| e.to_string())?;
         Ok(
-            json!({"project":a.store.as_ref().map(|s|&s.project),"root":a.store.as_ref().map(|s|s.root.to_string_lossy()),"busy":a.busy||a.queue_stop.is_some(),"job":a.job,"message":a.message,"peak":a.peak,"elapsed":a.elapsed,"recording_peaks":a.recording_peaks,"stop_scheduled":a.stop_scheduled}),
+            json!({"project":a.store.as_ref().map(|s|&s.project),"root":a.store.as_ref().map(|s|s.root.to_string_lossy()),"busy":a.busy||a.queue_stop.is_some(),"job":a.job,"message":a.message,"peak":a.peak,"elapsed":a.elapsed,"recording_peaks":a.recording_peaks,"stop_scheduled":a.stop_scheduled,"recording_error":a.recording_error,"script_export_ready_source_ids":a.store.as_ref().map(|s|crate::exchange::ready_source_ids(&s.project)).unwrap_or_default()}),
         )
     }
     pub fn dispatch(&self, action: &str, v: Value) -> Result<Value> {
+        if let Some(result)=crate::text_improvement::dispatch(self,action,&v){return result;}
         if let Some(result)=crate::cloud_upload::dispatch(self,action,&v){return result;}
         if action.starts_with("playback_") {
             let mut a=self.0.lock().map_err(|e|e.to_string())?;
             let result=match action {
+                "playback_cue"=>{
+                    let endpoint=a.machine_settings.settings.render_endpoint.clone();
+                    let samples: Vec<f32>=serde_json::from_value(v["samples"].clone()).map_err(|e|e.to_string())?;
+                    a.cue_playback.play_samples(samples,&endpoint,v["volume"].as_f64().unwrap_or(0.2))?
+                },
+                "playback_cue_state"=>a.cue_playback.snapshot(),
                 "playback_play"=>{
                     let root=a.store.as_ref().ok_or("プロジェクトを開いてください")?.root.clone();
                     let endpoint=a.machine_settings.settings.render_endpoint.clone();
@@ -115,7 +124,7 @@ impl App {
             a.exchange=Some(inspected);return Ok(summary);
         }
         if action == "exchange_export" {
-            let project={let a=self.0.lock().map_err(|e|e.to_string())?;a.store.as_ref().ok_or("プロジェクトを開いてください")?.project.clone()};
+            let project={let a=self.0.lock().map_err(|e|e.to_string())?;let project=&a.store.as_ref().ok_or("プロジェクトを開いてください")?.project;crate::exchange::validate_export_request(project,&v)?;project.clone()};
             let Some(path)=rfd::FileDialog::new().add_filter("Web交換ZIP",&["zip"]).set_file_name("台本.zip").save_file()else{return Ok(Value::Null)};
             crate::exchange::export_script(&project,&string(&v,"source_id")?,&path,&string(&v,"exported_at")?)?;
             return Ok(json!({"path":path}));
@@ -145,7 +154,7 @@ impl App {
             let mut a = self.0.lock().map_err(|e| e.to_string())?;
             if a.busy || a.auto_asr_running || a.queue_stop.is_some() { return Err("処理が終わってから操作してください".into()); }
             if action == "close_project" {
-                a.auto_asr_queue.clear();a.native_playback.close();a.store=None;a.exchange=None;a.media.clear();a.message.clear();
+                a.auto_asr_queue.clear();a.native_playback.close();a.cue_playback.close();a.recording_error=None;a.store=None;a.exchange=None;a.media.clear();a.message.clear();
             } else { a.store.as_mut().ok_or("プロジェクトを開いてください")?.save()?; }
             return Ok(Value::Null);
         }
@@ -383,7 +392,7 @@ impl App {
                 } else {
                     Store::open_project_file(path.clone())?
                 };
-                a.native_playback.close();a.exchange=None;a.media.clear();
+                a.native_playback.close();a.cue_playback.close();a.recording_error=None;a.exchange=None;a.media.clear();
                 a.store = Some(store);
                 a.message = a
                     .project_location
@@ -846,12 +855,19 @@ impl App {
         Ok(if matches!(action,"recording_feedback"|"recording_draft"|"script_draft"|"script_commit"|"script_insert_empty"|"script_rebind_legacy") {saved} else {Value::Null})
     }
     fn record(&self, v: Value) -> Result<Value> {
+        self.record_with_resolver(v, |endpoint|crate::native_playback::resolve_selected_endpoint(endpoint, DeviceDirection::Capture))
+    }
+    fn record_with_resolver(&self, v: Value, resolve: impl FnOnce(&str)->Result<String>) -> Result<Value> {
         let mut a = self.0.lock().map_err(|e| e.to_string())?;
         if a.busy {
             return Err("処理中です".into());
         }
         let sid = string(&v, "segment")?;
-        let endpoint = a.machine_settings.settings.capture_endpoint.clone();
+        a.recording_error = None;
+        let endpoint = match resolve(&a.machine_settings.settings.capture_endpoint) {
+            Ok(endpoint) => endpoint,
+            Err(error) => {a.recording_error=Some(error.clone());return Err(error);}
+        };
         let store = a.store.as_mut().ok_or("プロジェクトを開いてください")?;
         let tid = id();
         let file = format!("takes/{tid}/audio.wav");
@@ -872,7 +888,7 @@ impl App {
             created: now(),
             endpoint: endpoint.clone(),
         });
-        store.save()?;
+        // 仮テイクはメモリー内だけに置き、録音成功時に初めて保存する。
         let stop = Arc::new(AtomicBool::new(false));
         let cancel = Arc::new(AtomicBool::new(false));
         a.stop = Some(stop.clone());
@@ -898,11 +914,8 @@ impl App {
                         a.message = "録音中".into();
                     }
                 })
-                .map_err(|e| e.to_string())
-                .and_then(|report| {
-                    json_new(&safe(&root, &format!("takes/{tid}/capture.json"))?, &report)?;
-                    Ok(report)
-                });
+                .map_err(|e| e.to_string());
+            let captured_ok = result.is_ok();
             if let Ok(mut state) = app.0.lock() {
                 state.job = "saving".into();
             }
@@ -911,6 +924,7 @@ impl App {
                 if cancel.load(Ordering::Acquire) {
                     return Ok((report, 0.0, 0.0, String::new()));
                 }
+                json_new(&safe(&root, &format!("takes/{tid}/capture.json"))?, &report)?;
                 let (duration, peak) = audio::clean_recording(&path)?;
                 let hash = hash_file(&path)?;
                 Ok((report, duration, peak, hash))
@@ -929,6 +943,14 @@ impl App {
                         let _ = std::fs::remove_dir_all(folder);
                     }
                     return Ok(());
+                }
+                if !captured_ok {
+                    remove_provisional_take(&mut store.project, &sid, &tid)?;
+                    // 保存済みの正常テイクと、失敗時に残った音声ファイルは保持する。
+                    let error=result.err().unwrap_or_else(|| "録音に失敗しました".into());
+                    // 録音中の原稿編集で保存された仮テイクも最新世代から除く。
+                    if let Err(save_error)=store.save(){return Err(format!("{error}\n失敗テイクの除外を保存できません：{save_error}"));}
+                    return Err(error);
                 }
                 let t = segment(&mut store.project, &sid)?
                     .takes
@@ -988,7 +1010,8 @@ impl App {
                     }
                     Err(e) => {
                         t.status = "failed".into();
-                        t.warning = e;
+                        t.warning = format!("音声は保持されています。保存処理を確認してください：{e}");
+                        return Err(e);
                     }
                 }
                 store.save()
@@ -1004,6 +1027,7 @@ impl App {
             a.cancel_recording = None;
             a.peak = 0.0;
             let saved_ok = outcome.is_ok() && !cancelled;
+            a.recording_error = outcome.as_ref().err().cloned();
             a.message = outcome.err().unwrap_or_else(|| {
                 if cancelled {
                     "録音を取り消しました".into()
@@ -1018,5 +1042,52 @@ impl App {
             }
         });
         Ok(json!(null))
+    }
+}
+
+fn remove_provisional_take(project: &mut Project, sid: &str, tid: &str) -> Result<()> {
+    let segment = segment(project, sid)?;
+    segment.takes.retain(|take| take.id != tid);
+    if segment.selected.as_deref() == Some(tid) {segment.selected=None;}
+    Ok(())
+}
+
+#[cfg(test)]
+mod recording_failure_tests {
+    use super::*;
+    #[test]
+    fn missing_default_microphone_reports_error_without_creating_take() {
+        let app=App::default();
+        let result=app.record_with_resolver(json!({"segment":"fixture"}), |endpoint|{
+            assert_eq!(endpoint,"");Err("既定マイクがありません".into())
+        });
+        assert_eq!(result.unwrap_err(),"既定マイクがありません");
+        let state=app.snapshot().unwrap();assert_eq!(state["recording_error"],"既定マイクがありません");assert_eq!(state["busy"],false);
+    }
+    #[test]
+    fn asynchronous_start_failure_removes_only_new_take_and_releases_busy() {
+        let root=std::env::temp_dir().join(format!("scriptsync-record-failure-{}",id()));
+        let mut store=Store::open(root.clone(),true).unwrap();
+        let row=Segment::new("機器を使わない失敗試験".into());let sid=row.id.clone();store.project.segments.push(row);store.save().unwrap();
+        let app=App::default();app.0.lock().unwrap().store=Some(store);
+        app.record_with_resolver(json!({"segment":sid}), |_|Ok("scriptsync-nonexistent-fixture-endpoint".into())).unwrap();
+        let deadline=std::time::Instant::now()+std::time::Duration::from_secs(10);
+        while app.0.lock().unwrap().busy {assert!(std::time::Instant::now()<deadline);std::thread::sleep(std::time::Duration::from_millis(10));}
+        let state=app.snapshot().unwrap();assert!(state["recording_error"].is_string());assert_eq!(state["project"]["segments"][0]["takes"].as_array().unwrap().len(),0);
+        assert!(app.0.lock().unwrap().stop.is_none());drop(app);
+        let saved=Store::open(root.clone(),false).unwrap();assert!(saved.project.segments[0].takes.is_empty());drop(saved);std::fs::remove_dir_all(root).unwrap();
+    }
+    #[test]
+    fn removing_failed_capture_preserves_existing_take_and_selection() {
+        let mut project=Project::new("録音失敗の検証".into());
+        let mut row=Segment::new("検証用の原稿".into());
+        let good=Take {id:id(),file:"takes/existing/audio.wav".into(),hash:"a".repeat(64),status:"ready".into(),duration:1.0,peak:0.2,warning:String::new(),created:now(),endpoint:"existing-mic".into(),script_text:row.text.clone(),trim_start:0.0,trim_end:0.0};
+        row.selected=Some(good.id.clone());row.takes.push(good.clone());
+        let mut pending=good.clone();pending.id=id();pending.status="recording".into();pending.hash.clear();
+        let tid=pending.id.clone();row.takes.push(pending);let sid=row.id.clone();project.segments.push(row);
+        remove_provisional_take(&mut project,&sid,&tid).unwrap();
+        let row=&project.segments[0];assert_eq!(row.takes.len(),1);
+        assert_eq!(serde_json::to_value(&row.takes[0]).unwrap(),serde_json::to_value(&good).unwrap());
+        assert_eq!(row.selected.as_deref(),Some(good.id.as_str()));
     }
 }

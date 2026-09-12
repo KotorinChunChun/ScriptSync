@@ -392,6 +392,7 @@ pub fn commit(project: &mut Project, value: &Value) -> Result<()> {
     staged.source_markdown = staged.script_sources.iter().map(|s| s.confirmed_text.as_str()).collect::<Vec<_>>().join("\n\n");
     staged.script_lines = legacy_script_lines(&staged.script_sources)?;
     staged.script_revision = staged.script_revision.saturating_add(1);
+    staged.script_export_fingerprint = Some(crate::exchange::script_fingerprint(&staged));
     *project = staged;
     Ok(())
 }

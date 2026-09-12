@@ -126,3 +126,30 @@ fn import_enforces_web_utf16_limits_too() {
     assert!(validate_manifest_limits(&manifest).unwrap_err().contains("200件"));
     std::fs::remove_dir_all(root).unwrap();
 }
+
+#[test]
+fn export_guard_blocks_drafts_and_reconfirms_without_losing_takes() {
+    let mut p=Project::new("確認".into());
+    let sid=id();
+    let payload=json!({"base_revision":0,"sources":[{"id":sid,"name":"a.md","kind":"markdown","text":"一行目\n二行目","approved_text":"一行目\n二行目","lines":[{"line":0,"enabled":true},{"line":1,"enabled":true}]}]});
+    crate::script_sources::update_draft(&mut p,&payload).unwrap();
+    assert!(ensure_export_ready(&p,&sid).is_err());
+    crate::script_sources::commit(&mut p,&payload).unwrap();
+    assert!(ensure_export_ready(&p,&sid).is_ok());
+    let confirmed=p.clone();
+    p.segments[0].recording_draft=Some("文字起こし結果".into());
+    assert!(ensure_export_ready(&p,&sid).is_err());
+    p=confirmed.clone();p.script_sources[0].draft_text="変更".into();assert!(ensure_export_ready(&p,&sid).is_err());
+    p=confirmed.clone();p.script_sources[0].draft_lines[0]["enabled"]=json!(false);assert!(ensure_export_ready(&p,&sid).is_err());
+    p=confirmed.clone();p.script_sources[0].name="変更名.md".into();assert!(ensure_export_ready(&p,&sid).is_err());
+    p=confirmed.clone();p.pending_source_deletions.push(sid.clone());assert!(ensure_export_ready(&p,&sid).is_err());
+    p=confirmed.clone();
+    assert!(validate_export_request(&p,&json!({"source_id":sid,"project_id":"other"})).is_err());
+    assert!(validate_export_request(&p,&json!({"source_id":sid,"base_generation":p.generation+1})).is_err());
+    let mut edited=payload.clone();edited["base_revision"]=json!(p.script_revision);edited["sources"][0]["text"]=json!("変更");edited["sources"][0]["approved_text"]=json!("変更");edited["sources"][0]["lines"]=json!([{"line":0,"enabled":true}]);
+    crate::script_sources::update_draft(&mut p,&edited).unwrap();assert!(ensure_export_ready(&p,&sid).is_err());
+    crate::script_sources::commit(&mut p,&edited).unwrap();assert!(ensure_export_ready(&p,&sid).is_ok());
+    p.script_export_fingerprint=None;assert!(ensure_export_ready(&p,&sid).is_ok());
+    p.segments[0].text="確定前の変更".into();assert!(ensure_export_ready(&p,&sid).is_err());
+    p=confirmed.clone();p.script_sources[0].draft_lines[0]["previous_id"]=json!("別行");assert!(ensure_export_ready(&p,&sid).is_err());
+}

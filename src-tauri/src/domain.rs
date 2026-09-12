@@ -241,6 +241,9 @@ pub struct Project {
     pub script_sources: Vec<ScriptSource>,
     #[serde(default)]
     pub script_revision: u64,
+    /// 台本確定時の出力対象状態。旧プロジェクトは既存本文から検証する。
+    #[serde(default)]
+    pub script_export_fingerprint: Option<String>,
     #[serde(default)]
     pub pending_source_deletions: Vec<String>,
     #[serde(default)]
@@ -272,6 +275,7 @@ impl Project {
             script_lines: vec![],
             script_sources: vec![],
             script_revision: 0,
+            script_export_fingerprint: None,
             pending_source_deletions: vec![],
             archived_sources: vec![],
             export_settings: serde_json::Value::Null,

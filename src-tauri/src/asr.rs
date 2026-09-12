@@ -49,7 +49,7 @@ impl App {
         a.stop = Some(stop.clone());
         a.busy = true;
         a.job = "asr".into();
-        a.message = if settings.asr_provider == "codex" { "Codex CLIからローカル認識ツールを実行します。認識結果はCodexへ送信されます" } else { "ローカルで音声を認識しています。音声は外部送信しません" }.into();
+        a.message = "ローカルで音声を認識しています。音声は外部送信しません".into();
         let app = self.clone();
         std::thread::spawn(move || {
             let result = (|| -> Result<Value> {
