@@ -23,6 +23,9 @@ use crate::audio::format::{INTERNAL_CHANNELS, INTERNAL_SAMPLE_RATE};
 /// かったサンプル数であり、こちらはデバイスが通知した欠落を表す。
 #[derive(Debug, Clone, Default, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct WasapiCaptureDiagnostics {
+    /// 最初のパケットだけの開始通知。録音途中の不連続とは分離する。
+    #[serde(default)]
+    pub startup_discontinuity_count: u64,
     pub data_discontinuity_count: u64,
     pub missing_device_frames: u64,
     pub compensated_internal_frames: u64,
@@ -51,6 +54,7 @@ struct PreviousPacket {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 struct PacketObservation {
     discontinuity: bool,
+    startup_notification: bool,
     missing_device_frames: u64,
     estimated_missing_frames: bool,
 }
@@ -89,6 +93,8 @@ fn observe_packet(
     };
     PacketObservation {
         discontinuity: data_discontinuity || position_gap.is_some(),
+        // 開始前との連続性は計測できない。時刻エラーを伴う場合は通常警告を維持する。
+        startup_notification: previous.is_none() && data_discontinuity && !timestamp_error,
         missing_device_frames: position_gap.or(timestamp_gap).unwrap_or(0),
         estimated_missing_frames: position_gap.is_none() && timestamp_gap.is_some(),
     }
@@ -101,7 +107,9 @@ fn record_packet_observation(
     timestamp_error: bool,
     elapsed_ms: u64,
 ) {
-    if observation.discontinuity {
+    if observation.startup_notification && observation.missing_device_frames == 0 {
+        report.startup_discontinuity_count = report.startup_discontinuity_count.saturating_add(1);
+    } else if observation.discontinuity {
         report.data_discontinuity_count = report.data_discontinuity_count.saturating_add(1);
         report.missing_device_frames = report
             .missing_device_frames
@@ -820,6 +828,43 @@ mod continuity_tests {
             frames: 480,
             timestamp_100ns: 10_000_000,
         }
+    }
+
+    #[test]
+    fn startup_notice_is_separate_but_midstream_zero_gap_remains_a_warning() {
+        let mut report = WasapiCaptureDiagnostics::default();
+        let startup = observe_packet(None, 1_000, 10_000_000, true, false, 48_000);
+        // 端点補修に渡す生のフラグは保持し、品質の計数だけを分離する。
+        assert!(startup.discontinuity);
+        assert!(startup.startup_notification);
+        record_packet_observation(&mut report, startup, false, false, 0);
+        assert_eq!(report.startup_discontinuity_count, 1);
+        assert_eq!(report.data_discontinuity_count, 0);
+        assert_eq!(report.missing_device_frames, 0);
+        assert_eq!(report.last_discontinuity_at_ms, None);
+        let later = observe_packet(Some(previous()), 1_480, 10_100_000, true, false, 48_000);
+        record_packet_observation(&mut report, later, false, false, 10);
+        assert_eq!(report.startup_discontinuity_count, 1);
+        assert_eq!(report.data_discontinuity_count, 1);
+        assert_eq!(report.last_discontinuity_at_ms, Some(10));
+    }
+
+    #[test]
+    fn startup_timestamp_error_is_not_downgraded() {
+        let mut report = WasapiCaptureDiagnostics::default();
+        let startup = observe_packet(None, 1_000, 10_000_000, true, true, 48_000);
+        record_packet_observation(&mut report, startup, false, true, 0);
+        assert_eq!(report.startup_discontinuity_count, 0);
+        assert_eq!(report.data_discontinuity_count, 1);
+        assert_eq!(report.timestamp_error_count, 1);
+    }
+
+    #[test]
+    fn old_diagnostics_default_startup_count_to_zero() {
+        let mut value = serde_json::to_value(WasapiCaptureDiagnostics::default()).unwrap();
+        value.as_object_mut().unwrap().remove("startup_discontinuity_count");
+        let restored: WasapiCaptureDiagnostics = serde_json::from_value(value).unwrap();
+        assert_eq!(restored.startup_discontinuity_count, 0);
     }
 
     #[test]
