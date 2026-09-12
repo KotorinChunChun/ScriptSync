@@ -86,3 +86,7 @@ body:has(.archive-manager)>.delete-modal{z-index:1100}
 .full-diff-removed{background:#fff0ed}.full-diff-added{background:#e6f4ec}.full-diff-gap{background:#eef0ef}
 .review-expanded .script-columns{grid-template-columns:minmax(0,1fr)!important}
 .review-expanded .script-columns>:not(.script-review){display:none}
+
+.script-restore{margin-bottom:8px}.script-editor.collapsed .script-restore{display:none}
+#project-name-button{font-size:18px;font-weight:700;border:0;background:transparent;max-width:38vw;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:left}
+#project-name{font-size:18px;max-width:38vw;width:280px}

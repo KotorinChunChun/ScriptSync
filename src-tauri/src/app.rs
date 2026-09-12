@@ -302,6 +302,16 @@ impl App {
             }
             return Ok(json!(null));
         }
+        if action == "project_rename" {
+            if a.auto_asr_running || !a.auto_asr_queue.is_empty() { return Err("文字起こしが終了してからプロジェクト名を変更してください".into()); }
+            let store=a.store.as_mut().ok_or("プロジェクトを開いてください")?;
+            if v["project_id"].as_str()!=Some(store.project.id.as_str())||v["base_generation"].as_u64()!=Some(store.project.generation){return Err("プロジェクトが更新されています。再度名前を変更してください".into());}
+            let warning=store.rename_project(&string(&v,"name")?)?;
+            let path=store.project_file.clone().unwrap();
+            a.media.clear();a.message=warning.unwrap_or_default();
+            if let Err(error)=a.project_location.remember(&path){a.message=format!("名前変更は完了しました。保存先設定を更新できません: {error}");}
+            return Ok(Value::Null);
+        }
         let store = a.store.as_mut().ok_or("プロジェクトを開いてください")?;
         if action.starts_with("script_") && v["project_id"].as_str().is_some_and(|id| id != store.project.id) {
             return Err("編集中のプロジェクトが変更されました".into());

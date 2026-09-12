@@ -28,6 +28,7 @@ const takeWaveCache=new Map<string,number[]>();
 let revisionGeneration=-1, revisionText="";let wave:{duration:number;peaks:number[];suggested_gain:number;rms_db:number;peak_db:number}|null=null;
 let playingOffset=0;let recordingSegment="";let startingRecording=false;let recordedBefore=new Set<string>();let uiReady=false;
 let focusTake="";
+let projectNameEditing=false,projectNameValue="",projectNamePending=false;
 let generation=-1;let busy=false;let dialogAction="";let deleteRequest="";let continuousRecording=false;let pendingRerecord="";
 let navigationRenderedStage:Stage="script"; let stopExtension=0;
 const drafts=new Map<string,Record<string,string>>();let renderedKey="";
@@ -45,7 +46,7 @@ async function act(action:string,payload:unknown={}){
  if(busy)return false;busy=true;
  const dialog=({new:"新しいプロジェクトの保存先を選択しています",open:"ScriptSyncプロジェクトを選択しています",markdown_import:"台本ファイルを選択しています",import_script:"台本ファイルを選択しています",talk_inspect:"Talkプロジェクトを選択しています"}as Record<string,string>)[action]??"";
  if(dialog){dialogAction=dialog;render();}
- try{if(["new","open"].includes(action))await endContinuous();await rpc(action,payload);if(action==="delete_take")discardTakeTrim((payload as {take:string}).take);await refresh(true);return true;}
+ try{if(["new","open"].includes(action))await endContinuous();await rpc(action,payload);if(["new","open"].includes(action)){sourceRoot=undefined;sourceBaselines.clear();projectNameEditing=false;tab="script";}if(action==="delete_take")discardTakeTrim((payload as {take:string}).take);await refresh(true);return true;}
  catch(e){state.message=String(e);if(["record","select","stop"].includes(action))await endContinuous();return false;}
  finally{busy=false;dialogAction="";render();}
 }
@@ -337,7 +338,7 @@ function render(){
  const stage=tab as Stage;
  ensureScriptDraft();
  const sidebar=tab==="export"||(tab==="script"&&(hasSourceMode()||!markdownDraft!.lines.length))?"":tab==="script"?`<aside class="navigation-aside"><label>フィルター<select id="filter">${optionsFor("script").map(([value,label])=>`<option value="${value}" ${filterFor(stage)===value?"selected":""}>${label}</option>`).join("")}</select></label><nav data-navigation-scroll aria-label="元Markdownの構成">${renderSourceTree(markdownDraft!.lines)}</nav></aside>`:`<aside class="navigation-aside"><label>フィルター<select id="filter">${optionsFor(stage as "recording"|"reading"|"evaluation").map(([value,label])=>`<option value="${value}" ${filterFor(stage)===value?"selected":""}>${label}</option>`).join("")}</select></label><nav data-navigation-scroll aria-label="確定原稿ツリー">${renderSegmentTree(p.segments,stage as "recording"|"reading"|"evaluation",selected)}</nav></aside>`;
- root.innerHTML=`<header><strong>読みあわせ</strong><div class="toolbar">${button("new","新規プロジェクト")}${button("open","開く")}</div><div class="statusbar"><span id="notice" role="status">${esc(state.message)}</span><span id="meter"></span></div></header>${renderStageBar(stage,activeSegments().length>0&&activeSegments().every(s=>s.takes.some(t=>t.id===s.selected&&t.status==="ready")))}<div class="layout navigation-layout ${!sidebar?"no-sidebar":""}">${sidebar}<main>${tab==="script"?scriptTab():tab==="export"?modernExportView(exportContext):s?segmentView(s):"<p>台本画面で原稿を追加してください。</p>"}<div id="stage-extras" class="stage-extras"></div></main></div><footer><label>試聴 <audio id="player" controls></audio></label></footer>`;
+ root.innerHTML=`<header>${projectNameEditing?`<input id="project-name" aria-label="プロジェクト名" value="${esc(projectNameValue)}">`:`<button id="project-name-button" title="クリックしてプロジェクト名を変更">${esc(p.title)}</button>`}<div class="toolbar">${button("new","新規プロジェクト")}${button("open","開く")}</div><div class="statusbar"><span id="notice" role="status">${esc(state.message)}</span><span id="meter"></span></div></header>${renderStageBar(stage,activeSegments().length>0&&activeSegments().every(s=>s.takes.some(t=>t.id===s.selected&&t.status==="ready")))}<div class="layout navigation-layout ${!sidebar?"no-sidebar":""}">${sidebar}<main>${tab==="script"?scriptTab():tab==="export"?modernExportView(exportContext):s?segmentView(s):"<p>台本画面で原稿を追加してください。</p>"}<div id="stage-extras" class="stage-extras"></div></main></div><footer><label>試聴 <audio id="player" controls></audio></label></footer>`;
  if(tab==="script")root.querySelector("footer")?.setAttribute("hidden","");
  if(keepPlayer)document.getElementById("player")?.replaceWith(keepPlayer);
  renderedKey=`${selected}:${tab}`;for(const [id,value]of Object.entries(drafts.get(renderedKey)??{})){const field=document.getElementById(id);if(field instanceof HTMLTextAreaElement&&id!=="markdown-source")field.value=value;}
@@ -345,7 +346,7 @@ function render(){
 
  if(tab==="reading"||tab==="evaluation")batchView(tab);
  if(tab==="recording"){testGuide();if(s)root.querySelector('#text')?.insertAdjacentHTML('afterend',`<div class="toolbar">${button("split","カーソル位置で分割")}${button("merge","次と結合")}${button("script_insert_empty","空の台本行を挿入")}</div>`);else root.querySelector('#stage-extras')?.insertAdjacentHTML('beforeend',button("script_insert_empty","空の台本行を挿入"));renderRecordingAsrCards(s);bindContinuousControls();}
- fitWorkspace();bind();bindSourceScriptTab();bindBatch();if(tab==="recording")bindRecordingArchives({project:state.project!,getProject:()=>state.project!,rpc,play,stop:()=>player()?.pause(),refresh:()=>refresh(true),notice});updateMeter();void loadTakeWaves();
+ fitWorkspace();bind();bindProjectName();bindSourceScriptTab();bindBatch();if(tab==="recording")bindRecordingArchives({project:state.project!,getProject:()=>state.project!,rpc,play,stop:()=>player()?.pause(),refresh:()=>refresh(true),notice});updateMeter();void loadTakeWaves();
  if(tab==="recording"&&s)bindTakeTrim({segment:s,rpc:async<T>(action:string,payload?:unknown)=>{const result=await rpc<T>(action,payload);if(action!=="trim_take")return result;const latest=await rpc<Snapshot>("state");return latest.project?.segments.find(x=>x.id===s.id)?.takes.find(x=>x.id===(payload as {take:string}).take) as T;},play,isPlaying:take=>playingTake===take&&!player()?.paused,stop:()=>{player()?.pause();syncTakePlayback();},notice,onSaved:async()=>{player()?.pause();await refresh(true);}});
  if(player()){player().onplay=syncTakePlayback;player().onpause=syncTakePlayback;player().onended=()=>{updateTakeProgress();syncTakePlayback();};}syncTakePlayback();
  bindTrimNavigation();
@@ -402,6 +403,31 @@ function legacyBindScriptTab(){
   }
  });
 }
+let sourceBaselines=new Map<string,SourceDraft>();let baselineProject:string|null|undefined;
+function rememberSourceBaseline(draft:SourceDraft,force=false){if(force||!sourceBaselines.has(draft.source.id))sourceBaselines.set(draft.source.id,structuredClone(draft));}
+function restoreSourceEditing(){
+ const draft=selectedDraft(),baseline=draft&&sourceBaselines.get(draft.source.id);if(!draft||!baseline||busy||state.busy)return;
+ sourcePreviewVersion++;clearTimeout(sourcePreviewTimer);sourcePreviewPending=false;sourcePreviewError='';
+ const restored=structuredClone(baseline);restored.source=draft.source;sourceDrafts.set(draft.source.id,restored);
+ queueSourceDraftSave();render();
+}
+function bindProjectName(){
+ const button=document.getElementById('project-name-button');if(button)button.onclick=()=>{if(busy||state.busy)return;projectNameValue=state.project!.title;projectNameEditing=true;render();const input=document.getElementById('project-name') as HTMLInputElement;input.focus();input.select();};
+ const input=document.getElementById('project-name') as HTMLInputElement|null;
+ if(input){input.oninput=()=>projectNameValue=input.value;input.onkeydown=event=>{if(event.isComposing)return;if(event.key==='Escape'){projectNameEditing=false;render();}if(event.key==='Enter'){event.preventDefault();void renameProject();}};}
+}
+async function renameProject(){
+ if(projectNamePending||busy||state.busy||!state.project)return;
+ if(projectNameValue.trim()===state.project.title){projectNameEditing=false;render();return;}
+ projectNamePending=true;
+ try{
+  await draftSave;if(hasSourceMode())await flushSourceDraft();
+  if(!await guardTakeTrimMove(()=>{}))return;
+  player()?.pause();await endContinuous();busy=true;render();
+  await rpc('project_rename',{name:projectNameValue,project_id:(state.project as any).id,base_generation:hasSourceMode()?sourceGeneration:state.project.generation});
+  projectNameEditing=false;await refresh(true);
+ }catch(error){state.message=String(error);}finally{projectNamePending=false;busy=false;render();}
+}
 let sourceDrafts=new Map<string,SourceDraft>();
 let sourceOrder:string[]=[];
 let selectedSource="";
@@ -415,9 +441,11 @@ function hasSourceMode(){return Array.isArray((state.project as any)?.script_sou
 function ensureScriptDraft(){
  if(!hasSourceMode()){legacyEnsureScriptDraft();return;}
  const p=state.project as any,sources=p.script_sources as ScriptSource[];
+ const projectKey=p.id??state.root;if(baselineProject!==projectKey){sourceBaselines.clear();baselineProject=projectKey;}
  if(sourceRoot!==state.root||!sourceOrder.length||sources.some(source=>!sourceDrafts.has(source.id))){
   sourceEpoch++;clearTimeout(sourceSaveTimer);clearTimeout(sourcePreviewTimer);sourceSaveScheduled=false;sourcePreviewPending=false;sourcePreviewVersion++;sourceSavePromise=Promise.resolve();sourceDrafts=new Map(sources.map(source=>[source.id,makeDraft(source)]));sourceOrder=sources.map(source=>source.id);deletedSourceIds=new Set(p.pending_source_deletions??[]);selectedSource=sourceOrder.find(id=>!deletedSourceIds.has(id))??"";sourceRoot=state.root;sourceRevision=p.script_revision??0;sourceGeneration=p.generation??-1;sourceDirty=false;sourceSaveError='';
  }else if(p.generation!==undefined&&p.generation>sourceGeneration){if(sourceDirty){notice('外部の下書き更新を検出しました。現在の編集を保存せず再読込してください。',true);}else{sourceDrafts=new Map(sources.map(source=>[source.id,makeDraft(source)]));sourceOrder=sources.map(source=>source.id);deletedSourceIds=new Set(p.pending_source_deletions??[]);sourceRevision=p.script_revision??sourceRevision;sourceGeneration=p.generation;}}
+ sourceDrafts.forEach(draft=>rememberSourceBaseline(draft));
 }
 function selectedDraft(){ensureScriptDraft();return sourceDrafts.get(selectedSource);}
 function sourceRows(){ensureScriptDraft();return sourceOrder.map(id=>sourceDrafts.get(id)).filter((x):x is SourceDraft=>!!x);}
@@ -439,7 +467,7 @@ function mappingDetails(draft:SourceDraft,line:any){
  return `<select class="source-mapping" data-previous-id="${esc(lineToken(line))}" aria-label="${line.line+1}行目の対応先" ${mapping.matched?'disabled':''}><option value="">(新規)</option>${mapping.candidates.map(segment=>`<option value="${esc(segment.id)}" ${mapping.selected===segment.id?'selected':''}>${esc(segment.text||'空の発話')}${segment.source_line!=null?`（${segment.source_line+1}行）`:''}</option>`).join('')}</select>`;
 }
 function scriptTargetHtml(){if(!hasSourceMode())return legacyScriptTargetHtml();const draft=selectedDraft();return readingLines(draft?.lines??[]).filter(line=>String((line as any).text??(line as any).raw??'').trim()).map(line=>`<div class="source-target-row" data-target-line="${line.line}"><button draggable="false" class="source-line ${line.enabled?'enabled':'disabled'}" aria-pressed="${line.enabled}" data-script-line="${line.line}"><span>${line.enabled?'☑':'☐'}</span><em>${esc((line as any).text??(line as any).raw??'')}</em></button>${mappingDetails(draft!,line)}</div>`).join('')||'<p class="muted">読み上げ対象の行はありません。</p>';}
-function scriptTab(){if(!hasSourceMode())return legacyScriptTab();ensureScriptDraft();return `<section class="script-tab script-workspace ${fullReview&&expandedReview?'review-expanded':''}"><div class="script-heading"><h2>台本</h2>${button('script_archives','アーカイブ管理')}</div><div class="script-columns script-four-columns" style="grid-template-columns:${scriptGrid()}"><section class="script-files ${scriptCollapsed[0]?'collapsed':''}">${scriptPaneHeading(0,'原稿を登録する')}${sourceListHtml()}</section>${scriptSeparator(0)}<section class="script-editor ${scriptCollapsed[1]?'collapsed':''}">${scriptPaneHeading(1,'原稿を閲覧／編集する')}<textarea id="markdown-source" aria-label="選択した原稿を編集" spellcheck="false" ${selectedDraft()?'':'disabled'}>${esc(selectedDraft()?.text??'')}</textarea></section>${scriptSeparator(1)}<section class="script-review"><h3>差分を確認する</h3><div id="script-difference" class="script-difference">${scriptDiffHtml()}</div></section>${scriptSeparator(2)}<section class="script-targets"><h3>読み上げ対象を選択する</h3><p class="script-target-help">読み上げる必要がない文章については文字をクリックして取り消し線を引いてください</p><div id="script-target-list" class="source-list">${scriptTargetHtml()}</div></section></div><div class="script-bottom"><span id="script-review-status">${scriptStatus()}</span>${button('script_commit','台本確定',`class="primary" ${scriptBlocked()?'disabled':''}`)}</div></section>`;}
+function scriptTab(){if(!hasSourceMode())return legacyScriptTab();ensureScriptDraft();return `<section class="script-tab script-workspace ${fullReview&&expandedReview?'review-expanded':''}"><div class="script-heading"><h2>台本</h2>${button('script_archives','アーカイブ管理')}</div><div class="script-columns script-four-columns" style="grid-template-columns:${scriptGrid()}"><section class="script-files ${scriptCollapsed[0]?'collapsed':''}">${scriptPaneHeading(0,'原稿を登録する')}${sourceListHtml()}</section>${scriptSeparator(0)}<section class="script-editor ${scriptCollapsed[1]?'collapsed':''}">${scriptPaneHeading(1,'原稿を閲覧／編集する')}<div class="script-restore">${button('script_restore','編集を取り消す',`title="原稿の読込時点へ戻す" ${selectedDraft()?'':'disabled'}`)}</div><textarea id="markdown-source" aria-label="選択した原稿を編集" spellcheck="false" ${selectedDraft()?'':'disabled'}>${esc(selectedDraft()?.text??'')}</textarea></section>${scriptSeparator(1)}<section class="script-review"><h3>差分を確認する</h3><div id="script-difference" class="script-difference">${scriptDiffHtml()}</div></section>${scriptSeparator(2)}<section class="script-targets"><h3>読み上げ対象を選択する</h3><p class="script-target-help">読み上げる必要がない文章については文字をクリックして取り消し線を引いてください</p><div id="script-target-list" class="source-list">${scriptTargetHtml()}</div></section></div><div class="script-bottom"><span id="script-review-status">${scriptStatus()}</span>${button('script_commit','台本確定',`class="primary" ${scriptBlocked()?'disabled':''}`)}</div></section>`;}
 let scriptWidths=[1,1,1,1];
 let scriptCollapsed=[false,false];
 function scriptGrid(){return scriptWidths.flatMap((width,index)=>{const column=scriptCollapsed[index]?(index===0?'var(--script-files-collapsed, 180px)':'52px'):`minmax(0, ${width}fr)`;return index<3?[column,'8px']:[column];}).join(' ');}
@@ -494,7 +522,7 @@ function bindTargetOrder(){
  if(list)bindPointerReorder(list,'.source-target-row',item=>item.dataset.targetLine!, (from,to)=>{const draft=selectedDraft();if(!draft)return;reorderReading(draft,Number(from),Number(to));queueSourceDraftSave();updateScriptPanels();},()=>!busy&&!state.busy&&!sourcePreviewPending);
 }
 function bindScriptDecisions(){bindTargetOrder();if(!hasSourceMode()){legacyBindScriptDecisions();return;}root.querySelectorAll<HTMLButtonElement>('[data-review-index]').forEach(button=>button.onclick=()=>{const draft=selectedDraft(),row=currentReview()[Number(button.dataset.reviewIndex)];if(!draft||!row)return;draft.decisions.set(row.key,'accept');queueSourceDraftSave();updateScriptPanels();});root.querySelectorAll<HTMLButtonElement>('[data-script-line]').forEach(button=>button.onclick=()=>{const draft=selectedDraft(),line=draft?.lines.find(line=>line.line===Number(button.dataset.scriptLine));if(!line)return;line.enabled=!line.enabled;queueSourceDraftSave();updateScriptPanels();});root.querySelectorAll<HTMLSelectElement>('[data-previous-id]').forEach(select=>select.onchange=()=>{const draft=selectedDraft(),line=draft?.lines.find(line=>line.line===Number(select.dataset.previousId));if(!draft||!line)return;const id=select.value||undefined;if(id&&draft.lines.some(other=>other!==line&&(other as any).previous_id===id)){notice('同じ既存発話は一度だけ対応できます',true);select.value=(line as any).previous_id??'';return;}(line as any).previous_id=id;(line as any).keep=!!id;line.force_new=!id;line.previous_line=null;queueSourceDraftSave();updateScriptPanels();});}
-async function applyRegisteredFiles(files:{name:string;text:string}[]){for(const file of files){const existing=sourceRows().find(draft=>draft.source.name===file.name);if(existing&&existing.text!==existing.source.confirmed_text&&!window.confirm(`未確定の「${file.name}」を読み込んだ内容で置き換えますか？`))continue;const id=existing?.source.id??crypto.randomUUID();sourceDrafts.set(id,importedSource(existing,file,id));deletedSourceIds.delete(id);if(!sourceOrder.includes(id))sourceOrder.push(id);}for(const id of sourceOrder){selectedSource=id;const version=++sourcePreviewVersion;await previewSelectedSource(version);}selectedSource=sourceOrder.at(-1)??'';queueSourceDraftSave();render();}
+async function applyRegisteredFiles(files:{name:string;text:string}[]){for(const file of files){const existing=sourceRows().find(draft=>draft.source.name===file.name);if(existing&&existing.text!==existing.source.confirmed_text&&!window.confirm(`未確定の「${file.name}」を読み込んだ内容で置き換えますか？`))continue;const id=existing?.source.id??crypto.randomUUID();sourceDrafts.set(id,importedSource(existing,file,id));rememberSourceBaseline(sourceDrafts.get(id)!,true);deletedSourceIds.delete(id);if(!sourceOrder.includes(id))sourceOrder.push(id);}for(const id of sourceOrder){selectedSource=id;const version=++sourcePreviewVersion;await previewSelectedSource(version);}selectedSource=sourceOrder.at(-1)??'';queueSourceDraftSave();render();}
 async function registerScriptFiles(){try{const result=await rpc<{files?:{name:string;text:string}[];text?:string}|null>('markdown_import');if(!result)return;const files=result.files??(result.text!==undefined?[{name:'原稿.md',text:result.text}]:[]);await applyRegisteredFiles(files);}catch(error){notice(String(error),true);}}
 function addEmptyScriptSource(){const existing=new Set(sourceRows().map(draft=>draft.source.name));let number=1,name='空の原稿.md';while(existing.has(name)){number++;name=`空の原稿 (${number}).md`;}const id=crypto.randomUUID();sourceDrafts.set(id,makeDraft({id,name,kind:'markdown',confirmed_text:'',draft_text:'',lines:[],draft_lines:[]}));sourceOrder.push(id);selectedSource=id;queueSourceDraftSave();render();}
 function beginSourceRename(){
@@ -512,7 +540,7 @@ async function finishSourceRename(name:string){
   const existing=sourceRows().find(other=>other.source.id!==id&&other.source.name===name&&!deletedSourceIds.has(other.source.id));
   if(existing){
    if(existing.text!==existing.source.confirmed_text&&!window.confirm(`未確定の「${name}」を読み込んだ内容で置き換えますか？`))return;
-   sourceDrafts.set(existing.source.id,importedSource(existing,{name,text:draft.text},existing.source.id));
+   sourceDrafts.set(existing.source.id,importedSource(existing,{name,text:draft.text},existing.source.id));rememberSourceBaseline(sourceDrafts.get(existing.source.id)!,true);
    deletedSourceIds.add(id);selectedSource=existing.source.id;
   }else draft.source.name=name;
   renamingSource='';queueSourceDraftSave();render();await flushSourceDraft();
@@ -535,6 +563,7 @@ function bindSourceScriptTab(){
  const sourceList=root.querySelector<HTMLElement>('#script-source-list');
  if(sourceList)bindPointerReorder(sourceList,'.script-source',item=>item.dataset.sourceId!, (from,to)=>{const a=sourceOrder.indexOf(from),b=sourceOrder.indexOf(to);if(a<0||b<0)return;sourceOrder=reorder(sourceOrder,a,b);queueSourceDraftSave();render();},()=>!busy&&!state.busy&&!renamingSource);
 
+ action('script_restore',restoreSourceEditing);
  action('script_import',()=>void registerScriptFiles());action('script_empty',addEmptyScriptSource);
  action('script_archives',()=>void (async()=>{try{await flushSourceDraft();await refresh(true);openArchiveManager({project:state.project!,getProject:()=>state.project!,rpc,play,stop:()=>player()?.pause(),refresh:async()=>{sourceRoot=undefined;await refresh(true);},notice});}catch(error){notice(String(error),true);}})());
  action('script_rename',beginSourceRename);action('script_delete',markSourceDeleted);
@@ -544,7 +573,7 @@ function bindSourceScriptTab(){
  const source=selectedDraft();const actions=root.querySelector<HTMLElement>('.script-source-actions');if(source&&actions)bindLegacySources(actions,{source:{...source.source,draft_text:source.text},segments:[...(state.project?.segments??[]),...((state.project as any)?.archived_segments??[])],rpc,flush:flushSourceDraft,base:()=>({base_revision:sourceRevision,base_generation:sourceGeneration}),refresh:async()=>{sourceDrafts.clear();sourceOrder=[];sourceRoot=undefined;await refresh(true);},notice});
  action('script_approve_all',()=>{const draft=selectedDraft();if(!draft)return;currentReview().filter(row=>row.kind!=="same").forEach(row=>draft.decisions.set(row.key,'accept'));queueSourceDraftSave();updateScriptPanels();});
  action('script_clear_all',()=>{selectedDraft()?.decisions.clear();queueSourceDraftSave();updateScriptPanels();});
- action('script_commit',()=>void (async()=>{if(scriptBlocked())return;try{await flushSourceDraft();if(scriptBlocked())return;const result=await rpc<{generation?:number;script_revision?:number}>('script_commit',{project_id:(state.project as any)?.id,base_revision:sourceRevision,base_generation:sourceGeneration,deleted_source_ids:[...deletedSourceIds],sources:sourcePayloads()});sourceGeneration=result?.generation??sourceGeneration;sourceRevision=result?.script_revision??sourceRevision;sourceDrafts.clear();sourceOrder=[];sourceRoot=undefined;await refresh(true);tab='recording';render();}catch(error){sourceSaveError=String(error);notice(String(error),true);updateScriptPanels();}})());
+ action('script_commit',()=>void (async()=>{if(scriptBlocked())return;try{await flushSourceDraft();if(scriptBlocked())return;const result=await rpc<{generation?:number;script_revision?:number}>('script_commit',{project_id:(state.project as any)?.id,base_revision:sourceRevision,base_generation:sourceGeneration,deleted_source_ids:[...deletedSourceIds],sources:sourcePayloads()});sourceGeneration=result?.generation??sourceGeneration;sourceRevision=result?.script_revision??sourceRevision;sourceDrafts.clear();sourceBaselines.clear();sourceOrder=[];sourceRoot=undefined;await refresh(true);tab='recording';render();}catch(error){sourceSaveError=String(error);notice(String(error),true);updateScriptPanels();}})());
  bindScriptDecisions();bindReviewAll();
  root.querySelectorAll<HTMLButtonElement>('[data-collapse-pane]').forEach(button=>button.onclick=()=>{const index=Number(button.dataset.collapsePane);scriptCollapsed[index]=!scriptCollapsed[index];render();});
  const columns=root.querySelector<HTMLElement>('.script-columns');root.querySelectorAll<HTMLElement>('[data-separator]').forEach(bar=>{const index=Number(bar.dataset.separator);const move=(delta:number)=>{if(scriptCollapsed[index]||scriptCollapsed[index+1])return;const total=scriptWidths[index]+scriptWidths[index+1],left=Math.max(.45,Math.min(total-.45,scriptWidths[index]+delta));scriptWidths[index]=left;scriptWidths[index+1]=total-left;if(columns)columns.style.gridTemplateColumns=scriptGrid();};bar.onkeydown=event=>{if(event.key==='ArrowLeft'||event.key==='ArrowRight'){event.preventDefault();move(event.key==='ArrowLeft'?-.08:.08);}};let previous=0;bar.onpointerdown=event=>{previous=event.clientX;bar.setPointerCapture(event.pointerId);};bar.onpointermove=event=>{if(bar.hasPointerCapture(event.pointerId)&&columns){move((event.clientX-previous)/Math.max(1,columns.clientWidth)*4);previous=event.clientX;}};bar.onpointerup=event=>{if(bar.hasPointerCapture(event.pointerId))bar.releasePointerCapture(event.pointerId);};});

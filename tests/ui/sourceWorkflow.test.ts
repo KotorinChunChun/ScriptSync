@@ -40,8 +40,12 @@ it('source mode keeps per-file drafts, approvals, ordering, and committed baseli
  document.querySelector<HTMLButtonElement>('[data-action=script_import]')!.click();await settle();await vi.advanceTimersByTimeAsync(400);await settle();
  expect(document.querySelectorAll('.script-source')).toHaveLength(4);
  expect(document.querySelector('#markdown-source')?.textContent??document.querySelector<HTMLTextAreaElement>('#markdown-source')?.value).toBe('D1');
+ const temporary=document.querySelector<HTMLTextAreaElement>('#markdown-source')!;temporary.value='取り消す編集';temporary.dispatchEvent(new Event('input'));await vi.advanceTimersByTimeAsync(400);await settle();
+ document.querySelector<HTMLButtonElement>('[data-action=script_restore]')!.click();await vi.advanceTimersByTimeAsync(400);await settle();
+ expect(document.querySelector<HTMLTextAreaElement>('#markdown-source')!.value).toBe('D1');
  const input=document.querySelector<HTMLTextAreaElement>('#markdown-source')!;input.value='D2';input.dispatchEvent(new Event('input'));await vi.advanceTimersByTimeAsync(150);await settle();
  expect(document.querySelectorAll('.diff-row button').length).toBeGreaterThan(0);
+ document.querySelector<HTMLButtonElement>('[data-diff-mode=full]')!.click();expect(document.querySelector('.full-diff-table')).toBeTruthy();
  click('すべて承認');await vi.advanceTimersByTimeAsync(150);await settle();
  expect(document.querySelector<HTMLButtonElement>('[data-action=script_commit]')!.disabled).toBe(true);
  expect(document.querySelector('[data-action=script_approve_all]')?.getAttribute('aria-pressed')).toBe('true');

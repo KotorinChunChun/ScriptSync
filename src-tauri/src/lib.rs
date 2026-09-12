@@ -1,6 +1,7 @@
 mod export_settings;
 mod project_location;
 mod project_open;
+mod project_rename;
 mod take_trim;
 mod ui_session;
 use tauri::Manager;
@@ -64,7 +65,7 @@ async fn command(
     })
     .await
     .map_err(|e| e.to_string())?;
-    if result.is_ok() && matches!(title_action.as_str(), "new" | "open") {
+    if result.is_ok() && matches!(title_action.as_str(), "new" | "open" | "project_rename") {
         if let Ok(snapshot) = title_app.snapshot() {
             if let Some(title) = snapshot["project"]["title"].as_str() {
                 let _ = window.set_title(&format!("{title} — 読みあわせ"));

@@ -80,7 +80,7 @@ pub struct Store {
     pub root: PathBuf,
     pub project_file: Option<PathBuf>,
     pub project: Project,
-    _lock: File,
+    _lock: Option<File>,
 }
 fn validate_project(root: &Path, p: &Project) -> Result<()> {
     let mut ids = std::collections::HashSet::new();
@@ -174,7 +174,24 @@ fn validate_project(root: &Path, p: &Project) -> Result<()> {
     Ok(())
 }
 impl Store {
+    /// Windowsでは子ファイルのハンドルを閉じてからディレクトリーを改名する。
+    /// マーカーをロック前後で検査し、解放中に別のStoreが開かれるのを防ぐ。
+    pub(crate) fn move_root(&mut self, destination:&Path)->Result<()> {
+        let marker=self.root.join(".scriptsync-renaming");
+        write_new(&marker,b"rename in progress")?;
+        drop(self._lock.take());
+        let moved=fs::rename(&self.root,destination);
+        if moved.is_ok(){self.root=destination.to_path_buf();}
+        let lock=OpenOptions::new().read(true).write(true).create(true).truncate(false).open(self.root.join(".scriptsync.lock")).map_err(|e|e.to_string())?;
+        lock.lock_exclusive().map_err(|e|e.to_string())?;
+        self._lock=Some(lock);
+        fs::remove_file(self.root.join(".scriptsync-renaming")).map_err(|e|e.to_string())?;
+        moved.map_err(|e|e.to_string())
+    }
+
     pub fn open(root: PathBuf, create: bool) -> Result<Self> {
+        if !create && !root.is_dir() { return Err("プロジェクトデータフォルダーが見つかりません".into()); }
+        if root.join(".scriptsync-renaming").exists() { return Err("プロジェクトの名前変更中です。処理が終わってから開いてください".into()); }
         fs::create_dir_all(&root).map_err(|e| e.to_string())?;
         let lock = OpenOptions::new()
             .read(true)
@@ -185,6 +202,7 @@ impl Store {
             .map_err(|e| e.to_string())?;
         lock.try_lock_exclusive()
             .map_err(|_| "別のウィンドウがこのプロジェクトを開いています")?;
+        if root.join(".scriptsync-renaming").exists() { return Err("プロジェクトの名前変更中です".into()); }
         let revisions = safe(&root, "revisions")?;
         fs::create_dir_all(&revisions).map_err(|e| e.to_string())?;
         let mut files: Vec<_> = fs::read_dir(&revisions)
@@ -216,7 +234,7 @@ impl Store {
             root,
             project_file: None,
             project,
-            _lock: lock,
+            _lock: Some(lock),
         };
         for batch in &mut s.project.batches {
             for item in &mut batch.items {
