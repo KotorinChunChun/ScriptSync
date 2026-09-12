@@ -13,6 +13,26 @@ fn legacy_script_lines(sources: &[ScriptSource]) -> Result<Vec<ScriptLine>> {
     if text.len() > MAX_SOURCE_BYTES { Ok(vec![]) } else { markdown::parse(&text) }
 }
 
+/// 録音中の修正は確定本文・読み・採用テイクと分離して保持する。
+pub fn recording_draft(project: &mut Project, value: &Value) -> Result<()> {
+    let text=source_text(value)?;
+    let segment=project.segments.iter_mut().find(|s| Some(s.id.as_str())==value["segment"].as_str()).ok_or("発話がありません")?;
+    segment.recording_draft=if text==segment.text {None} else {Some(text)};
+    Ok(())
+}
+pub fn recording_feedback(project: &mut Project, value: &Value) -> Result<()> {
+    let feedback=value["feedback"].as_array().ok_or("修正原稿がありません")?;
+    for item in feedback {
+        let segment=project.segments.iter().find(|s| Some(s.id.as_str())==item["id"].as_str()).ok_or("発話がありません")?;
+        if segment.recording_draft.as_deref()!=item["text"].as_str() {return Err("修正原稿が更新されています".into());}
+    }
+    update_draft(project,value)?;
+    for segment in &mut project.segments {
+        if feedback.iter().any(|item|item["id"]==segment.id) {segment.recording_draft=None;}
+    }
+    Ok(())
+}
+
 pub fn snapshot(project: &Project) -> Value {
     json!({"script_revision": project.script_revision, "sources": project.script_sources})
 }
@@ -329,6 +349,14 @@ pub fn commit(project: &mut Project, value: &Value) -> Result<()> {
             if let Some(found) = candidate { used.insert(found.id.clone()); }
             segment.source_id = source_id.clone();
             segment.source_line = Some(row.line);
+            if segment.text != row.text {
+                segment.text = row.text.clone();
+                segment.revision = segment.revision.saturating_add(1);
+                segment.needs_review = true;
+                for run in &mut segment.comparisons { run.stale = true; }
+            }
+            segment.skip = false;
+            segment.recording_draft = None;
             segment.source_text = row.text.clone();
             segment.kind = row.kind;
             segment.hierarchy = row.hierarchy.clone();
@@ -380,6 +408,45 @@ mod tests {
         let s = &p.script_sources[0];
         json!({"base_revision":p.script_revision,"sources":[{"id":s.id,"name":s.name,"kind":s.kind,"text":text,"lines":markdown::parse(text).unwrap(),"approved_text":if approved { Value::String(text.into()) } else { Value::Null }}]})
     }
+    #[test]
+    fn recording_feedback_stays_draft_until_commit_and_preserves_reading() {
+        let mut p=Project::new("feedback".into());p.script_sources.push(source("a.md","原稿"));
+        let initial=payload(&p,"原稿",true);commit(&mut p,&initial).unwrap();
+        let sid=p.segments[0].id.clone();p.segments[0].kana="げんこう".into();
+        recording_draft(&mut p,&json!({"segment":sid,"text":"修正"})).unwrap();
+        assert_eq!(p.segments[0].text,"原稿");assert_eq!(p.segments[0].kana,"げんこう");
+        let mut next=payload(&p,"修正",false);next["feedback"]=json!([{"id":sid,"text":"古い修正"}]);
+        assert!(recording_feedback(&mut p,&next).is_err());assert_eq!(p.script_sources[0].draft_text,"原稿");
+        next["feedback"]=json!([{"id":sid,"text":"修正"}]);
+        next["sources"][0]["lines"][0]["previous_id"]=json!(sid);next["sources"][0]["lines"][0]["keep"]=json!(true);
+        recording_feedback(&mut p,&next).unwrap();assert_eq!(p.segments[0].recording_draft,None);
+        assert_eq!(p.script_sources[0].draft_text,"修正");assert_eq!(p.segments[0].text,"原稿");
+        next["sources"][0]["approved_text"]=json!("修正");commit(&mut p,&next).unwrap();
+        assert_eq!(p.segments[0].text,"修正");assert_eq!(p.segments[0].id,sid);assert_eq!(p.segments[0].kana,"げんこう");
+        recording_draft(&mut p,&json!({"segment":sid,"text":""})).unwrap();assert_eq!(p.segments[0].recording_draft.as_deref(),Some(""));
+    }
+
+    #[test]
+    fn repeated_commit_updates_display_text_and_excludes_disabled_and_archived_rows() {
+        let mut p=Project::new("refresh".into());p.script_sources.push(source("a.md","旧文\n対象外"));
+        let first=payload(&p,"旧文\n対象外",true);commit(&mut p,&first).unwrap();
+        let retained=p.segments[0].id.clone();let removed=p.segments[1].id.clone();
+        p.segments[0].kana="よみ".into();
+        let mut next=payload(&p,"新文\n対象外",true);
+        next["sources"][0]["lines"][0]["previous_id"]=json!(retained);
+        next["sources"][0]["lines"][0]["keep"]=json!(true);
+        next["sources"][0]["lines"][1]["enabled"]=json!(false);
+        commit(&mut p,&next).unwrap();
+        assert_eq!(p.segments.len(),1);assert_eq!(p.segments[0].id,retained);
+        assert_eq!(p.segments[0].text,"新文");assert_eq!(p.segments[0].kana,"よみ");
+        assert_eq!(p.archived_segments[0].id,removed);
+        let mut third=payload(&p,"さらに変更",true);
+        third["sources"][0]["lines"][0]["previous_id"]=json!(retained);
+        third["sources"][0]["lines"][0]["keep"]=json!(true);
+        commit(&mut p,&third).unwrap();assert_eq!(p.segments.len(),1);
+        assert_eq!(p.segments[0].text,"さらに変更");assert_eq!(p.archived_segments.len(),1);
+    }
+
     #[test]
     fn reading_order_changes_segments_without_changing_source_or_takes() {
         let mut p=Project::new("order".into());p.script_sources.push(source("a.md","甲\n乙\n丙"));

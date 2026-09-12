@@ -254,7 +254,7 @@ impl App {
             return Ok(Value::Null);
         }
         let mut a = self.0.lock().map_err(|e| e.to_string())?;
-        if a.busy {
+        if a.busy && !(action == "recording_draft" && a.job == "recording") {
             return Err("処理中です。完了または停止を待ってください".into());
         }
         if action == "new" || action == "open" {
@@ -480,6 +480,8 @@ impl App {
                 "markdown_commit" => {
                     crate::markdown::commit(&mut store.project, &v)?;
                 }
+                "recording_draft" => crate::script_sources::recording_draft(&mut store.project, &v)?,
+                "recording_feedback" => crate::script_sources::recording_feedback(&mut store.project, &v)?,
                 "script_draft" => crate::script_sources::update_draft(&mut store.project, &v)?,
                 "script_commit" => crate::script_sources::commit(&mut store.project, &v)?,
                 "script_insert_empty" => crate::script_sources::insert_empty(&mut store.project, &v)?,
@@ -738,7 +740,7 @@ impl App {
         }
         let saved = json!({"generation":store.project.generation,"script_revision":store.project.script_revision});
         a.message = "保存しました".into();
-        Ok(if matches!(action,"script_draft"|"script_commit"|"script_insert_empty"|"script_rebind_legacy") {saved} else {Value::Null})
+        Ok(if matches!(action,"recording_feedback"|"recording_draft"|"script_draft"|"script_commit"|"script_insert_empty"|"script_rebind_legacy") {saved} else {Value::Null})
     }
     fn record(&self, v: Value) -> Result<Value> {
         let mut a = self.0.lock().map_err(|e| e.to_string())?;

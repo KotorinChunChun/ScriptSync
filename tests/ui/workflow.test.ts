@@ -280,7 +280,7 @@ it('品質確認は採用が既定でEnterで決定し過剰な文言を表示�
  snapshot.project.segments[0].takes[0].warning='要確認：WASAPI不連続 37回\n欠落した発話は復元できません。試聴して再録音を検討してください';
  await import('../../src/main');await settle();await tab('録音');action('採用');await settle();
  const button=document.querySelector<HTMLButtonElement>('[data-quality-adopt]')!;
- expect(button.textContent).toBe('採用');expect(button.classList.contains('primary')).toBe(true);expect(document.activeElement).toBe(button);expect(document.body.textContent).not.toContain('欠落した発話は復元できません');
+ expect(button.textContent).toBe('採用(F4)');expect(button.classList.contains('primary')).toBe(true);expect(document.activeElement).toBe(button);expect(document.body.textContent).not.toContain('欠落した発話は復元できません');
  button.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true}));await settle();expect(api.invoke.mock.calls.filter(c=>c[1]?.action==='select')).toHaveLength(1);
 });
 
@@ -336,4 +336,32 @@ it('確定前に2本目を読み込んでも1本目の下書きを残す',async(
  callback({payload:{paths:['原稿.md']}});await settle();callback({payload:{paths:['原稿.md']}});await settle();
  expect(document.querySelector<HTMLTextAreaElement>('#markdown-source')!.value).toBe('# 部\n本文\n\n1本目\n\n2本目');
  expect(api.invoke.mock.calls.some(c=>c[1]?.action==='markdown_commit')).toBe(false);
+});
+
+it('採用警告はF4で決定しEscで戻る',async()=>{
+ snapshot.project.segments[0].takes[0].warning='要確認：テスト';
+ await import('../../src/main');await settle();await tab('録音');
+ document.dispatchEvent(new KeyboardEvent('keydown',{key:'F4',bubbles:true}));await settle();
+ expect(document.querySelector('[data-quality-adopt]')?.textContent).toBe('採用(F4)');
+ document.querySelector('[data-quality-adopt]')!.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true}));await settle();
+ expect(document.querySelector('[data-quality-adopt]')).toBeNull();
+ expect(api.invoke.mock.calls.some(x=>x[1]?.action==='select')).toBe(false);
+ document.dispatchEvent(new KeyboardEvent('keydown',{key:'F4',bubbles:true}));await settle();
+ document.querySelector('[data-quality-adopt]')!.dispatchEvent(new KeyboardEvent('keydown',{key:'F4',bubbles:true}));await settle();
+ expect(api.invoke.mock.calls.filter(x=>x[1]?.action==='select')).toHaveLength(1);
+});
+it('録音中のEscは停止保存ではなく破棄を送る',async()=>{
+ await import('../../src/main');await settle();await tab('録音');
+ snapshot.busy=true;snapshot.job='recording';await vi.advanceTimersByTimeAsync(710);await settle();api.invoke.mockClear();
+ document.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true}));await settle();
+ expect(api.invoke.mock.calls.some(x=>x[1]?.action==='cancel_record')).toBe(true);
+ expect(api.invoke.mock.calls.some(x=>x[1]?.action==='stop')).toBe(false);
+});
+it('PageDownとPageUpは入力欄からも前後へ移動する',async()=>{
+ snapshot.project.segments.push({...structuredClone(snapshot.project.segments[0]),id:'s2',text:'次の発話'});
+ await import('../../src/main');await settle();await tab('録音');
+ document.querySelector('#text')!.dispatchEvent(new KeyboardEvent('keydown',{key:'PageDown',bubbles:true}));await settle();
+ expect(document.querySelector<HTMLTextAreaElement>('#text')?.value).toBe('次の発話');
+ document.querySelector('#text')!.dispatchEvent(new KeyboardEvent('keydown',{key:'PageUp',bubbles:true}));await settle();
+ expect(document.querySelector<HTMLTextAreaElement>('#text')?.value).toBe('市場へ行きます。');
 });

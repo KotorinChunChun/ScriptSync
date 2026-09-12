@@ -131,6 +131,8 @@ pub struct Segment {
     pub transcriptions: Vec<serde_json::Value>,
     pub id: String,
     pub text: String,
+    #[serde(default)]
+    pub recording_draft: Option<String>,
     pub revision: u64,
     pub takes: Vec<Take>,
     pub selected: Option<String>,
@@ -193,6 +195,7 @@ impl Segment {
             transcriptions: vec![],
             id: id(),
             text,
+            recording_draft: None,
             revision: 1,
             takes: vec![],
             selected: None,

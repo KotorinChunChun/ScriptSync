@@ -56,6 +56,7 @@ export type Asr = {
     }[];
 };
 export type Segment = {
+    recording_draft?: string | null;
     source_id?: string;
     kind?: number;
     hierarchy?: number[];

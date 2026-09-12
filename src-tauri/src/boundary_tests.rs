@@ -167,3 +167,19 @@ fn delayed_stop_is_scoped_to_the_current_capture_and_cancel_is_immediate() {
     assert!(second.load(Ordering::Acquire));
     assert!(app.dispatch("stop", json!({"delay_seconds":-1})).is_err());
 }
+
+#[test]
+fn recording_draft_is_saved_while_recording_without_changing_confirmed_content() {
+    let root=std::env::temp_dir().join(id());let mut store=Store::open(root.clone(),true).unwrap();
+    let mut s=Segment::new("確定原稿".into());let sid=s.id.clone();s.kana="よみ".into();
+    store.project.segments.push(s);store.save().unwrap();
+    let app=App::default();{let mut a=app.0.lock().unwrap();a.store=Some(store);a.busy=true;a.job="recording".into();}
+    app.dispatch("recording_draft",json!({"segment":sid,"text":"修正全文"})).unwrap();
+    let state=app.snapshot().unwrap();assert_eq!(state["project"]["segments"][0]["text"],"確定原稿");
+    assert_eq!(state["project"]["segments"][0]["recording_draft"],"修正全文");
+    assert_eq!(state["project"]["segments"][0]["kana"],"よみ");
+    assert!(app.dispatch("edit",json!({"segment":sid,"text":"直接変更"})).is_err());
+    drop(app);let reopened=Store::open(root.clone(),false).unwrap();
+    assert_eq!(reopened.project.segments[0].recording_draft.as_deref(),Some("修正全文"));
+    drop(reopened);std::fs::remove_dir_all(root).unwrap();
+}
