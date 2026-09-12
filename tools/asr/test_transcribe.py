@@ -16,7 +16,11 @@ class AdapterTest(unittest.TestCase):
             self.assertFalse(missing.exists())
             stub = "import types\nm=types.ModuleType('faster_whisper')\nm.WhisperModel=lambda *a,**k: print(__import__('json').dumps(k))\nsys.modules['faster_whisper']=m\n"
             source = Path(transcribe.__file__).read_text(encoding='utf-8-sig')
-            code = 'import sys\n__file__ = sys.argv.pop(1)\n' + stub + source
+            module_dir = Path(root) / 'python' / 'Lib' / 'site-packages'
+            module_dir.mkdir(parents=True)
+            (module_dir / 'faster_whisper.py').write_text("import json\ndef WhisperModel(*a, **k): print(json.dumps(k))", encoding='utf-8')
+            stub = ''
+            code = "import sys\nfrom pathlib import Path\n__file__ = sys.argv.pop(1)\nsys.path.insert(0, str(Path(__file__).parent / 'python' / 'Lib' / 'site-packages'))\n" + stub + source
             result = subprocess.run([sys.executable, '-I', '-c', code, str(missing), '--prepare', '--model', 'small'], capture_output=True, text=True, check=True)
             lines = result.stdout.splitlines()
             self.assertEqual(json.loads(lines[0])['download_root'], str(Path(root) / 'models'))

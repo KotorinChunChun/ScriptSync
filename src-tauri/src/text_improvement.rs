@@ -15,12 +15,25 @@ impl Drop for TemporaryDirectory {
 }
 
 pub fn dispatch(app: &App, action: &str, payload: &Value) -> Option<Result<Value>> {
-    if action != "text_improve" {
+    if !matches!(action, "text_improve" | "text_improve_test") {
         return None;
     }
     Some((|| {
-        let text = payload["text"].as_str().ok_or("補正する本文がありません")?;
+        let testing = action == "text_improve_test";
+        let text = if testing {
+            "今日は良い天気でず。明日の会議は午前10時からです。"
+        } else {
+            payload["text"].as_str().ok_or("補正する本文がありません")?
+        };
         validate_text(text)?;
+        let preview_settings = if testing {
+            let settings: Settings =
+                serde_json::from_value(payload["settings"].clone()).map_err(|e| e.to_string())?;
+            settings.validate()?;
+            Some(settings)
+        } else {
+            None
+        };
         let settings = {
             let mut a = app.0.lock().map_err(|e| e.to_string())?;
             if a.busy || a.auto_asr_running || a.machine_settings.setup.running {
@@ -29,7 +42,7 @@ pub fn dispatch(app: &App, action: &str, payload: &Value) -> Option<Result<Value
             a.busy = true;
             a.job = "text-improve".into();
             a.message = "Codex CLIで文章を改善しています".into();
-            a.machine_settings.settings.clone()
+            preview_settings.unwrap_or_else(|| a.machine_settings.settings.clone())
         };
         let result = improve(&settings, text);
         let mut a = app.0.lock().map_err(|e| e.to_string())?;
@@ -37,9 +50,9 @@ pub fn dispatch(app: &App, action: &str, payload: &Value) -> Option<Result<Value
         a.job.clear();
         a.message = match &result {
             Ok(_) => "文章改善が完了しました".into(),
-            Err(e) => e.clone(),
+            Err(_) => String::new(),
         };
-        result.map(|text| json!({"text":text}))
+        result.map(|result| json!({"text":result,"input":text,"model":settings.codex_model}))
     })())
 }
 
@@ -82,6 +95,9 @@ fn cli_command(settings: &Settings, root: &Path, output: &Path) -> Result<Comman
             "-C",
         ])
         .arg(root)
+        .arg("--model")
+        .arg(&settings.codex_model)
+        .args(["-c", "model_reasoning_effort=\"low\""])
         .arg("--output-last-message")
         .arg(output)
         .arg("-")
@@ -171,6 +187,10 @@ mod tests {
         assert!(args.contains(&"read-only".into()));
         assert!(args.contains(&"--ignore-user-config".into()));
         assert!(args.contains(&"features.shell_tool=false".into()));
+        assert!(args
+            .windows(2)
+            .any(|pair| pair == ["--model", "gpt-5.6-luna"]));
+        assert!(args.contains(&"model_reasoning_effort=\"low\"".into()));
         assert_eq!(args.last().unwrap(), "-");
         assert!(validate_text("").is_err());
     }
@@ -185,6 +205,18 @@ mod tests {
         assert!(!state.busy);
         assert!(state.job.is_empty());
         assert!(state.store.is_none());
+    }
+    #[test]
+    fn test_uses_unsaved_settings_without_persisting_them() {
+        let app = App::default();
+        let mut settings = Settings::default();
+        settings.codex_path = "scriptsync-missing-preview.exe".into();
+        settings.codex_model = "gpt-5.6-terra".into();
+        let result = dispatch(&app, "text_improve_test", &json!({"settings":settings})).unwrap();
+        assert!(result.unwrap_err().contains("起動できません"));
+        let state = app.0.lock().unwrap();
+        assert_eq!(state.machine_settings.settings, Settings::default());
+        assert!(!state.busy);
     }
     #[cfg(windows)]
     #[test]

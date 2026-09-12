@@ -15,6 +15,7 @@ pub struct Settings {
     pub asr_model: String,
     pub codex_path: String,
     pub codex_prompt: String,
+    pub codex_model: String,
 }
 impl Default for Settings {
     fn default() -> Self {
@@ -25,6 +26,7 @@ impl Default for Settings {
             asr_model: "small".into(),
             codex_path: String::new(),
             codex_prompt: DEFAULT_CODEX_PROMPT.into(),
+            codex_model: "gpt-5.6-luna".into(),
         }
     }
 }
@@ -41,6 +43,12 @@ impl Settings {
         }
         if self.codex_path.contains(['\n', '\r', '\0']) {
             return Err("Codexのパスが不正です".into());
+        }
+        if !matches!(
+            self.codex_model.as_str(),
+            "gpt-5.6-luna" | "gpt-5.6-terra" | "gpt-5.6-sol" | "gpt-6-astra"
+        ) {
+            return Err("Codexモデルが不正です".into());
         }
         for text in [&self.capture_endpoint, &self.render_endpoint] {
             if text.len() > 2048 || text.contains(['\0', '\r', '\n']) {
@@ -251,6 +259,7 @@ mod tests {
         assert_eq!(s.asr_model, "small");
         assert_eq!(s.asr_provider, "local");
         assert_eq!(s.codex_prompt, DEFAULT_CODEX_PROMPT);
+        assert_eq!(s.codex_model, "gpt-5.6-luna");
     }
     #[test]
     fn old_codex_settings_migrate_and_custom_prompt_survives() {

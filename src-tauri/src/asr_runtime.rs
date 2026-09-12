@@ -32,7 +32,8 @@ pub fn command(root: &Path, settings: &Settings, input: &Path) -> Result<Command
                 .into(),
         );
     }
-    let mut command = adapter_command(root);
+    let resolved = std::fs::canonicalize(root).map_err(|e| e.to_string())?;
+    let mut command = adapter_command(&resolved);
     command
         .arg("--audio")
         .arg(input)
@@ -51,7 +52,7 @@ fn adapter_command(root: &Path) -> Command {
     command
         .args(["-I", "-c"])
         .arg(format!(
-            "import sys\n__file__ = sys.argv.pop(1)\n{TRANSCRIBE}"
+            "import sys\nfrom pathlib import Path\n__file__ = sys.argv.pop(1)\nsys.path.insert(0, str(Path(__file__).parent / 'python' / 'Lib' / 'site-packages'))\n{TRANSCRIBE}"
         ))
         .arg(root.join("transcribe.py"))
         .current_dir(root)
@@ -176,6 +177,8 @@ fn setup(app: &App, root: &Path, settings: &Settings) -> Result<()> {
         return Err("自動導入はWindows x64に対応しています".into());
     }
     std::fs::create_dir_all(root).map_err(|e| e.to_string())?;
+    let resolved = std::fs::canonicalize(root).map_err(|e| e.to_string())?;
+    let root = resolved.as_path();
     let python = root.join("python/python.exe");
     if !python.is_file() {
         status(
@@ -214,6 +217,11 @@ fn setup(app: &App, root: &Path, settings: &Settings) -> Result<()> {
         std::fs::rename(&stage, root.join("python")).map_err(|e| e.to_string())?;
     }
     verify_python(&python)?;
+    // 途中失敗・旧導入物も再試行で検索パスを修復する。
+    if root.join("python/python312.zip").is_file() {
+        std::fs::write(root.join("python/python312._pth"),
+            "python312.zip\n.\nLib/site-packages\nimport site\n").map_err(|e| e.to_string())?;
+    }
     if !root
         .join("python/Lib/site-packages/pip/__main__.py")
         .is_file()
@@ -274,6 +282,11 @@ fn setup(app: &App, root: &Path, settings: &Settings) -> Result<()> {
     .arg(root.join("python/Lib/site-packages"))
     .args(["faster-whisper==1.2.1", "pykakasi==2.3.0"]);
     run_logged(pip, root, "libraries", Duration::from_secs(1200))?;
+    let mut verify = Command::new(&python);
+    verify.args(["-I", "-c", "import sys; sys.path.insert(0, sys.argv[1]); import faster_whisper, pykakasi; print(faster_whisper.__file__)"])
+        .arg(root.join("python/Lib/site-packages"));
+    run_logged(verify, root, "library-check", Duration::from_secs(60))
+        .map_err(|e| format!("ライブラリの読込確認に失敗しました。設定画面から導入を再試行してください：{e}"))?;
     status(
         app,
         "model",
@@ -438,7 +451,7 @@ mod tests {
             .map(|s| s.to_string_lossy().to_string())
             .collect();
         assert_eq!(&args[..2], ["-I", "-c"]);
-        assert!(args[2].starts_with("import sys\n__file__ = sys.argv.pop(1)\n"));
+        assert!(args[2].contains("sys.path.insert(0, str(Path(__file__).parent"));
         assert!(args[2].ends_with(TRANSCRIBE));
         assert_eq!(args[3], root.join("transcribe.py").to_string_lossy());
         // Windowsのコマンドライン上限に十分な余白を保つ。
