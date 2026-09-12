@@ -4,6 +4,8 @@
 
 ## 開発起動とビルド
 
+署名付きMSIXのローカル作成は[MSIX作成手順](MSIX.md)を参照してください。
+
 Windows、PowerShell 7、Node.js/npm、Rust、TauriのWindowsビルド環境（MSVC・WebView2）が必要です。録音・プロジェクト保存の確認にはネイティブアプリを使用します。
 
 ```powershell
