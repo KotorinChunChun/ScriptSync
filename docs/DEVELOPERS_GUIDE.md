@@ -79,3 +79,14 @@ cargo test --manifest-path src-tauri/Cargo.toml --lib synthetic_asr_measurement 
 実行パスの変更と通信契約の変更は別です。ユーザー指定によりplan形式識別子は `ttscli.speech-plan`、ログ出力先環境変数は `TTSCLI_LOG_DIR` に統一しています。コードと検証スクリプトへ反映済みです。新CLIとの実接続および設定省略時の動作は別途確認が必要です。Cargoのauthorsは作者の帰属情報でありCLIの名称ではありません。
 
 v0.0.3：[要求](../dev/v0.0.3-req.md)／[実装計画](../dev/v0.0.3-imp.md)。
+
+
+### Windowsインストーラー生成
+
+NSIS形式は次のコマンドで生成する。
+
+```powershell
+npm run tauri build -- --bundles nsis
+```
+
+出力は `src-tauri/target/release/bundle/nsis/`。v0.0.3の検証ではNSIS生成に成功し、MSIはWiX light実行に失敗した。.scriptsync関連付けはインストーラーに含むが、生成成功とインストール後の関連付け動作確認は区別する。

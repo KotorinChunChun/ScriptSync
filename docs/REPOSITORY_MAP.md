@@ -82,3 +82,7 @@ v0.0.2完成版の実装を探すための目録です。全生成物の一覧�
 - src/recordingArchives.ts：原稿・行のアーカイブ管理画面、試聴、確認付き完全消去。
 - src-tauri/src/script_sources.rs、domain.rs、storage.rs：保存形式5、原稿削除の確定と保持。
 - src-tauri/src/archive.rs：原稿・行の全世代消去と再試行。
+
+追加操作：`src/pointerReorder.ts` は一覧のPointer並び替え、`src/fullScriptDiff.ts` は全文左右整列、`src-tauri/src/project_open.rs` は起動引数、`src-tauri/src/project_rename.rs` はプロジェクト改名。
+
+- `src/recordingFeedback.ts`：録音中の修正原稿を原稿ファイルの差分へ戻す位置照合。
