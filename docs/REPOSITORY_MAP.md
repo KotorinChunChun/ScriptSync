@@ -1,6 +1,6 @@
 # ファイル構成目録
 
-v0.0.2開発版の実装を探すための目録です。全生成物の一覧ではありません。文書の入口は[文書目録](README.md)、変更時の規約は[AGENTS](../AGENTS.md)です。
+v0.0.2完成版の実装を探すための目録です。全生成物の一覧ではありません。文書の入口は[文書目録](README.md)、変更時の規約は[AGENTS](../AGENTS.md)です。
 
 ## UI
 
@@ -24,7 +24,7 @@ v0.0.2開発版の実装を探すための目録です。全生成物の一覧�
 | [lib.rs](../src-tauri/src/lib.rs)、main.rs | アプリ起動、ウィンドウ、コマンド登録 |
 | [app.rs](../src-tauri/src/app.rs) | UIからの操作、録音・保存・プロジェクト処理の統合 |
 | [domain.rs](../src-tauri/src/domain.rs)、[storage.rs](../src-tauri/src/storage.rs) | データモデル、保存世代、プロジェクトファイル、整合性 |
-| [markdown.rs](../src-tauri/src/markdown.rs)、editing.rs | Markdown解析・確定、編集。v0.0.2の差分マージは未実装 |
+| [markdown.rs](../src-tauri/src/markdown.rs)、editing.rs | Markdown解析・確定、編集。ファイル別の差分・確定はscript_sources.rsと連携 |
 | [audio.rs](../src-tauri/src/audio.rs)、take_trim.rs、media.rs | 音声加工、トリム保存、音声配信 |
 | [export_blocks.rs](../src-tauri/src/export_blocks.rs)、export_settings.rs | 分割・命名・間隔・結合・出力設定 |
 | [hotkeys.rs](../src-tauri/src/hotkeys.rs)、ui_session.rs、window_state.rs | キー登録、UI生存確認、ウィンドウ状態 |
@@ -47,7 +47,7 @@ v0.0.2開発版の実装を探すための目録です。全生成物の一覧�
 | dev/scripts/ | ASR準備・合成fixture・コーパス検証スクリプト |
 | package.json、package-lock.json | UIコマンド・依存・アプリ版 |
 | src-tauri/Cargo.toml、Cargo.lock、tauri.conf.json | Rust依存・アプリ版・ウィンドウ・ビルド設定 |
-| dev/v0.0.2-*.md | 次版の要求・計画・進捗 |
+| dev/history/v0.0.2/v0.0.2-*.md | v0.0.2の最終要求・実装記録・進捗。途中記録は同フォルダーのsnapshots |
 | dev/history/v0.0.1/ | 確定版の要求・実装履歴 |
 | dev/mockups/ | 設計確認用HTML。実アプリとは別 |
 | dev/templates/ | 文書テンプレート |

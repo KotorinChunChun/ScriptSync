@@ -1,6 +1,6 @@
 # 開発者ガイド
 
-対象はv0.0.2開発版です。`feature/v0.0.2`でファイル別台本・録音後ASRを継続実装しています。[実装記録](../dev/v0.0.2-imp.md)の実施済み検証と未確認項目を区別してください。
+対象は2026-09-12に終了したv0.0.2完成版です。現タスクの課題はユーザー確認済み・問題なしです。[実装記録](../dev/history/v0.0.2/v0.0.2-imp.md)で過去の自動検証と終了時のユーザー確認を区別してください。
 
 ## 開発起動とビルド
 
@@ -68,7 +68,7 @@ cargo test --manifest-path src-tauri/Cargo.toml --lib synthetic_asr_measurement 
 
 ## バージョンと文書更新
 
-要求は `dev/vX.Y.Z-req.md`、設計・実装結果は `dev/vX.Y.Z-imp.md`、進捗は `dev/vX.Y.Z-task.md` に日本語で記録します。次版へ進む際は旧版を `dev/history/` に残します。v0.0.2の実装開始時にpackage.json、package-lock.json、src-tauri/Cargo.toml、Cargo.lock、tauri.conf.jsonのアプリ版を揃えます。
+要求は `dev/vX.Y.Z-req.md`、設計・実装結果は `dev/vX.Y.Z-imp.md`、進捗は `dev/vX.Y.Z-task.md` に日本語で記録します。次版へ進む際は旧版を `dev/history/` に残します。v0.0.2はdev/history/v0.0.2へ保存済みです。次版は未開始で、アプリ版は0.0.2を維持します。
 
 キー変更時は[キー定義](../dev/SHORTCUT_KEYS.md)、効果音変更時は[効果音定義](../dev/SOUND_EFFECTS.md)、画面操作変更時は利用者ガイドとサンプル手順も更新します。生成物、個人原稿・音声、認証情報、ユーザー提供の `dev/sample/` を文書整理のために追加・削除しないでください。
 

@@ -1,6 +1,6 @@
 # 現行アーキテクチャ
 
-対象はv0.0.2開発版です。初期構想は[初期設計案](history/architecture-initial-design.md)、今回の実装・検証状態は[実装記録](../dev/v0.0.2-imp.md)を参照してください。
+対象はv0.0.2完成版です。初期構想は[初期設計案](history/architecture-initial-design.md)、今回の実装・検証状態は[実装記録](../dev/history/v0.0.2/v0.0.2-imp.md)を参照してください。
 
 ## 処理の境界
 

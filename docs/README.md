@@ -1,6 +1,6 @@
 # 文書目録
 
-現行の開発版はv0.0.2です。ファイル別台本・横4ペイン・録音後文字起こしの継続実装と自動検証を完了し、残る実機確認は進捗表に記録しています。完成版v0.0.1は履歴を参照してください。
+v0.0.2は2026-09-12に終了しました。現タスクの課題はユーザー確認済み・問題なしです。最終資料はdev/history/v0.0.2、途中記録はそのsnapshotsに保存しています。次版は未開始です。
 
 | 読む人・目的 | 入口 |
 |---|---|
@@ -11,8 +11,8 @@
 | コードを探す | [ファイル構成目録](REPOSITORY_MAP.md)、[現行アーキテクチャ](architecture.md) |
 | AIによる保守 | [AGENTS](../AGENTS.md)、[技術知見](../dev/KNOWLEDGE.md) |
 | AIの検証・リリース手順 | [変更検証スキル](../.agents/skills/scriptsync-project-validation/SKILL.md)、[リリース確定スキル](../.agents/skills/scriptsync-project-release/SKILL.md) |
-| 現行版の実装・検証記録 | [v0.0.1履歴](../dev/history/v0.0.1/v0.0.1-README.md)、[検証計画・記録](validation.md) |
-| v0.0.2の実装・検証を確認する | [v0.0.2入口](../dev/v0.0.2-README.md)、[要求](../dev/v0.0.2-req.md)、[計画](../dev/v0.0.2-imp.md)、[進捗](../dev/v0.0.2-task.md) |
+| 現行版の実装・検証記録 | [v0.0.2終了記録](../dev/history/v0.0.2/v0.0.2-README.md)、[検証計画・記録](validation.md) |
+| v0.0.2の実装・検証を確認する | [v0.0.2入口](../dev/history/v0.0.2/v0.0.2-README.md)、[要求](../dev/history/v0.0.2/v0.0.2-req.md)、[計画](../dev/history/v0.0.2/v0.0.2-imp.md)、[進捗](../dev/history/v0.0.2/v0.0.2-task.md) |
 | 録音ノイズを検証する | [修正・検証手順](../dev/audio-recording-noise-fix-procedure.md) |
 | プレゼンテーションソフトへ音声の時間情報を渡す | [音声・字幕・ブロックマップ連携仕様](EXPORT_BLOCK_MAP.md) |
 | CLI側の音声合成エンジンの形式を扱う | [CLI側の音声合成エンジンプロジェクト形式](talk-project-format.md) |
