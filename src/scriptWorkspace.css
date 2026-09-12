@@ -55,3 +55,12 @@
 .source-target-row{display:grid;grid-template-columns:minmax(0,1fr) minmax(90px,40%);align-items:center;gap:8px}
 .source-target-row>select.source-mapping{width:100%;min-width:0;margin:0;font-size:14px}
 .source-target-row>select:disabled{background:#e8eae9;color:#727976;opacity:1}
+
+.archive-manager{position:fixed;inset:0;background:#10291fcc;z-index:1000;display:grid;place-items:center;padding:24px}
+.archive-dialog{background:#fff;border-radius:12px;padding:20px;width:min(1000px,100%);height:min(800px,90vh);display:flex;flex-direction:column;min-height:0;gap:10px}
+.archive-dialog h2,.archive-dialog h3,.archive-dialog p{margin:0}
+.archive-content{overflow:auto;flex:1;min-height:0}
+.archive-group{border:1px solid #ccd8d0;border-radius:8px;margin-bottom:12px;padding:12px}
+.archive-group pre{font:inherit;white-space:pre-wrap;overflow-wrap:anywhere;max-height:180px;overflow:auto;background:#f1f5f2;padding:10px}
+.archive-group article{padding:12px 0;border-top:1px solid #dbe2dd;display:grid;gap:6px}
+body:has(.archive-manager)>.delete-modal{z-index:1100}

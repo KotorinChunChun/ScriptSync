@@ -1,0 +1,23 @@
+import {expect,it,vi,afterEach} from 'vitest';
+import {openArchiveManager} from '../../src/recordingArchives';
+afterEach(()=>{document.body.innerHTML='';});
+it('原稿と行を一覧し、取消では消去せず、処理中は二重操作を防ぐ',async()=>{
+ document.body.innerHTML='<div id="app"><button id="entry">入口</button></div>';
+ let project:any={id:'p',generation:3,script_sources:[],archived_sources:[{id:'source',name:'削除原稿.md',confirmed_text:'旧本文'}],archived_segments:[{id:'segment',source_id:'source',text:'旧本文',kana:'よみ',takes:[]}]};
+ let resolve!:(value:unknown)=>void;
+ const rpc=vi.fn(()=>new Promise(r=>{resolve=r;})),refresh=vi.fn(async()=>{project={...project,archived_sources:[],archived_segments:[]};});
+ openArchiveManager({project,getProject:()=>project,rpc,refresh,play:vi.fn(),notice:vi.fn()});
+ expect(document.querySelector('.archive-group h3')?.textContent).toContain('削除原稿');
+ document.querySelector<HTMLButtonElement>('[data-purge-segment]')!.click();await Promise.resolve();
+ document.querySelector<HTMLButtonElement>('[data-cancel]')!.click();await Promise.resolve();
+ expect(rpc).not.toHaveBeenCalled();
+ document.querySelector<HTMLButtonElement>('[data-purge-source]')!.click();await Promise.resolve();
+ document.querySelector<HTMLButtonElement>('[data-confirm]')!.click();await Promise.resolve();
+ await vi.waitFor(()=>expect(rpc).toHaveBeenCalledWith('archive_purge',{project_id:'p',base_generation:3,source_id:'source',confirmed:true}));
+ expect(document.querySelector<HTMLButtonElement>('[data-close]')!.disabled).toBe(true);
+ resolve({shared_files:1});for(let i=0;i<10;i++)await Promise.resolve();
+ expect(document.querySelector('.archive-content')?.textContent).toContain('アーカイブはありません');
+ expect(document.querySelector('[role=status]')?.textContent).toContain('共有音声等 1件');
+ document.querySelector<HTMLButtonElement>('[data-close]')!.click();
+ expect((document.querySelector('#app') as HTMLElement).inert).toBeFalsy();
+});

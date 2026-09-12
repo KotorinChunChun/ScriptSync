@@ -304,8 +304,11 @@ impl App {
             return Ok(crate::script_sources::snapshot(&store.project));
         }
         if action == "archive_purge" {
-            crate::archive::purge(store,&string(&v,"segment")?,v["confirmed"].as_bool().unwrap_or(false))?;
-            return Ok(Value::Null);
+            if v["project_id"].as_str().is_some_and(|id|id!=store.project.id) {return Err("プロジェクトが変更されています".into());}
+            if v["base_generation"].as_u64().is_some_and(|generation|generation!=store.project.generation) {return Err("プロジェクトが更新されています。再読込してください".into());}
+            let source=v["source_id"].as_str();
+            let target=source.or_else(||v["segment"].as_str()).ok_or("消去対象が必要です")?;
+            return crate::archive::purge_target(store,target,source.is_some(),v["confirmed"].as_bool().unwrap_or(false));
         }
         if action == "audio" {
             let file = string(&v, "file")?;
