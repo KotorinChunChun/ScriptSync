@@ -37,7 +37,7 @@ it('source mode keeps per-file drafts, approvals, ordering, and committed baseli
  document.querySelector<HTMLButtonElement>('[data-collapse-pane="0"]')!.click();
  document.querySelector<HTMLButtonElement>('[data-collapse-pane="1"]')!.click();
  expect(document.querySelector<HTMLElement>('.script-columns')!.style.gridTemplateColumns).toBe(before);
- click('ファイルを登録');await settle();await vi.advanceTimersByTimeAsync(400);await settle();
+ document.querySelector<HTMLButtonElement>('[data-action=script_import]')!.click();await settle();await vi.advanceTimersByTimeAsync(400);await settle();
  expect(document.querySelectorAll('.script-source')).toHaveLength(4);
  expect(document.querySelector('#markdown-source')?.textContent??document.querySelector<HTMLTextAreaElement>('#markdown-source')?.value).toBe('D1');
  const input=document.querySelector<HTMLTextAreaElement>('#markdown-source')!;input.value='D2';input.dispatchEvent(new Event('input'));await vi.advanceTimersByTimeAsync(150);await settle();
@@ -51,7 +51,7 @@ it('source mode keeps per-file drafts, approvals, ordering, and committed baseli
  click('すべて承認');await vi.advanceTimersByTimeAsync(400);await settle();
  await vi.advanceTimersByTimeAsync(700);await settle();
  expect(document.querySelector<HTMLTextAreaElement>('#markdown-source')!.value).toBe('D2');
- click('空の原稿');await settle();click('空の原稿');await settle();
+ document.querySelector<HTMLButtonElement>('[data-action=script_empty]')!.click();await settle();document.querySelector<HTMLButtonElement>('[data-action=script_empty]')!.click();await settle();
  expect([...document.querySelectorAll('.script-source b')].map(node=>node.textContent)).toContain('空の原稿 (2).md');
  click('c.md');await settle();click('すべて承認');await vi.advanceTimersByTimeAsync(400);await settle();
  click('d.md');await settle();expect(snapshot.project.script_sources.find((source:any)=>source.id==='b').confirmed_text).toBe('旧B');

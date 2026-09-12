@@ -103,6 +103,16 @@ fn validate_project(root: &Path, p: &Project) -> Result<()> {
             return Err("台本ファイルは2MB以内にしてください".into());
         }
     }
+    for source in &p.archived_sources {
+        check_id(&source.id)?;
+        if source.name.trim().is_empty() { return Err("原稿名が空です".into()); }
+    }
+    let mut pending = std::collections::HashSet::new();
+    for source_id in &p.pending_source_deletions {
+        if !pending.insert(source_id) || !p.script_sources.iter().any(|s| &s.id == source_id) {
+            return Err("削除予定の原稿が不正です".into());
+        }
+    }
     if p.segments.len() > 1000 {
         return Err("発話数の上限を超えています".into());
     }
@@ -198,7 +208,7 @@ impl Store {
         } else {
             return Err("ScriptSyncプロジェクトではありません".into());
         };
-        if project.version != 1 && project.version != 2 && project.version != 3 && project.version != 4 {
+        if project.version != 1 && project.version != 2 && project.version != 3 && project.version != 4 && project.version != 5 {
             return Err("未対応のプロジェクト版です".into());
         }
         validate_project(&root, &project)?;
@@ -264,7 +274,7 @@ impl Store {
                 }
             }
         }
-        if s.project.script_sources.is_empty() && (s.project.version < 4 || !s.project.source_markdown.is_empty() || !s.project.script_lines.is_empty() || !s.project.segments.is_empty() || !s.project.archived_segments.is_empty()) {
+        if s.project.version < 5 && s.project.script_sources.is_empty() && (s.project.version < 4 || !s.project.source_markdown.is_empty() || !s.project.script_lines.is_empty() || !s.project.segments.is_empty() || !s.project.archived_segments.is_empty()) {
             // 旧形式の一つの原稿を一つのファイル台本へ包む。既存の発話・テイクIDは変更しない。
             let text = if s.project.source_markdown.is_empty() && s.project.script_lines.is_empty() {
                 s.project.segments.iter().map(|segment| if segment.source_text.is_empty() { segment.text.as_str() } else { segment.source_text.as_str() }).collect::<Vec<_>>().join("\n")
@@ -290,7 +300,7 @@ impl Store {
                 if seg.source_id.is_empty() { seg.source_id = fallback.clone(); }
             }
         }
-        s.project.version = 4;
+        s.project.version = 5;
         s.save()?;
         Ok(s)
     }
@@ -385,7 +395,7 @@ impl Store {
     pub fn save(&mut self) -> Result<()> {
         let generation = self.project.generation + 1;
         let mut snapshot = self.project.clone();
-        snapshot.version = 4;
+        snapshot.version = 5;
         snapshot.generation = generation;
         let rev = safe(&self.root, &format!("revisions/{generation:020}.json"))?;
         let temp = rev.with_extension(format!("{}.tmp", id()));
@@ -400,7 +410,7 @@ impl Store {
         }
         let _ = fs::remove_file(&temp);
         self.project.generation = generation;
-        self.project.version = 4;
+        self.project.version = 5;
         // 世代は既に確定済み。閲覧用索引の失敗でメモリを旧世代へ戻さない。
         if let Ok(index) = safe(&self.root, &format!("project-{}.tmp", id())) {
             if json_new(&index, &snapshot).is_ok() {
@@ -499,7 +509,7 @@ mod tests {
         assert_eq!(migrated.line_id, segment_id);
         assert_eq!(migrated.line_revisions.len(), 1);
         assert_eq!(migrated.line_revisions[0].source_text, "旧版の発話");
-        assert_eq!(reopened.project.version, 4);
+        assert_eq!(reopened.project.version, 5);
         assert_eq!(reopened.project.script_sources.len(), 1);
         assert_eq!(reopened.project.script_sources[0].name, "既存台本");
         assert_eq!(migrated.source_id, reopened.project.script_sources[0].id);

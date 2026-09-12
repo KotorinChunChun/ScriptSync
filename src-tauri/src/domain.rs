@@ -239,6 +239,10 @@ pub struct Project {
     #[serde(default)]
     pub script_revision: u64,
     #[serde(default)]
+    pub pending_source_deletions: Vec<String>,
+    #[serde(default)]
+    pub archived_sources: Vec<ScriptSource>,
+    #[serde(default)]
     pub export_settings: serde_json::Value,
     #[serde(default)]
     pub rules: Vec<ReadingRule>,
@@ -265,6 +269,8 @@ impl Project {
             script_lines: vec![],
             script_sources: vec![],
             script_revision: 0,
+            pending_source_deletions: vec![],
+            archived_sources: vec![],
             export_settings: serde_json::Value::Null,
             rules: vec![],
             batches: vec![],
@@ -272,7 +278,7 @@ impl Project {
             merge_draft: None,
             match_history: vec![],
             deletion_records: vec![],
-            version: 4,
+            version: 5,
             id: id(),
             title,
             generation: 0,

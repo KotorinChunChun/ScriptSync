@@ -8,7 +8,7 @@ export function sourceText(source:ScriptSource){return source.draft_text??source
 export function makeDraft(source:ScriptSource):SourceDraft{
  const text=sourceText(source),origins=physicalOrigins(source.confirmed_text,text),physical=text.split(/\r?\n/);
  const metadata=source.draft_lines?.length?source.draft_lines:source.lines??[];
- const lines=metadata.map(line=>({...line,raw:physical[line.line]??'',text:line.text??physical[line.line]??'',previous_line:origins[line.line]??null}));
+ const lines=metadata.map(line=>({...line,raw:physical[line.line]??'',text:line.text??physical[line.line]??'',previous_line:line.force_new?null:origins[line.line]??null}));
  const decisions=new Map<string,Decision>();
  if(source.approved_text===text)reviewRows(source.confirmed_text,text).filter(row=>row.kind!=="same").forEach(row=>decisions.set(row.key,"accept"));
  return {source,text,parsedText:text,lines,decisions,resolved:{text,origins}};
@@ -21,7 +21,7 @@ export function updateParsedLines(draft:SourceDraft,parsed:ScriptLine[]){
   const blank=draft.source.blank_rows?.find(row=>row.line===line.line);
   const blankChoice=blank?draft.lines.find(old=>old.previous_id===blank.segment_id):undefined;
   const keep=previous??(draft.parsedText===draft.text?blankChoice:undefined);
-  return {...line,enabled:keep?.enabled??line.enabled,previous_line:origins[line.line]??null,...(keep?.previous_id?{previous_id:keep.previous_id,keep:keep.keep,blank_segment_id:keep.blank_segment_id}:{})};
+  return {...line,enabled:keep?.enabled??line.enabled,previous_line:keep?.force_new?null:origins[line.line]??null,...(keep?.force_new?{force_new:true}:{}),...(keep?.previous_id?{previous_id:keep.previous_id,keep:true,blank_segment_id:keep.blank_segment_id}:{})};
  });
  draft.parsedText=draft.text;draft.resolved={text:draft.text,origins};
 }
@@ -31,7 +31,25 @@ export function resolveDraft(draft:SourceDraft){return resolveReview(draft.sourc
 export function approvedText(draft:SourceDraft){return unresolved(draft)===0?draft.text:undefined;}
 export function sourcePayload(draft:SourceDraft){
  return {id:draft.source.id,name:draft.source.name,kind:draft.source.kind,text:draft.text,
-  lines:draft.lines.map(line=>({...line,previous_line:line.previous_line??null})),
+  lines:draft.lines.map(line=>({...line,keep:!!line.previous_id,previous_line:line.force_new?null:line.previous_line??null})),
   ...(draft.source.blank_rows?{blank_rows:draft.source.blank_rows}:{}),...(unresolved(draft)===0?{approved_text:draft.text}:{})};
 }
 export function reorder<T>(values:T[],from:number,to:number){const next=[...values], [item]=next.splice(from,1);next.splice(to,0,item);return next;}
+
+export type SourceSegment={id:string;line_id?:string;source_id?:string;source_line?:number|null;source_text?:string;text:string};
+export function importedSource(existing:SourceDraft|undefined,file:{name:string;text:string},id:string):SourceDraft {
+ return makeDraft({id,name:file.name,kind:existing?.source.kind??'markdown',confirmed_text:existing?.source.confirmed_text??'',draft_text:file.text,lines:existing?.source.lines??[],draft_lines:existing?.lines??[],blank_rows:existing?.source.blank_rows});
+}
+export function sourceMapping(draft:SourceDraft,line:ScriptLine,active:SourceSegment[],archived:SourceSegment[]){
+ const inSource=active.filter(s=>s.source_id===draft.source.id);
+ const automatic=(row:ScriptLine)=>!row.force_new&&row.previous_line!=null?inSource.find(s=>s.source_line===row.previous_line&&(s.source_text??s.text)===String(row.text??row.raw??'')):undefined;
+ const matched=automatic(line);
+ const used=new Set(draft.lines.filter(row=>row!==line).flatMap(row=>[row.previous_id,automatic(row)?.id]).filter(Boolean));
+ const removed=new Set(changedRows(draft).filter(row=>row.kind==='removed').map(row=>row.oldLine));
+ const candidates=[...inSource.filter(s=>s.source_line!=null&&removed.has(s.source_line)),...archived.filter(s=>s.source_id===draft.source.id)]
+  .filter((s,i,all)=>!used.has(s.id)&&all.findIndex(other=>other.id===s.id)===i);
+ const selected=matched?.id??line.previous_id??'';
+ const current=[...inSource,...archived].find(s=>s.id===selected);
+ if(current&&!candidates.some(s=>s.id===selected))candidates.unshift(current);
+ return {matched,selected,candidates};
+}

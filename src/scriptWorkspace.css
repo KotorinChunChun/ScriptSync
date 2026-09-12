@@ -46,3 +46,12 @@
 .script-review-toolbar .script-review-all{margin:0;margin-left:auto;gap:6px}
 .script-review-all button{font-size:16px;min-height:36px;padding:6px 10px;color:#176b57;background:#fff;border:1px solid #176b57}
 .script-review-all button[aria-pressed=true]{background:#176b57;color:#fff}
+
+.script-source-row{display:flex;min-width:0}.script-source-row>.script-source{width:100%}
+.script-source-row input{width:100%;font-size:16px;margin:0}
+.script-pending-deletions{font-size:12px;max-height:30%;overflow:auto}.script-pending-deletions p{margin:5px 0}
+.script-files.collapsed .script-pending-deletions{display:none}
+.script-target-help{font-size:14px;line-height:1.6;margin:0 0 8px}
+.source-target-row{display:grid;grid-template-columns:minmax(0,1fr) minmax(90px,40%);align-items:center;gap:8px}
+.source-target-row>select.source-mapping{width:100%;min-width:0;margin:0;font-size:14px}
+.source-target-row>select:disabled{background:#e8eae9;color:#727976;opacity:1}

@@ -57,7 +57,6 @@ pub fn update_draft(project: &mut Project, value: &Value) -> Result<()> {
         let item_id = item["id"].as_str().unwrap_or("");
         let existing = current.get(item_id).copied();
         if !item_id.is_empty() && existing.is_none() { uuid::Uuid::parse_str(item_id).map_err(|_| "台本ファイルIDの形式が不正です")?; }
-        if let Some(old) = existing { if old.name != name { return Err("既存の台本ファイル名は変更できません".into()); } }
         let source_id = if item_id.is_empty() { id() } else { item_id.to_owned() };
         if !ids.insert(source_id.clone()) { return Err("台本ファイルIDが重複しています".into()); }
         let text = source_text(item)?;
@@ -72,6 +71,15 @@ pub fn update_draft(project: &mut Project, value: &Value) -> Result<()> {
         });
     }
     if project.script_sources.iter().any(|source| !ids.contains(&source.id)) { return Err("既存の台本ファイルは下書きから削除できません".into()); }
+    let pending: Vec<String> = match value.get("deleted_source_ids") {
+        Some(value) => serde_json::from_value(value.clone()).map_err(|_| "削除予定IDが不正です")?,
+        None => project.pending_source_deletions.clone(),
+    };
+    let mut unique = HashSet::new();
+    for source_id in &pending {
+        if !ids.contains(source_id) || !unique.insert(source_id) { return Err("削除予定の原稿が不正です".into()); }
+    }
+    project.pending_source_deletions = pending;
     project.script_sources = result;
     Ok(())
 }
@@ -249,6 +257,7 @@ pub fn commit(project: &mut Project, value: &Value) -> Result<()> {
     for item in input {
         let source_id = item["id"].as_str().ok_or("確定する台本ファイルIDが必要です")?;
         let old = by_id.remove(source_id).ok_or("台本ファイルIDが見つかりません")?;
+        if staged.pending_source_deletions.contains(&source_id.to_owned()) { continue; }
         let (text, rows, selections) = checked_rows(item, old)?;
         if text != old.confirmed_text && item["approved_text"].as_str() != Some(text.as_str()) {
             return Err(format!("{} の変更が未承認です", old.name));
@@ -257,10 +266,27 @@ pub fn commit(project: &mut Project, value: &Value) -> Result<()> {
     }
     if !by_id.is_empty() { return Err("確定には全台本ファイルを含めてください".into()); }
 
+    let pending: HashSet<_> = staged.pending_source_deletions.drain(..).collect();
+    let mut remaining = Vec::new();
+    for source in staged.script_sources.drain(..) {
+        if pending.contains(&source.id) { staged.archived_sources.push(source); } else { remaining.push(source); }
+    }
+    staged.script_sources = remaining;
     let old_active = std::mem::take(&mut staged.segments);
     let old_archived = staged.archived_segments.clone();
     let mut active = Vec::new();
     let mut used = HashSet::new();
+    let mut automatic = HashMap::new();
+    for (source_id, _, rows, selections) in &parsed {
+        for row in rows {
+            let choice = row_choice(selections, row.line);
+            let prior = choice.and_then(|c| c["previous_line"].as_u64()).map(|n| n as usize)
+                .or_else(|| if choice.is_none_or(|c| c.get("previous_line").is_none()) { Some(row.line) } else { None });
+            if let Some(segment) = old_active.iter().find(|s| &s.source_id == source_id && s.source_line == prior && s.source_text == row.text && prior.is_some()) {
+                automatic.insert(segment.id.clone(), (source_id.clone(), row.line));
+            }
+        }
+    }
     for (source_id, _text, rows, selections) in &parsed {
         for row in rows.iter().filter(|row| row.enabled && !row.text.is_empty()) {
             let choice = row_choice(selections, row.line);
@@ -282,6 +308,12 @@ pub fn commit(project: &mut Project, value: &Value) -> Result<()> {
                 return Err("指定した維持元の発話が見つからないか、別の台本ファイルです".into());
             }
             if let Some(found) = candidate {
+                if automatic.get(&found.id).is_some_and(|owner| owner != &(source_id.clone(), row.line)) {
+                    return Err("一致済みの発話は別の行へ対応付けできません".into());
+                }
+                if project.deletion_records.iter().any(|record| record["status"] == "pending" && record["segment_id"] == found.id) {
+                    return Err("完全消去中の発話は対応付けできません".into());
+                }
                 if found.source_text != row.text && choice.and_then(|c| c["keep"].as_bool()) != Some(true) {
                     return Err("本文が変更された維持行は keep:true の確認が必要です".into());
                 }
@@ -467,4 +499,53 @@ mod tests {
             {"id":two_id,"name":"02.md","text":second,"lines":markdown::parse(&second).unwrap()}]});
         commit(&mut p,&request).unwrap();assert_eq!(p.segments.len(),2);assert!(p.script_lines.is_empty());assert!(p.source_markdown.len()>2_000_000);
     }
+    #[test]
+    fn rename_preserves_identity_and_deletion_waits_for_commit() {
+        let root=std::env::temp_dir().join(id());
+        let mut store=crate::storage::Store::open(root.clone(),true).unwrap();
+        insert_empty(&mut store.project,&json!({"name":"原稿.md","base_revision":0})).unwrap();
+        let initial=payload(&store.project,"専用の本文",true);
+        commit(&mut store.project,&initial).unwrap();
+        let source_id=store.project.script_sources[0].id.clone();
+        let segment_id=store.project.segments[0].id.clone();
+        store.project.segments[0].kana="よみ".into();
+        let mut renamed=payload(&store.project,"専用の本文",true);
+        renamed["sources"][0]["name"]="変更名.md".into();
+        update_draft(&mut store.project,&renamed).unwrap();
+        assert_eq!(store.project.script_sources[0].id,source_id);
+        assert_eq!(store.project.segments[0].id,segment_id);
+        renamed["deleted_source_ids"]=json!([source_id]);
+        update_draft(&mut store.project,&renamed).unwrap();
+        assert_eq!(store.project.segments.len(),1);
+        store.save().unwrap();drop(store);
+        let mut store=crate::storage::Store::open(root.clone(),false).unwrap();
+        assert_eq!(store.project.pending_source_deletions.len(),1);
+        let mut request=payload(&store.project,"専用の本文",true);
+        request["deleted_source_ids"]=json!([source_id]);
+        commit(&mut store.project,&request).unwrap();
+        assert!(store.project.script_sources.is_empty());
+        assert!(store.project.segments.is_empty());
+        assert_eq!(store.project.archived_sources[0].name,"変更名.md");
+        assert_eq!(store.project.archived_segments[0].kana,"よみ");
+        store.save().unwrap();drop(store);
+        let store=crate::storage::Store::open(root,false).unwrap();
+        assert!(store.project.script_sources.is_empty(),"削除した原稿を旧形式移行で復活させない");
+        assert_eq!(store.project.archived_segments[0].id,segment_id);
+    }
+
+    #[test]
+    fn explicit_mapping_cannot_steal_an_automatic_match() {
+        let mut p=Project::new("一致保護".into());
+        insert_empty(&mut p,&json!({"name":"a.md","base_revision":0})).unwrap();
+        let initial=payload(&p,"一致",true);commit(&mut p,&initial).unwrap();
+        let old=p.segments[0].id.clone();
+        let mut request=payload(&p,"変更\n一致",true);
+        request["sources"][0]["lines"]=json!([
+            {"line":0,"enabled":true,"previous_id":old,"keep":true},
+            {"line":1,"enabled":true,"previous_line":0}
+        ]);
+        assert!(commit(&mut p,&request).unwrap_err().contains("一致済み"));
+        assert_eq!(p.segments.len(),1);
+    }
+
 }
