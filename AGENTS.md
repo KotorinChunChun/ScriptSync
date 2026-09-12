@@ -41,3 +41,7 @@ v0.0.4実装：[要求](dev/history/v0.0.4/v0.0.4-req.md)／[実装記録](dev/h
 - 旧版互換では入口形式とデータ形式を区別し、既存音声・過去保存世代を保持して検証する。未知の将来形式を版番号だけ変更して取り込まない。
 
 v0.0.5実装：[要求](dev/v0.0.5-req.md)／[実装記録](dev/v0.0.5-imp.md)。v0.0.4資料はdev/history/v0.0.4へ保存済みです。
+
+## Web公開手順
+
+[リリースルール](dev/RELEASE_RULE.md)を参照。MarkdownViewerと同じWebsiteのdownload/betaへScriptSync専用3ファイルを公開する。リリース指示の範囲と各工程の検証は同書に従う。

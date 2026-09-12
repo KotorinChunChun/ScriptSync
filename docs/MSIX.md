@@ -82,3 +82,7 @@ npm run release:msix
 ## v0.0.4の生成結果
 
 2026-09-12、標準コマンドで `release/msix-v0.0.4/20260912-195728/` に生成。MakeAppx・署名・CMS暗号署名検証・内包EXE一致を確認。SignToolの信頼チェーン検証は未信頼ルートのため未成立。インストール確認と信頼ストア登録は未実施。詳細は[実装記録](../dev/history/v0.0.4/v0.0.4-imp.md)。
+
+## Web配布
+
+MarkdownViewerと同じbeta配布先を使用する。[リリース・アップロード手順](../dev/RELEASE_RULE.md)を参照。
