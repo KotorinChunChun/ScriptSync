@@ -26,6 +26,16 @@
   },
   "bundle": {
     "active": true,
-    "targets": "all"
+    "targets": "all",
+    "fileAssociations": [
+      {
+        "ext": [
+          "scriptsync"
+        ],
+        "name": "ScriptSync Project",
+        "description": "読みあわせプロジェクト",
+        "role": "Editor"
+      }
+    ]
   }
 }

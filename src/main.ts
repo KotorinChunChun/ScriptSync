@@ -294,8 +294,13 @@ async function acceptMarkdown(result:{text:string;lines:any[]}){
  const keys=new Set(legacyCurrentReview().map(r=>r.key));for(const key of scriptDecisions.keys())if(!keys.has(key))scriptDecisions.delete(key);
  await previewScript();
 }
-function setScriptDrag(active:boolean){root.querySelector('.script-editor')?.classList.toggle('drag-over',active&&tab==='script'&&!busy&&!state.busy);}
+function setScriptDrag(active:boolean){root.querySelector(state.project?'.script-workspace':'.welcome')?.classList.toggle('drag-over',active&&(!state.project||tab==='script')&&!busy&&!state.busy);}
 async function loadDroppedMarkdown(paths:string[]){
+ if(!state.project){
+  if(busy||state.busy||dialogAction)return;
+  if(paths.length!==1||!paths[0].toLowerCase().endsWith('.scriptsync')){notice('ScriptSyncプロジェクトを1件ドロップしてください',true);return;}
+  await act('open',{path:paths[0]});return;
+ }
  if(tab!=="script"||!state.project){notice("プロジェクトを開き、台本画面でドロップしてください",true);return;}
  if(busy||state.busy||dialogAction){notice("処理が終わってからドロップしてください",true);return;}
  const projectRoot=state.root;
@@ -322,7 +327,7 @@ function render(){
  const p=state.project;if(!p&&sourceRoot!==undefined){sourceEpoch++;sourcePreviewVersion++;sourceSaveScheduled=false;sourceSavePromise=Promise.resolve();sourceDrafts.clear();sourceOrder=[];selectedSource="";sourceRoot=undefined;sourceDirty=false;sourceSaveError='';clearTimeout(sourcePreviewTimer);clearTimeout(sourceSaveTimer);}root.classList.toggle("welcome-root",!p);root.style.gridTemplateRows=p?"auto auto minmax(0,1fr) auto":"";
  const oldPlayer=document.getElementById("player")as HTMLAudioElement|null;
  const keepPlayer=oldPlayer&&!oldPlayer.paused?oldPlayer:null;
- if(!p){root.innerHTML=`<main class="welcome"><h1>読みあわせ</h1><div class="welcome-options"><section>${button("new","新規プロジェクト",'class="primary"')}<p>台本と録音を保存するプロジェクトを作成します。</p></section><section>${button("open","開く")}<p>保存済みの .scriptsync ファイルを開きます。</p></section></div><ol class="flow-graphic">${["台本","録音","読み確認・補正","比較・採点","結合・出力"].map((x,i)=>`<li><b>${i+1}</b> ${x}</li>`).join("")}</ol><span id="notice" role="status">${esc(state.message)}</span></main>`;renderedKey="";bind();}
+ if(!p){root.innerHTML=`<main class="welcome"><h1>読みあわせ</h1><div class="welcome-options"><section>${button("new","新規プロジェクト",'class="primary"')}</section><section>${button("open","開く")}</section></div><ol class="flow-graphic">${["台本","録音","読み確認・補正","比較・採点","結合・出力"].map((x,i)=>`<li><b>${i+1}</b> ${x}</li>`).join("")}</ol><span id="notice" role="status">${esc(state.message)}</span></main>`;renderedKey="";bind();}
  else{
  if(!current())selected=activeSegments()[0]?.id??"";const s=current();
  resetNavigation(state.root??p.title);

@@ -262,7 +262,13 @@ impl App {
             if let Some(directory) = a.project_location.directory.as_ref().filter(|p| p.is_dir()) {
                 dialog = dialog.set_directory(directory);
             }
-            let chosen = if action == "new" {
+            let chosen = if action == "open" && v.get("path").is_some() {
+                let path=std::path::PathBuf::from(string(&v,"path")?);
+                if !path.extension().and_then(|ext|ext.to_str()).is_some_and(|ext|ext.eq_ignore_ascii_case(PROJECT_FILE_EXTENSION)||ext.eq_ignore_ascii_case("json")) {
+                    return Err("ScriptSyncプロジェクトを指定してください".into());
+                }
+                Some(path)
+            } else if action == "new" {
                 dialog
                     .set_title("新しいScriptSyncプロジェクトを保存")
                     .add_filter("ScriptSyncプロジェクト", &[PROJECT_FILE_EXTENSION])

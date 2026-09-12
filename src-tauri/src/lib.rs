@@ -1,5 +1,6 @@
 mod export_settings;
 mod project_location;
+mod project_open;
 mod take_trim;
 mod ui_session;
 use tauri::Manager;
@@ -82,12 +83,11 @@ fn health_check() -> &'static str {
 pub fn run() {
     let app = app::App::default();
     let args: Vec<String> = std::env::args().collect();
-    if let Some(i) = args.iter().position(|a| a == "--project") {
-        if let Some(path) = args.get(i + 1) {
+    if let Some(path) = project_open::startup_path(&args) {
+        {
             let path = std::path::PathBuf::from(path);
             let extension = path.extension().and_then(|extension| extension.to_str());
-            let opened = if extension == Some(storage::PROJECT_FILE_EXTENSION)
-                || extension == Some("json")
+            let opened = if extension.is_some_and(|ext| ext.eq_ignore_ascii_case(storage::PROJECT_FILE_EXTENSION) || ext.eq_ignore_ascii_case("json"))
             {
                 storage::Store::open_project_file(path)
             } else {

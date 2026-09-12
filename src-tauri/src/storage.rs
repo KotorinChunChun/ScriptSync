@@ -308,7 +308,7 @@ impl Store {
     /// 新しい形式では、選択する `.scriptsync` ファイルと実データのフォルダを分ける。
     /// 音声などをプロジェクトファイルへ詰め込まず、従来と同じ非破壊の世代保存を続ける。
     pub fn create_project_file(path: PathBuf) -> Result<Self> {
-        if path.extension().and_then(|value| value.to_str()) != Some(PROJECT_FILE_EXTENSION) {
+        if !path.extension().and_then(|value| value.to_str()).is_some_and(|ext| ext.eq_ignore_ascii_case(PROJECT_FILE_EXTENSION)) {
             return Err("プロジェクトファイルの拡張子は .scriptsync にしてください".into());
         }
         let parent = path
@@ -345,10 +345,10 @@ impl Store {
     }
 
     pub fn open_project_file(path: PathBuf) -> Result<Self> {
-        if path.extension().and_then(|value| value.to_str()) == Some("json") {
+        if path.extension().and_then(|value| value.to_str()).is_some_and(|ext| ext.eq_ignore_ascii_case("json")) {
             return Self::migrate_legacy_project(path);
         }
-        if path.extension().and_then(|value| value.to_str()) != Some(PROJECT_FILE_EXTENSION) {
+        if !path.extension().and_then(|value| value.to_str()).is_some_and(|ext| ext.eq_ignore_ascii_case(PROJECT_FILE_EXTENSION)) {
             return Err(".scriptsync プロジェクトファイルを選択してください".into());
         }
         let bytes = fs::read(&path).map_err(|e| e.to_string())?;

@@ -324,9 +324,9 @@ it('古い自動プレビューの返答で新しい対象一覧を上書きし�
 it('ネイティブのドラッグ出入りで読込先の表示を切り替える',async()=>{
  await import('../../src/main');await settle();
  api.listen.mock.calls.find(c=>c[0]==='tauri://drag-enter')![1]({});
- expect(document.querySelector('.script-editor.drag-over')).toBeTruthy();
+ expect(document.querySelector('.script-workspace.drag-over')).toBeTruthy();
  api.listen.mock.calls.find(c=>c[0]==='tauri://drag-leave')![1]({});
- expect(document.querySelector('.script-editor.drag-over')).toBeNull();
+ expect(document.querySelector('.script-workspace.drag-over')).toBeNull();
 });
 it('確定前に2本目を読み込んでも1本目の下書きを残す',async()=>{
  const original=api.invoke.getMockImplementation()!;let count=0;

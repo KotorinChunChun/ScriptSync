@@ -5,7 +5,25 @@ use serde_json::Value;
 pub fn read_dropped_files(paths: &[String]) -> Result<Value> {
     use std::io::Read;
     if paths.is_empty() { return Err("台本ファイルを指定してください".into()); }
-    let mut paths = paths.to_vec();
+    let mut collected = Vec::new();
+    let mut pending: Vec<std::path::PathBuf> = paths.iter().map(std::path::PathBuf::from).collect();
+    let mut seen = std::collections::HashSet::new();
+    while let Some(path) = pending.pop() {
+        let meta=std::fs::symlink_metadata(&path).map_err(|e|format!("台本を読み込めません: {e}"))?;
+        // ジャンクションやシンボリックリンクによる循環と範囲外の探索を避ける。
+        #[cfg(windows)]
+        { use std::os::windows::fs::MetadataExt; if meta.file_attributes() & 0x400 != 0 { continue; } }
+        if meta.file_type().is_symlink() { continue; }
+        if !seen.insert(std::fs::canonicalize(&path).map_err(|e|e.to_string())?) { continue; }
+        if meta.is_dir() {
+            for entry in std::fs::read_dir(&path).map_err(|e|format!("フォルダーを読み込めません: {e}"))? {
+                let child=entry.map_err(|e|e.to_string())?.path();
+                if child.is_dir() || child.extension().and_then(|s|s.to_str()).is_some_and(|s|matches!(s.to_ascii_lowercase().as_str(),"md"|"markdown"|"txt")) { pending.push(child); }
+            }
+        } else { collected.push(path.to_string_lossy().into_owned()); }
+    }
+    if collected.is_empty() { return Err("取り込めるMD・TXTファイルがありません".into()); }
+    let mut paths = collected;
     paths.sort_by(|a, b| std::path::Path::new(a).file_name().cmp(&std::path::Path::new(b).file_name()).then(a.cmp(b)));
     let mut text = String::new();
     let mut names = Vec::new();
@@ -283,6 +301,21 @@ mod tests {
         assert!(read_dropped_files(&[a.to_string_lossy().into_owned(), duplicate.to_string_lossy().into_owned()]).is_err());
         std::fs::write(&a, "a".repeat(2_000_001)).unwrap();
         assert!(read_dropped_files(&paths).is_err());
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+    #[test]
+    fn folder_drop_recurses_and_keeps_originals() {
+        let dir=std::env::temp_dir().join(id());
+        std::fs::create_dir_all(dir.join("sub")).unwrap();
+        std::fs::write(dir.join("b.MD"),"乙").unwrap();
+        std::fs::write(dir.join("sub/a.txt"),"甲").unwrap();
+        std::fs::write(dir.join("sub/image.png"),"無視").unwrap();
+        let result=read_dropped_files(&[dir.to_string_lossy().into_owned(),dir.join("b.MD").to_string_lossy().into_owned()]).unwrap();
+        assert_eq!(result["names"],serde_json::json!(["a.txt","b.MD"]));
+        assert!(!result.to_string().contains(&dir.to_string_lossy().to_string()));
+        assert_eq!(std::fs::read_to_string(dir.join("sub/a.txt")).unwrap(),"甲");
+        std::fs::write(dir.join("sub/b.MD"),"重複").unwrap();
+        assert!(read_dropped_files(&[dir.to_string_lossy().into_owned()]).is_err());
         std::fs::remove_dir_all(dir).unwrap();
     }
     #[test]
