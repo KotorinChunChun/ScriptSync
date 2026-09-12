@@ -1,5 +1,6 @@
 /node_modules/
 /dist/
+/dev/sample/
 /target/
 /src-tauri/target/
 /src-tauri/gen/schemas/
