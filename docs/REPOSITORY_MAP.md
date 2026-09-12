@@ -96,4 +96,7 @@ v0.0.2完成版の実装を探すための目録です。全生成物の一覧�
 - `src/nativeAudio.ts`、`src-tauri/src/native_playback.rs`：指定デバイスへの試聴。
 - `src/exchangeView.ts`、`src-tauri/src/exchange.rs`：Web ZIPと音声対応/追加。
 - `src/cloudUploadView.ts`、`src-tauri/src/cloud_upload.rs`：認証・クラウド送信。
-- `dev/v0.0.4-req.md`、`dev/v0.0.4-imp.md`：要求と実装検証記録。
+- `dev/history/v0.0.4/v0.0.4-req.md`、`dev/history/v0.0.4/v0.0.4-imp.md`：要求と実装検証記録。
+
+## v0.0.5
+追加：src-tauri/src/text_improvement.rs（独立したCodex文章改善）。exchange.rsは未確定出力の検査、domain.rsの任意fingerprintは確定対象の照合を担当します。既存形式5との互換性を保持します。

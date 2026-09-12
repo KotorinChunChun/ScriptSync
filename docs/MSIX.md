@@ -17,7 +17,7 @@ pwsh -File dev/scripts/package-ScriptSync-msix.ps1 `
   -OutputDirectory C:\develop\ScriptSync\release\msix-v0.0.4
 ```
 
-スクリプトは `package.json`、`src-tauri/tauri.conf.json`、EXEのファイル版を照合します。版番号が同じでも古いEXEを使用できてしまうため、ソース変更後は再ビルドが必要です。ビルド元コミット・作業差分の有無・EXEとMSIXのSHA-256を [v0.0.4実装記録](../dev/v0.0.4-imp.md) に記録します。
+スクリプトは `package.json`、`src-tauri/tauri.conf.json`、EXEのファイル版を照合します。版番号が同じでも古いEXEを使用できてしまうため、ソース変更後は再ビルドが必要です。ビルド元コミット・作業差分の有無・EXEとMSIXのSHA-256を [v0.0.4実装記録](../dev/history/v0.0.4/v0.0.4-imp.md) に記録します。
 
 同名MSIXは上書きしません。同じ版を再検証するときは、以前の成果物を保持したまま `-OutputDirectory` に新しい出力先を指定します。別の専用チェックアウトで作る場合は、`-SourceDirectory` と `-ExecutablePath` の両方をそのチェックアウトと対応するビルド成果物へ変更します。
 
@@ -44,7 +44,7 @@ Windows 10 2004以降のx64とWebView2 Runtimeを前提にします。パッケ�
 
 v0.0.4のローカル文字起こしは、設定画面の「文字起こし環境を導入／再試行」から利用PCのユーザー領域へPython・認識ライブラリ・モデルを準備します。初回はインターネット接続が必要です。認識用PythonアダプターはEXEへ埋め込まれており、旧版のようにビルド元 `tools/asr/venv` を配布先で再現する必要はありません。MSIX化後の環境導入・認識動作は、通常のEXEでの試験とは別に確認します。
 
-Codex CLI経由の文字起こしには、Codex CLIの導入・認証も必要です。合成比較には外部TextToSpeechCLI環境を使用します。詳細は [開発者ガイド](DEVELOPERS_GUIDE.md) と現行版の実装記録を参照してください。
+Whisper後の任意の文章改善には、Codex CLIの導入・認証も必要です。合成比較には外部TextToSpeechCLI環境を使用します。詳細は [開発者ガイド](DEVELOPERS_GUIDE.md) と現行版の実装記録を参照してください。
 
 ## 配布前に区別して確認する項目
 
@@ -77,8 +77,8 @@ cd C:\develop\ScriptSync
 npm run release:msix
 ```
 
-`release/msix-v0.0.4/<日時>/`へビルドから署名・検証まで実行する。MSIXに`.scriptsync`関連付けを含む。Windowsの既定アプリ選択は利用者の設定に従う。単独のEXEやNSISの古いインストールをMSIX更新済みと誤認しない。
+`release/msix-v0.0.5/<日時>/`へビルドから署名・検証まで実行する。MSIXに`.scriptsync`関連付けを含む。Windowsの既定アプリ選択は利用者の設定に従う。単独のEXEやNSISの古いインストールをMSIX更新済みと誤認しない。
 
 ## v0.0.4の生成結果
 
-2026-09-12、標準コマンドで `release/msix-v0.0.4/20260912-195728/` に生成。MakeAppx・署名・CMS暗号署名検証・内包EXE一致を確認。SignToolの信頼チェーン検証は未信頼ルートのため未成立。インストール確認と信頼ストア登録は未実施。詳細は[実装記録](../dev/v0.0.4-imp.md)。
+2026-09-12、標準コマンドで `release/msix-v0.0.4/20260912-195728/` に生成。MakeAppx・署名・CMS暗号署名検証・内包EXE一致を確認。SignToolの信頼チェーン検証は未信頼ルートのため未成立。インストール確認と信頼ストア登録は未実施。詳細は[実装記録](../dev/history/v0.0.4/v0.0.4-imp.md)。

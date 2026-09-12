@@ -25,4 +25,7 @@ v0.0.3：[要求](../dev/history/v0.0.3/v0.0.3-req.md)／[実装計画](../dev/h
 
 ## v0.0.4
 
-[要求](../dev/v0.0.4-req.md)・[実装記録](../dev/v0.0.4-imp.md)・[Web交換ZIP](web-exchange.md)・[クラウド設定](cloud-upload.md)。
+[要求](../dev/history/v0.0.4/v0.0.4-req.md)・[実装記録](../dev/history/v0.0.4/v0.0.4-imp.md)・[Web交換ZIP](web-exchange.md)・[クラウド設定](cloud-upload.md)。
+
+## v0.0.5
+[要求](../dev/v0.0.5-req.md)・[実装記録](../dev/v0.0.5-imp.md)。録音・再生・台本操作のバグ修正とWhisper／Codex補正の分離。
