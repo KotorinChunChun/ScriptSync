@@ -224,9 +224,14 @@ fn checked_rows(item: &Value, old: &ScriptSource) -> Result<(String, Vec<ScriptL
     let text = source_text(item)?;
     let mut rows = markdown::parse(&text)?;
     let selections = choices(item)?;
+    let mut reading_orders = HashSet::new();
     let mut previous_ids = HashSet::new();
     let mut previous_lines = HashSet::new();
     for choice in &selections {
+        if let Some(order)=choice.get("reading_order") {
+            let order=order.as_u64().ok_or("読み上げ順は0以上の整数で指定してください")?;
+            if !reading_orders.insert(order) { return Err("読み上げ順が重複しています".into()); }
+        }
         if let Some(previous_id) = choice["previous_id"].as_str() {
             if !previous_ids.insert(previous_id.to_owned()) { return Err("同じ元行を複数回対応付けできません".into()); }
         }
@@ -288,7 +293,9 @@ pub fn commit(project: &mut Project, value: &Value) -> Result<()> {
         }
     }
     for (source_id, _text, rows, selections) in &parsed {
-        for row in rows.iter().filter(|row| row.enabled && !row.text.is_empty()) {
+        let mut ordered_rows: Vec<_> = rows.iter().filter(|row| row.enabled && !row.text.is_empty()).collect();
+        ordered_rows.sort_by_key(|row| (row_choice(selections,row.line).and_then(|choice|choice["reading_order"].as_u64()).unwrap_or(row.line as u64),row.line));
+        for row in ordered_rows {
             let choice = row_choice(selections, row.line);
             let requested_id = choice.and_then(|c| c["previous_id"].as_str());
             let has_previous_line = choice.is_some_and(|c| c.get("previous_line").is_some());
@@ -372,6 +379,21 @@ mod tests {
     fn payload(p: &Project, text: &str, approved: bool) -> Value {
         let s = &p.script_sources[0];
         json!({"base_revision":p.script_revision,"sources":[{"id":s.id,"name":s.name,"kind":s.kind,"text":text,"lines":markdown::parse(text).unwrap(),"approved_text":if approved { Value::String(text.into()) } else { Value::Null }}]})
+    }
+    #[test]
+    fn reading_order_changes_segments_without_changing_source_or_takes() {
+        let mut p=Project::new("order".into());p.script_sources.push(source("a.md","甲\n乙\n丙"));
+        let initial=payload(&p,"甲\n乙\n丙",true);commit(&mut p,&initial).unwrap();
+        let ids:Vec<_>=p.segments.iter().map(|s|s.id.clone()).collect();
+        p.segments[1].kana="よみを維持".into();
+        let mut changed=payload(&p,"甲\n乙\n丙",true);
+        for (index,order) in [1,2,0].iter().enumerate(){changed["sources"][0]["lines"][index]["reading_order"]=json!(order);}
+        commit(&mut p,&changed).unwrap();
+        assert_eq!(p.segments.iter().map(|s|s.id.clone()).collect::<Vec<_>>(),vec![ids[2].clone(),ids[0].clone(),ids[1].clone()]);
+        assert_eq!(p.segments[2].kana,"よみを維持");assert_eq!(p.script_sources[0].confirmed_text,"甲\n乙\n丙");
+        assert_eq!(p.segments.iter().map(|s|s.source_line).collect::<Vec<_>>(),vec![Some(2),Some(0),Some(1)]);
+        let mut next=payload(&p,"甲\n乙\n丙",true);next["sources"][0]["lines"]=json!(p.script_sources[0].draft_lines);
+        commit(&mut p,&next).unwrap();assert_eq!(p.segments[0].id,ids[2]);
     }
     #[test]
     fn legacy_project_migrates_to_a_draftable_source() {

@@ -1,5 +1,5 @@
 import {expect,it} from 'vitest';
-import {changedRows,makeDraft,reorder,resolveDraft,sourcePayload,unresolved,updateParsedLines} from '../../src/scriptSources';
+import {changedRows,makeDraft,reorder,reorderReading,readingLines,resolveDraft,sourcePayload,unresolved,updateParsedLines} from '../../src/scriptSources';
 
 it('ファイルごとに下書きと承認状態を保持する',()=>{
  const draft=makeDraft({id:'a',name:'a.md',confirmed_text:'旧',draft_text:'新',lines:[]});
@@ -25,4 +25,16 @@ it('ASR補完後の下書きを解析しても空録音行のIDとテイク維�
  const draft=makeDraft({id:'a',name:'a.md',confirmed_text:'甲',draft_text:'甲\n認識結果',lines:[{line:0,enabled:true}],draft_lines:[{line:0,enabled:true},{line:1,enabled:true,previous_id:'blank',keep:true,blank_segment_id:'blank'}],blank_rows:[{segment_id:'blank',line:1}]});
  updateParsedLines(draft,[{line:0,enabled:true,text:'甲'},{line:1,enabled:true,text:'認識結果'}]);
  expect(sourcePayload(draft).lines[1]).toMatchObject({previous_id:'blank',keep:true,previous_line:null});
+});
+
+it('読み順を保存・再解析しても原稿の行番号と本文を動かさない',()=>{
+ const text='甲\n乙\n丙', lines=text.split('\n').map((text,line)=>({line,text,enabled:true}));
+ const draft=makeDraft({id:'a',name:'a.md',confirmed_text:text,lines});
+ reorderReading(draft,2,0);updateParsedLines(draft,lines);
+ expect(readingLines(draft.lines).map(line=>line.line)).toEqual([2,0,1]);
+ const payload=sourcePayload(draft);
+ const reopened=makeDraft({...draft.source,draft_text:payload.text,draft_lines:payload.lines});
+ expect(reopened.text).toBe(text);expect(readingLines(reopened.lines).map(line=>line.line)).toEqual([2,0,1]);
+ draft.text='甲\n乙\n丙\n新';updateParsedLines(draft,[...lines,{line:3,text:'新',enabled:true}]);
+ expect(readingLines(draft.lines).map(line=>line.line)).toEqual([2,0,1,3]);
 });
