@@ -29,6 +29,7 @@ const takeWaveCache=new Map<string,number[]>();
 let revisionGeneration=-1, revisionText="";let wave:{duration:number;peaks:number[];suggested_gain:number;rms_db:number;peak_db:number}|null=null;
 let playingOffset=0;let recordingSegment="";let startingRecording=false;let recordedBefore=new Set<string>();let uiReady=false;
 let focusTake="";
+let qualityRequest:{take:string;warning:string}|null=null;
 let projectNameEditing=false,projectNameValue="",projectNamePending=false;
 let generation=-1;let busy=false;let dialogAction="";let deleteRequest="";let continuousRecording=false;let pendingRerecord="";
 let navigationRenderedStage:Stage="script"; let stopExtension=0;
@@ -369,6 +370,7 @@ function render(){
  if(busy||state.busy){root.setAttribute("aria-busy","true");root.querySelectorAll<HTMLButtonElement>("button").forEach(b=>{if(!["stop","cancel_record"].includes(b.dataset.action??"")&&b.id!=="continuous-stop")b.disabled=true;});root.querySelectorAll<HTMLInputElement>('input,textarea,select').forEach(el=>el.disabled=!(el.id==='text'&&tab==='recording'&&state.job==='recording'&&hasSourceMode()));}
  if(dialogAction){root.insertAdjacentHTML("beforeend",`<div id="dialog-modal" class="dialog-modal" role="dialog" aria-modal="true"><div><strong>${esc(dialogAction)}</strong><p>選択画面を閉じるまでお待ちください。</p></div></div>`);}
  if(deleteRequest)showDeleteModal(deleteRequest);
+ if(qualityRequest)showQualityConfirmation(qualityRequest.take,qualityRequest.warning);
 }
 function legacyBindScriptDecisions(){
  root.querySelectorAll<HTMLButtonElement>('[data-review-index]').forEach(b=>b.onclick=()=>{
@@ -665,10 +667,13 @@ function bindTrimNavigation(){
 
 function qualityMessage(warning:string){return (warning??"").replace("欠落した発話は復元できません。試聴して再録音を検討してください", "").trim();}
 function showQualityConfirmation(take:string,warning:string){
+ if(!current()?.takes.some(t=>t.id===take)){qualityRequest=null;return;}
+ if(document.querySelector('[data-quality-adopt]'))return;
+ qualityRequest={take,warning};
  const modal=document.createElement('div');modal.className='take-trim-modal';modal.setAttribute('role','dialog');modal.setAttribute('aria-modal','true');
  modal.innerHTML=`<section><h2>録音品質を確認してください</h2><p style="white-space:pre-wrap">${esc(qualityMessage(warning))}</p><div class="toolbar quality-actions"><button data-quality-cancel>戻って試聴する</button><button data-quality-adopt class="primary">採用(F4)</button></div></section>`;
  const siblings=[...root.children] as HTMLElement[];siblings.forEach(x=>x.inert=true);root.append(modal);
- const close=()=>{siblings.forEach(x=>x.inert=false);modal.remove();};
+ const close=()=>{qualityRequest=null;siblings.forEach(x=>x.inert=false);modal.remove();};
  const cancel=modal.querySelector<HTMLButtonElement>('[data-quality-cancel]')!,adopt=modal.querySelector<HTMLButtonElement>('[data-quality-adopt]')!;
  cancel.onclick=close;adopt.onclick=()=>{close();void adoptTake(take,true);};
  modal.onkeydown=e=>{if(e.key==='Enter'||e.key==='F4'){e.preventDefault();e.stopPropagation();if(!e.repeat)adopt.click();}if(e.key==='Escape'){e.preventDefault();close();}if(e.key==='Tab'){e.preventDefault();(document.activeElement===cancel?adopt:cancel).focus();}};adopt.focus();
@@ -690,7 +695,7 @@ async function applyRecordingFeedback(){
   const result=feedbackSource(draft,pending);if(!result.feedback.length)continue;
   draft.text=result.text;draft.decisions.clear();
   const parsed=await rpc<{lines:any[]}>('markdown_preview',{text:draft.text});updateParsedLines(draft,parsed.lines);
-  for(const mapping of result.mappings){const line=draft.lines.find(l=>l.line===mapping.line);if(line){line.previous_id=mapping.id;line.keep=true;}}
+  for(const mapping of result.mappings){const line=draft.lines.find(l=>l.line===mapping.line);if(line){line.previous_id=mapping.id;line.keep=true;if(mapping.reading_order!==undefined)line.reading_order=mapping.reading_order;}}
   feedback.push(...result.feedback);
  }
  if(feedback.length!==pending.length)throw new Error('修正元の原稿ファイルが見つかりません');

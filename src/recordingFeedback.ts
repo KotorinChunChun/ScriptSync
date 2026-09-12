@@ -10,13 +10,13 @@ export function feedbackSource(draft:SourceDraft,segments:Feedback[]){
   if(!entry)throw new Error(`${draft.source.name}: 修正元の行が台本でも編集されています。録音画面の修正原稿を確認してください`);
   replacements.set(Number(entry[0]),segment);
  }
- const mappings:{line:number;id:string}[]=[];const output:string[]=[];
+ const mappings:{line:number;id:string;reading_order?:number}[]=[];const output:string[]=[];
  draft.text.split(/\r?\n/).forEach((raw,line)=>{
   const replacement=replacements.get(line);
   if(!replacement){output.push(raw);return;}
   const prefix=raw.match(/^\s*#{1,4}\s+/)?.[0]??'';
   const text=replacement.recording_draft!;
-  if(text.trim())mappings.push({line:output.length,id:replacement.id});
+  if(text.trim())mappings.push({line:output.length,id:replacement.id,...(draft.lines.find(row=>row.line===line)?.reading_order!==undefined?{reading_order:draft.lines.find(row=>row.line===line)!.reading_order}:{})});
   output.push(...(text.trim()?prefix+text:'').split(/\r?\n/));
  });
  return {text:output.join('\n'),mappings,feedback:pending.map(s=>({id:s.id,text:s.recording_draft!}))};

@@ -365,3 +365,44 @@ it('PageDownとPageUpは入力欄からも前後へ移動する',async()=>{
  document.querySelector('#text')!.dispatchEvent(new KeyboardEvent('keydown',{key:'PageUp',bubbles:true}));await settle();
  expect(document.querySelector<HTMLTextAreaElement>('#text')?.value).toBe('市場へ行きます。');
 });
+
+it('録音中の編集を原稿差分へ戻し、再確定後の各工程から対象外行を除く',async()=>{
+ const original=snapshot.project.segments[0];original.source_id='file';original.source_line=0;original.text='市場へ行きます。';
+ snapshot.project.id='project';snapshot.project.script_revision=1;
+ const parse=(text:string)=>text.split('\n').map((text,line)=>({line,text,raw:text,enabled:!!text,kind:0}));
+ snapshot.project.script_sources=[{id:'file',name:'原稿.md',confirmed_text:original.text,draft_text:original.text,lines:parse(original.text),draft_lines:parse(original.text)}];
+ const base=api.invoke.getMockImplementation()!;
+ api.invoke.mockImplementation(async(c,args:any)=>{
+  const {action,payload}=args;
+  if(action==='markdown_preview')return {lines:parse(payload.text)};
+  if(action==='recording_draft'){original.recording_draft=payload.text;snapshot.project.generation++;return {generation:snapshot.project.generation};}
+  if(action==='recording_feedback'||action==='script_draft'||action==='script_commit'){
+   const source=snapshot.project.script_sources[0],draft=payload.sources[0];source.draft_text=draft.text;source.draft_lines=draft.lines;source.approved_text=draft.approved_text;
+   if(action==='recording_feedback')original.recording_draft=null;
+   if(action==='script_commit'){source.confirmed_text=draft.text;source.lines=draft.lines;snapshot.project.segments=draft.lines.filter((l:any)=>l.enabled).map((l:any)=>({...original,text:l.text}));snapshot.project.script_revision++;}
+   snapshot.project.generation++;return {generation:snapshot.project.generation,script_revision:snapshot.project.script_revision};
+  }
+  return base(c,args);
+ });
+ await import('../../src/main');await settle();await tab('録音');
+ snapshot.busy=true;snapshot.job='recording';await vi.advanceTimersByTimeAsync(710);await settle();
+ const input=document.querySelector<HTMLTextAreaElement>('#text')!;expect(input.disabled).toBe(false);input.value='新しい原稿';input.dispatchEvent(new FocusEvent('blur'));await settle();
+ expect(original.text).toBe('市場へ行きます。');expect(original.recording_draft).toBe('新しい原稿');
+ snapshot.busy=false;snapshot.job='';await vi.advanceTimersByTimeAsync(710);await settle();await tab('台本');
+ expect(document.querySelector<HTMLTextAreaElement>('#markdown-source')?.value).toBe('新しい原稿');expect(document.querySelector('#script-difference')?.textContent).toContain('市場へ行きます。');
+ action('すべて承認');await vi.advanceTimersByTimeAsync(400);await settle();action('台本確定');await settle();
+ expect(document.querySelector('[data-tab=recording]')?.getAttribute('aria-selected')).toBe('true');
+ expect(document.querySelector<HTMLTextAreaElement>('#text')?.value).toBe('新しい原稿');
+ for(const name of ['録音','読み確認','比較・採点']){await tab(name);expect(document.querySelector('[aria-label="確定原稿ツリー"]')?.textContent).toContain('新しい原稿');expect(document.querySelector('[aria-label="確定原稿ツリー"]')?.textContent).not.toContain('市場へ行きます。');}
+ await tab('台本');document.querySelector<HTMLButtonElement>('[data-script-line]')!.click();await vi.advanceTimersByTimeAsync(400);await settle();action('台本確定');await settle();for(const name of ['録音','読み確認','比較・採点']){await tab(name);expect(document.querySelectorAll('[data-segment]')).toHaveLength(0);}
+});
+
+it('自動認識の状態更新でも採用確認を閉じない',async()=>{
+ snapshot.project.segments[0].takes[0].warning='要確認：テスト';
+ await import('../../src/main');await settle();await tab('録音');
+ document.dispatchEvent(new KeyboardEvent('keydown',{key:'F4',bubbles:true}));await settle();
+ snapshot.project.generation++;await vi.advanceTimersByTimeAsync(710);await settle();
+ expect(document.querySelector('[data-quality-adopt]')).toBeTruthy();
+ document.querySelector('[data-quality-adopt]')!.dispatchEvent(new KeyboardEvent('keydown',{key:'F4',bubbles:true}));await settle();
+ expect(api.invoke.mock.calls.filter(x=>x[1]?.action==='select')).toHaveLength(1);
+});

@@ -74,3 +74,9 @@ footer audio{max-width:38vw;height:40px}
 .welcome .flow-graphic li:first-child{clip-path:polygon(0 0,calc(100% - 22px) 0,100% 50%,calc(100% - 22px) 100%,0 100%);padding-left:18px}
 .welcome .flow-graphic b{flex-shrink:0}
 .welcome.drag-over,.script-workspace.drag-over{outline:3px dashed #176b57;outline-offset:-5px;background:#e3f2e9}
+
+/* 起動画面の中央グリッドを内容の最小幅に縮めない。 */
+.welcome{grid-template-columns:minmax(0,1fr)}
+.welcome .flow-graphic li{white-space:nowrap;min-width:0;padding-right:26px;padding-left:28px}
+
+@media(max-width:1100px){.welcome .flow-graphic li{font-size:17px;padding:14px 18px 14px 24px;gap:3px}}

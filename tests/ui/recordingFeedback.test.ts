@@ -11,3 +11,8 @@ it('台本側でも同じ行が編集されていたら上書きせず停止す�
  expect(()=>feedbackSource(d,[{id:'2',source_id:'a',source_line:1,recording_draft:'録音編集'}])).toThrow('台本でも編集');
  expect(d.text).toContain('既存編集');
 });
+
+it('録音で修正した発話の読み上げ順を引き継ぐ',()=>{
+ const d=draft();d.lines=[{line:0,enabled:true,reading_order:2},{line:1,enabled:true,reading_order:0},{line:2,enabled:true,reading_order:1}];
+ expect(feedbackSource(d,[{id:'2',source_id:'a',source_line:1,recording_draft:'修正'}]).mappings).toEqual([{line:1,id:'2',reading_order:0}]);
+});
