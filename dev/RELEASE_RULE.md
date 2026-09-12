@@ -1,10 +1,10 @@
 # ScriptSync リリース・アップロード手順
 
-MarkdownViewerのdev/RELEASE_RULE.mdとpackaging/release-config.jsonを参考に、同じWebsite・beta配布先を使用する。ScriptSyncの署名済みMSIXを配布し、SPFxは対象外。
+MdVisualizerのdev/RELEASE_RULE.mdとpackaging/release-config.jsonを参考に、同じWebsiteのScriptSync専用配布先を使用する。ScriptSyncの署名済みMSIXを配布し、SPFxは対象外。
 
 - Website: C:\develop\excel-chunchun
-- ローカル配置: www/download/beta/
-- 公開先: https://excel-chunchun.sakura.ne.jp/download/beta/
+- ローカル配置: www/download/ScriptSync/
+- 公開先: https://excel-chunchun.sakura.ne.jp/download/ScriptSync/
 - 対象: ScriptSync_<MSIX版>_x64.msix、ScriptSync.cer、ScriptSync.appinstaller
 - 署名・生成: [MSIX手順](../docs/MSIX.md)。共通証明書を使用。
 - 認証: Websiteの既存scripts/upload_ftp.pyを使用。秘密情報は複製・表示しない。
@@ -37,4 +37,4 @@ Publishはステージと成果物の一致を検査し、既存アップロー�
 
 Planは読取専用。今回の「アップロードできるようにする」は経路整備であり公開済みとは記録しない。通常の「リリースしてください」はbetaのビルド・署名・Stage・対象コミット・Publish・公開検証を含むものとし、インストールとstable公開は明示指示がある場合だけ行う。
 
-MSIXの末尾は再配布番号。dev/msix-version.jsonを正本とし、リリース後の再ビルドでは末尾を1増やしてコミットしてから生成する。現在0.0.5.2、次回0.0.5.3。アプリ版は0.0.5を維持する。
+MSIXの末尾は再配布番号。dev/msix-version.jsonを正本とし、リリース後の再ビルドでは末尾を1増やしてコミットしてから生成する。現在0.0.5.3、次回0.0.5.4。アプリ版は0.0.5を維持する。

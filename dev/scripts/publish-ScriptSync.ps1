@@ -13,9 +13,9 @@ $root=[IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../..'))
 $version=(Get-Content (Join-Path $root 'package.json') -Raw | ConvertFrom-Json).version
 . (Join-Path $PSScriptRoot "msix-version.ps1")
 $packageVersion=Get-ScriptSyncMsixVersion $root
-$base='https://excel-chunchun.sakura.ne.jp/download/beta/'
+$base='https://excel-chunchun.sakura.ne.jp/download/ScriptSync/'
 $names=@("ScriptSync_${packageVersion}_x64.msix",'ScriptSync.cer','ScriptSync.appinstaller')
-$site=Join-Path $WebsiteDirectory 'www/download/beta'
+$site=Join-Path $WebsiteDirectory 'www/download/ScriptSync'
 if($Mode -eq 'Plan'){
     $names | ForEach-Object { Write-Output "$base$_ -> $(Join-Path $site $_)" }
     return
