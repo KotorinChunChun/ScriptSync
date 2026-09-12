@@ -3,11 +3,25 @@ import io
 import json
 from pathlib import Path
 import tempfile
+import subprocess
+import sys
 import unittest
 from unittest.mock import patch
 import transcribe
 
 class AdapterTest(unittest.TestCase):
+    def test_embedded_prepare_needs_no_script_and_preserves_model_root(self):
+        with tempfile.TemporaryDirectory(prefix='whisper space ') as root:
+            missing = Path(root) / 'transcribe.py'
+            self.assertFalse(missing.exists())
+            stub = "import types\nm=types.ModuleType('faster_whisper')\nm.WhisperModel=lambda *a,**k: print(__import__('json').dumps(k))\nsys.modules['faster_whisper']=m\n"
+            source = Path(transcribe.__file__).read_text(encoding='utf-8-sig')
+            code = 'import sys\n__file__ = sys.argv.pop(1)\n' + stub + source
+            result = subprocess.run([sys.executable, '-I', '-c', code, str(missing), '--prepare', '--model', 'small'], capture_output=True, text=True, check=True)
+            lines = result.stdout.splitlines()
+            self.assertEqual(json.loads(lines[0])['download_root'], str(Path(root) / 'models'))
+            self.assertEqual(json.loads(lines[1]), {'prepared':'small'})
+            self.assertFalse(missing.exists())
     def test_local_result_retains_raw_japanese(self):
         with tempfile.TemporaryDirectory() as root:
             audio = Path(root) / 'test.wav'

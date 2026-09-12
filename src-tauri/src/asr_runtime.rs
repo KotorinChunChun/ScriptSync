@@ -4,7 +4,7 @@ use crate::{
     domain::Result,
     machine_settings::{Settings, SetupStatus},
 };
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 use std::{
     io::{Read, Write},
     path::Path,
@@ -32,15 +32,8 @@ pub fn command(root: &Path, settings: &Settings, input: &Path) -> Result<Command
                 .into(),
         );
     }
-    let script = root.join("transcribe.py");
-    // アプリの更新で認識アダプターだけを更新。導入物やモデルは変更しない。
-    if std::fs::read(&script).ok().as_deref() != Some(TRANSCRIBE.as_bytes()) {
-        std::fs::write(&script, TRANSCRIBE).map_err(|e| e.to_string())?;
-    }
-    let mut command = Command::new(root.join("python/python.exe"));
+    let mut command = adapter_command(root);
     command
-        .arg("-I")
-        .arg(&script)
         .arg("--audio")
         .arg(input)
         .arg("--model")
@@ -50,6 +43,21 @@ pub fn command(root: &Path, settings: &Settings, input: &Path) -> Result<Command
     command.current_dir(root).env("PYTHONUTF8", "1");
     hide(&mut command);
     Ok(command)
+}
+/// MSIXのファイル仮想化で親が書いた.pyを子Pythonが開けない場合にも動く。
+/// 同梱ソースを直接渡し、__file__は従来のモデル保存先を保持するためだけに使う。
+fn adapter_command(root: &Path) -> Command {
+    let mut command = Command::new(root.join("python/python.exe"));
+    command
+        .args(["-I", "-c"])
+        .arg(format!(
+            "import sys\n__file__ = sys.argv.pop(1)\n{TRANSCRIBE}"
+        ))
+        .arg(root.join("transcribe.py"))
+        .current_dir(root)
+        .env("PYTHONUTF8", "1");
+    hide(&mut command);
+    command
 }
 pub fn hide(command: &mut Command) {
     #[cfg(windows)]
@@ -266,7 +274,6 @@ fn setup(app: &App, root: &Path, settings: &Settings) -> Result<()> {
     .arg(root.join("python/Lib/site-packages"))
     .args(["faster-whisper==1.2.1", "pykakasi==2.3.0"]);
     run_logged(pip, root, "libraries", Duration::from_secs(1200))?;
-    std::fs::write(root.join("transcribe.py"), TRANSCRIBE).map_err(|e| e.to_string())?;
     status(
         app,
         "model",
@@ -275,10 +282,8 @@ fn setup(app: &App, root: &Path, settings: &Settings) -> Result<()> {
             settings.asr_model
         ),
     );
-    let mut prepare = Command::new(&python);
+    let mut prepare = adapter_command(root);
     prepare
-        .arg("-I")
-        .arg(root.join("transcribe.py"))
         .arg("--prepare")
         .arg("--model")
         .arg(&settings.asr_model);
@@ -423,6 +428,23 @@ fn run_logged(mut command: Command, root: &Path, name: &str, limit: Duration) ->
 mod tests {
     use super::*;
     #[test]
+    fn adapter_runs_embedded_source_without_a_script_file() {
+        let root =
+            std::env::temp_dir().join(format!("scriptsync-missing-script-{}", crate::domain::id()));
+        assert!(!root.join("transcribe.py").exists());
+        let command = adapter_command(&root);
+        let args: Vec<_> = command
+            .get_args()
+            .map(|s| s.to_string_lossy().to_string())
+            .collect();
+        assert_eq!(&args[..2], ["-I", "-c"]);
+        assert!(args[2].starts_with("import sys\n__file__ = sys.argv.pop(1)\n"));
+        assert!(args[2].ends_with(TRANSCRIBE));
+        assert_eq!(args[3], root.join("transcribe.py").to_string_lossy());
+        // Windowsのコマンドライン上限に十分な余白を保つ。
+        assert!(args.iter().map(|s| s.encode_utf16().count()).sum::<usize>() < 16_000);
+    }
+    #[test]
     fn unavailable_runtime_never_uses_development_checkout() {
         assert!(!is_ready(Path::new(""), "small"));
         assert!(
@@ -433,11 +455,9 @@ mod tests {
     }
     #[test]
     fn verify_missing_download_is_clear() {
-        assert!(
-            verify_python(Path::new("absent-installer.exe"))
-                .unwrap_err()
-                .contains("ありません")
-        );
+        assert!(verify_python(Path::new("absent-installer.exe"))
+            .unwrap_err()
+            .contains("ありません"));
     }
     #[test]
     #[ignore = "Python公式ZIPの取得とWindows署名検証。ネットワークが必要。実行はしない"]
