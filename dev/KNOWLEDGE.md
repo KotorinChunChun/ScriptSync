@@ -10,5 +10,5 @@
 - 通常キーと明示開始した連続録音のグローバルキーは登録期間が異なります。[キー定義](SHORTCUT_KEYS.md)が操作条件の参照先です。
 - [効果音定義](SOUND_EFFECTS.md)には素材と差し替え方法を記録します。
 - 録音crate由来の変更は[ORIGIN](../crates/scriptsync-recorder/ORIGIN.md)へ記録します。ユーザー提供のdev/sampleは編集元ではありません。
-- 自動試験では実マイクの音質を判定できません。[検証記録](../docs/validation.md)と[ノイズ確認手順](audio-recording-noise-fix-procedure.md)を参照します。
+- 自動試験では実マイクの音質を判定できません。現行の判断は[実証・受け入れ方針](../docs/validation.md)、過去の対策は[v0.0.1の解決済み補足](history/v0.0.1/v0.0.1-audio-recording-noise-fix.md)を参照します。
 - Windowsコマンドはpwshで実行します。外部CLI・ASRの配置依存は[開発者ガイド](../docs/DEVELOPERS_GUIDE.md)にあります。

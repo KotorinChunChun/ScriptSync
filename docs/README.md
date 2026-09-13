@@ -1,6 +1,6 @@
 # 文書目録
 
-v0.0.2は2026-09-12に終了しました。現タスクの課題はユーザー確認済み・問題なしです。最終資料はdev/history/v0.0.2、途中記録はそのsnapshotsに保存しています。v0.0.3の実装・検証が完了しています。
+現在の最終公開版は0.0.5.7（内部アプリ版0.0.5）です。v0.0.5は終了済みですが、次版開始の指示がないため資料は `dev/` 直下に保持しています。過去版の記録は `dev/history/vX.Y.Z/` に保存しています。
 
 | 読む人・目的 | 入口 |
 |---|---|
@@ -14,7 +14,8 @@ v0.0.2は2026-09-12に終了しました。現タスクの課題はユーザー�
 | AIの検証・リリース手順 | [変更検証スキル](../.agents/skills/scriptsync-project-validation/SKILL.md)、[リリース確定スキル](../.agents/skills/scriptsync-project-release/SKILL.md) |
 | v0.0.3の実装・検証記録 | [v0.0.3実装記録](../dev/history/v0.0.3/v0.0.3-imp.md)、[進捗](../dev/history/v0.0.3/v0.0.3-task.md)、[検証計画・記録](validation.md) |
 | v0.0.2の実装・検証を確認する | [v0.0.2入口](../dev/history/v0.0.2/v0.0.2-README.md)、[要求](../dev/history/v0.0.2/v0.0.2-req.md)、[計画](../dev/history/v0.0.2/v0.0.2-imp.md)、[進捗](../dev/history/v0.0.2/v0.0.2-task.md) |
-| 録音ノイズを検証する | [修正・検証手順](../dev/audio-recording-noise-fix-procedure.md) |
+| 録音品質を検証する | [実証・受け入れ方針](validation.md)、[読み上げテスト](../samples/reading-test/README.md) |
+| 過去の録音ノイズ修正を確認する | [v0.0.1解決済み補足](../dev/history/v0.0.1/v0.0.1-audio-recording-noise-fix.md) |
 | プレゼンテーションソフトへ音声の時間情報を渡す | [音声・字幕・ブロックマップ連携仕様](EXPORT_BLOCK_MAP.md) |
 | CLI側の音声合成エンジンの形式を扱う | [CLI側の音声合成エンジンプロジェクト形式](talk-project-format.md) |
 | 取り込み元の由来を確認 | [初期調査記録](source-inventory.md)、[録音crateの由来](../crates/scriptsync-recorder/ORIGIN.md) |
@@ -29,4 +30,4 @@ v0.0.3：[要求](../dev/history/v0.0.3/v0.0.3-req.md)／[実装計画](../dev/h
 [要求](../dev/history/v0.0.4/v0.0.4-req.md)・[実装記録](../dev/history/v0.0.4/v0.0.4-imp.md)・[Web交換ZIP](web-exchange.md)・[クラウド設定](cloud-upload.md)。
 
 ## v0.0.5
-[要求](../dev/v0.0.5-req.md)・[実装記録](../dev/v0.0.5-imp.md)。録音・再生・台本操作のバグ修正とWhisper／Codex補正の分離。
+[終了記録](../dev/v0.0.5-close.md)・[要求](../dev/v0.0.5-req.md)・[実装記録](../dev/v0.0.5-imp.md)。録音・再生・台本操作、Whisper／Codex分離、AI文章改善の承認比較、静的変換辞書、文字サイズ、選択行追従。

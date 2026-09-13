@@ -116,7 +116,7 @@ CLI側の音声合成エンジン編集形式は限定条件の試験対応で�
 
 ## 次の確認
 
-初回は[テスト台本](../samples/reading-test/README.md)で録音→保存→採用→出力を試してください。ノイズ対策の実機合格条件は[修正手順書](../dev/audio-recording-noise-fix-procedure.md)にあります。
+初回は[テスト台本](../samples/reading-test/README.md)で録音→保存→採用→出力を試してください。録音品質の確認方法は[実証・受け入れ方針](validation.md)、過去のノイズ対策は[v0.0.1の解決済み補足](../dev/history/v0.0.1/v0.0.1-audio-recording-noise-fix.md)にあります。
 
 ## v0.0.3 台本画面の原稿管理
 

@@ -20,7 +20,7 @@
 | docs/OUTPUT_LAYOUT.md | 実行IDごとの一括保存、ログの扱い |
 | docs/VOICE_PARAMETERS.md | 全体の抑揚と語アクセントの違い、発音詳細 |
 | docs/DEVELOPERS_GUIDE.md | Python環境、ビルド・単体試験入口 |
-| dev/v0.0.4-imp.md、dev/v0.0.4-task.md | 評価・ルール・CLI側の音声合成エンジン編集の既存構想、後続完了記録 |
+| dev/history/v0.0.4/v0.0.4-imp.md | 評価・ルール・CLI側の音声合成エンジン編集の既存構想、後続完了記録 |
 | CLI側の音声合成接続モジュール（当時のシンボル検索） | 合成metadataにanalyzed_text・phonemes・phoneme_durations等を保持 |
 | AGENTS.md、.gitignore | 文書規約、生成物・認証・一時資料の分離 |
 
