@@ -34,6 +34,7 @@ export function checkStatic(root,{releasePage=false}={}){
  });
  if(releasePage)run('配布ページ',()=>{
   const html=read('dev/release-page/index.html');
+  expect(read('README.md').includes('現在の配布版は'+version+'（'),'READMEの現行配布版が不一致');
   const versions=[...html.matchAll(/\b\d+\.\d+\.\d+\.\d+\b/g)].map(m=>m[0]);
   expect(versions.length>0&&versions.every(v=>v===version),'配布ページのMSIX版が現在版と不一致');
   for(const target of [`./ScriptSync_${version}_x64.msix`,'./ScriptSync.appinstaller','./ScriptSync.cer','./icon.png','../assets/styles.css'])expect(html.includes(`href="${target}"`)||html.includes(`src="${target}"`),`配布リンクがない: ${target}`);
