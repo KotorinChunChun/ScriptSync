@@ -10,7 +10,7 @@ try {
     if(!$blocked){throw '公開ガードが作動しません'}
     & $entry -Mode Prepare -ArtifactDirectory $ArtifactDirectory
     & $entry -Mode Stage -ArtifactDirectory $ArtifactDirectory -WebsiteDirectory $fixture
-    $files=@(Get-ChildItem (Join-Path $fixture 'www/download/beta') -File)
+    $files=@(Get-ChildItem (Join-Path $fixture 'www/download/ScriptSync') -File)
     if($files.Count -ne 3){throw '3ファイル限定違反'}
     $package=$files | Where-Object Extension -eq '.msix'
     Set-Content $package.FullName '競合fixture'

@@ -33,3 +33,11 @@ UI・録音・出力に変更がある場合は [回帰確認](references/regres
 - 関連試験が通った後、変更・失敗・未解決の懸念がない限り同じ試験を繰り返さない。
 
 結果は対象版のimpへ、必要な進捗はtaskへ日本語で記録する。今回実行した試験、過去結果の参照、未実施を分ける。ブラウザーのRPCモック・EXE起動だけでネイティブ録音、ダイアログ、非アクティブ時キー、音質を確認済みにしない。必要な実機検証は [読み上げテスト](../../../samples/reading-test/README.md) と [ノイズ手順](../../../dev/audio-recording-noise-fix-procedure.md) を案内する。
+
+## 安価な検査を先に実行する
+
+版・スキル・構成の点検は `npm run check:static` を入口にする。正常時は要約1行、失敗時だけ該当ファイルを読む。機械取得には `npm run check:static -- --json`。実装は [check-static.mjs](../../../dev/scripts/check-static.mjs) に集約し、同じ判定を毎回会話内で再作成しない。
+
+PowerShell変更時は `npm run check:powershell` で構文のみ解析する。checker自体を変えた場合は `npm run test:static` で不一致・参照切れの検出を確認する。通常チェックでは未公開の配布ページが開発版と異なることを許容する。
+
+静的チェックはUI動作・CSSの重なり・マイク・CLI・保存成功を証明しない。これらは上表の対象試験を使う。録音下書き・AI承認・辞書変更時の確認先は [回帰確認](references/regressions.md) に集約する。

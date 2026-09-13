@@ -86,3 +86,16 @@ v0.0.3：[要求](../dev/history/v0.0.3/v0.0.3-req.md)／[実装計画](../dev/h
 標準コマンドは `npm run release:msix`。リリースEXEをビルドし、既存共通証明書でMSIXを署名・検証する。TauriのNSIS/MSI自動生成は無効化した。`--no-bundle`によるEXEは中間成果物で、配布完了の代わりにしない。
 
 詳細は[MSIX作成手順](MSIX.md)。インストール・証明書の信頼登録・公開は作成と区別する。
+
+## 高速な静的チェック
+
+```powershell
+npm run check:static
+npm run check:static -- --release-page
+npm run check:powershell
+npm run test:static
+```
+
+通常は1行目でアプリ版・MSIX版・ロックファイル・タイトル・プロジェクトスキル参照を検査します。配布ページを最新に更新した後だけ2行目を使用します。3行目はdev/scripts内のPowerShell構文のみを解析し、対象の処理は実行しません。4行目はcheckerの異常検出試験です。
+
+これらはAI・ネットワーク・録音を使用せず、静的チェック本体はファイルを変更しません。機械処理用には `npm run check:static -- --json` を使用できます。成功時は要約だけ、失敗時は原因だけを確認してください。UI操作・保存・音声の動作確認は別途必要です。

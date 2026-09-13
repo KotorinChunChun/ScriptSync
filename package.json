@@ -8,6 +8,9 @@
     "build": "tsc && vite build",
     "preview": "vite preview",
     "test": "vitest run",
+    "check:static": "node dev/scripts/check-static.mjs",
+    "check:powershell": "pwsh -NoProfile -File dev/scripts/check-powershell.ps1",
+    "test:static": "node --test dev/scripts/check-static.test.mjs",
     "tauri": "tauri",
     "release:msix": "pwsh -NoProfile -File dev/scripts/build-msix.ps1",
     "release:plan": "pwsh -NoProfile -File dev/scripts/publish-ScriptSync.ps1 -Mode Plan"
