@@ -6,6 +6,12 @@ export function feedbackSource(draft:SourceDraft,segments:Feedback[]){
  const origins=physicalOrigins(draft.source.confirmed_text,draft.text);
  const replacements=new Map<number,Feedback>();
  for(const segment of pending){
+  const blank=draft.source.blank_rows?.find(row=>row.segment_id===segment.id);
+  if(blank){
+   const current=draft.text.split(/\r?\n/)[blank.line];
+   if(current===undefined||(current.trim()&&current!==segment.recording_draft))throw new Error(`${draft.source.name}: 空行の修正案が台本でも編集されています`);
+   replacements.set(blank.line,segment);continue;
+  }
   const entry=Object.entries(origins).find(([,old])=>old===segment.source_line);
   if(!entry)throw new Error(`${draft.source.name}: 修正元の行が台本でも編集されています。録音画面の修正原稿を確認してください`);
   replacements.set(Number(entry[0]),segment);

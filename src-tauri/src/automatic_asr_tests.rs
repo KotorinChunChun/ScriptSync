@@ -102,6 +102,9 @@ fn successful_blank_fill_keeps_confirmed_baseline() {
         "確定済みの基準本文"
     );
     assert_eq!(project.script_sources[0].approved_text, None);
+    assert_eq!(project.segments[0].text, "");
+    assert_eq!(project.segments[0].revision, 7);
+    assert_eq!(project.segments[0].recording_draft.as_deref(), Some("認識結果"));
     assert_eq!(project.segments[0].transcriptions[0]["auto_filled"], true);
 }
 

@@ -45,6 +45,28 @@ mod window_state;
 #[cfg(test)]
 mod workflow_tests;
 
+fn application_title(project_title: Option<&str>) -> String {
+    let version: serde_json::Value = serde_json::from_str(include_str!("../../dev/msix-version.json"))
+        .expect("MSIXバージョン情報が不正です");
+    let version = format!("{}.{}", version["applicationVersion"].as_str().expect("アプリ版がありません"), version["revision"].as_u64().expect("再ビルド番号がありません"));
+    let app_title = format!("読みあわせ (ScriptSync) {version}");
+    match project_title {
+        Some(title) => format!("{title} — {app_title}"),
+        None => app_title,
+    }
+}
+
+#[cfg(test)]
+#[test]
+fn application_title_keeps_distribution_version_with_or_without_project() {
+    let info: serde_json::Value = serde_json::from_str(include_str!("../../dev/msix-version.json")).unwrap();
+    let version = format!("{}.{}", info["applicationVersion"].as_str().unwrap(), info["revision"].as_u64().unwrap());
+    assert_eq!(application_title(None), format!("読みあわせ (ScriptSync) {version}"));
+    assert_eq!(application_title(Some("試験台本")), format!("試験台本 — 読みあわせ (ScriptSync) {version}"));
+    let config: serde_json::Value = serde_json::from_str(include_str!("../tauri.conf.json")).unwrap();
+    assert_eq!(config["app"]["windows"][0]["title"].as_str().unwrap(), application_title(None));
+}
+
 #[tauri::command]
 async fn command(
     window: tauri::WebviewWindow,
@@ -76,11 +98,11 @@ async fn command(
     if result.is_ok() && matches!(title_action.as_str(), "new" | "open" | "project_rename") {
         if let Ok(snapshot) = title_app.snapshot() {
             if let Some(title) = snapshot["project"]["title"].as_str() {
-                let _ = window.set_title(&format!("{title} — 読みあわせ"));
+                let _ = window.set_title(&application_title(Some(title)));
             }
         }
     }
-    if result.is_ok() && title_action == "close_project" { let _ = window.set_title("読みあわせ (ScriptSync)"); }
+    if result.is_ok() && title_action == "close_project" { let _ = window.set_title(&application_title(None)); }
     result
 }
 
@@ -144,9 +166,7 @@ pub fn run() {
                 .get_webview_window("main")
                 .ok_or_else(|| std::io::Error::other("メインウィンドウが見つかりません"))?;
             window_state::restore_before_show(&window);
-            if let Some(title) = &startup_title {
-                window.set_title(&format!("{title} — 読みあわせ"))?;
-            }
+            window.set_title(&application_title(startup_title.as_deref()))?;
             let saved_window = window.clone();
             window.on_window_event(move |event| {
                 if matches!(event, tauri::WindowEvent::CloseRequested { .. }) {

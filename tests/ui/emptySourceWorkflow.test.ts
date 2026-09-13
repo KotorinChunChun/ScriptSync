@@ -17,7 +17,7 @@ it('空のsourceでも録音行を挿入して直ちに録音できる',async()=
  [...document.querySelectorAll<HTMLButtonElement>('[data-tab]')].find(button=>button.textContent?.includes('録音'))!.click();for(let i=0;i<30;i++)await Promise.resolve();
  const insert=[...document.querySelectorAll<HTMLButtonElement>('button')].find(button=>button.textContent==='空の台本行を挿入');expect(insert).toBeTruthy();insert!.click();for(let i=0;i<40;i++)await Promise.resolve();
  expect(api.invoke.mock.calls.some(call=>call[1]?.action==='script_insert_empty')).toBe(true);
- expect(document.querySelector<HTMLTextAreaElement>('#text')?.value).toBe('');
+ expect(document.querySelector<HTMLTextAreaElement>('#text, .recording-original textarea[readonly]')?.value).toBe('');
  expect(document.querySelector<HTMLButtonElement>('[data-action=record]')).toBeTruthy();
 });
 afterEach(()=>{vi.clearAllTimers();vi.useRealTimers();});

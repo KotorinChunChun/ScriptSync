@@ -151,6 +151,7 @@ pub fn insert_empty(project: &mut Project, value: &Value) -> Result<()> {
 pub fn update_blank_draft(project: &mut Project, segment_id: &str, text: &str, expected_segment_revision: u64) -> Result<()> {
     let segment = project.segments.iter_mut().find(|s| s.id == segment_id).ok_or("発話が見つかりません")?;
     if segment.revision != expected_segment_revision || !segment.text.trim().is_empty() { return Err("発話が更新されています。認識結果を比較し直してください".into()); }
+    if segment.recording_draft.is_some() { return Err("台本の修正案が手動で更新されています".into()); }
     let source_id = segment.source_id.clone();
     let source = project.script_sources.iter_mut().find(|s| s.id == source_id).ok_or("台本ファイルが見つかりません")?;
     let line = source.blank_rows.iter().find(|row| row.segment_id == segment_id).map(|row| row.line).ok_or("空発話の下書き情報が見つかりません")?;
@@ -166,9 +167,8 @@ pub fn update_blank_draft(project: &mut Project, segment_id: &str, text: &str, e
         choice["keep"] = Value::Bool(true);
     } else { source.draft_lines.push(json!({"line":line,"enabled":true,"previous_id":segment_id,"keep":true,"blank_segment_id":segment_id})); }
     source.approved_text = None;
-    segment.text = text.to_owned();
+    segment.recording_draft = Some(text.to_owned());
     // source_line は次回の台本確定で明示対応した行番号へだけ更新する。
-    segment.revision = segment.revision.saturating_add(1);
     Ok(())
 }
 

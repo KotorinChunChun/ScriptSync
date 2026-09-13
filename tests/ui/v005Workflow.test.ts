@@ -32,14 +32,15 @@ it('確定後は台本に残り、再編集で出力を無効化し、Codexは�
  // Cancel draft through existing restore, then move to recording.
  button('script_restore').click();await settle();document.querySelector<HTMLButtonElement>('[data-tab=recording]')!.click();await settle();
  expect(document.querySelector('.recording-script>.record-controls')).not.toBeNull();
- expect(document.querySelector('.recording-original #text')).not.toBeNull();expect(document.querySelector('.recording-original [data-action=split]')).not.toBeNull();
+ expect(document.querySelector('.recording-original #text')).toBeNull();expect(document.querySelector<HTMLTextAreaElement>('.recording-original textarea')?.readOnly).toBe(true);button('edit_script').click();await settle();expect(document.querySelector<HTMLTextAreaElement>('#text')?.value).toBe('原稿');expect(document.querySelector('.recording-original [data-action=split]')).toBeNull();
  const startKey=new KeyboardEvent('keydown',{key:'F5',bubbles:true,cancelable:true});document.dispatchEvent(startKey);await settle();expect(startKey.defaultPrevented).toBe(true);expect(api.invoke).toHaveBeenCalledWith('continuous_hotkeys',{enabled:true});document.dispatchEvent(new KeyboardEvent('keydown',{key:'F6',bubbles:true,cancelable:true}));await settle();expect(api.invoke).toHaveBeenCalledWith('continuous_hotkeys',{enabled:false});
  expect(document.querySelector('[data-action=recording_asr]')).toBeNull();expect(document.querySelector('.take-trim-fields')?.textContent).toContain('発言の誤字');expect(document.querySelector('.recording-original [data-action=improve_text]')).not.toBeNull();
  expect(api.invoke.mock.calls.some(call=>(call[1] as any)?.action==='text_improve')).toBe(false);
  button('improve_text').click();await settle();expect(api.invoke).toHaveBeenCalledWith('command',{action:'text_improve',payload:{text:'原稿'}});resolveImprove({text:'発言の修正'});await settle();
- expect(project.segments[0].recording_draft).toBe('発言の修正');expect(project.segments[0].transcriptions[0].raw).toBe('発言の誤字');
+ expect(project.segments[0].text).toBe('原稿');expect(project.segments[0].recording_draft).toBe('発言の修正');expect(project.segments[0].transcriptions[0].raw).toBe('発言の誤字');
  button('improve_text').click();await settle();const original=document.querySelector<HTMLTextAreaElement>('#text')!;original.value='ユーザーの編集中';original.dispatchEvent(new Event('input'));
  resolveImprove({text:'上書き禁止'});await settle();expect(original.value).toBe('ユーザーの編集中');
+ button('apply_recording_asr').click();await settle();expect(project.segments[0].recording_draft).toBe('発言の誤字');expect(project.segments[0].text).toBe('原稿');
  project.segments[0].transcriptions=[];project.generation++;await vi.advanceTimersByTimeAsync(750);await settle();
  button('recording_asr').click();await settle();
  expect(api.invoke).toHaveBeenCalledWith('command',{action:'recording_asr',payload:{segment:'s',take:'t'}});

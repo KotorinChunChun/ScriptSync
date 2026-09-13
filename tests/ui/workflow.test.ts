@@ -50,7 +50,7 @@ describe("再設計した作業フロー",()=>{
  it("編集すると確認ボタンなしで自動プレビューする",async()=>{await import("../../src/main");await settle();expect(document.querySelector("[data-action=markdown_preview]")).toBeNull();const input=document.querySelector<HTMLTextAreaElement>("#markdown-source")!;input.value="編集";input.dispatchEvent(new Event("input"));await vi.advanceTimersByTimeAsync(150);expect(api.invoke.mock.calls.some(x=>x[1]?.action==="markdown_preview")).toBe(true);});
  it("Markdown確定は行情報を送る",async()=>{await import("../../src/main");await settle();action("台本を確定");await settle();expect(api.invoke.mock.calls.some(x=>x[1]?.action==="markdown_commit")).toBe(true);});
 it("台本工程の左ペインはフィルターと元Markdown構成を表示する",async()=>{await import("../../src/main");await settle();expect(document.querySelector("#filter")).toBeTruthy();expect(document.querySelector("aside")?.textContent).toContain("部");});
- it("録音工程は元原稿と録音用原稿を並べる",async()=>{await import("../../src/main");await settle();await tab("録音");expect(document.querySelector("#text")).toBeTruthy();expect(document.querySelector(".take-column")).toBeTruthy();});
+ it("録音工程は元原稿と録音用原稿を並べる",async()=>{await import("../../src/main");await settle();await tab("録音");expect(document.querySelector("#text, .recording-original textarea[readonly]")).toBeTruthy();expect(document.querySelector(".take-column")).toBeTruthy();});
  it("録音開始は既定Endpointを送る",async()=>{await import("../../src/main");await settle();await tab("録音");action("録音開始");await settle();expect(api.invoke.mock.calls.some(x=>x[1]?.action==="record")).toBe(true);});
  it("録音前は停止保存を無効にする",async()=>{await import("../../src/main");await settle();await tab("録音");expect([...document.querySelectorAll<HTMLButtonElement>("button")].find(x=>x.textContent?.includes("停止して保存"))?.disabled).toBe(true);});
  it("先頭では前へを無効にする",async()=>{await import("../../src/main");await settle();await tab("録音");expect([...document.querySelectorAll<HTMLButtonElement>("button")].find(x=>x.textContent?.includes("前へ"))?.disabled).toBe(true);});
@@ -59,13 +59,13 @@ it("台本工程の左ペインはフィルターと元Markdown構成を表示�
  it("削除確認のキャンセルはRPCを呼ばない",async()=>{await import("../../src/main");await settle();await tab("録音");action("削除");document.querySelector<HTMLButtonElement>("#delete-cancel")?.click();expect(api.invoke.mock.calls.some(x=>x[1]?.action==="delete_take")).toBe(false);});
  it("削除確認の確定だけが削除RPCを呼ぶ",async()=>{await import("../../src/main");await settle();await tab("録音");action("削除");document.querySelector<HTMLButtonElement>("#delete-confirm")?.click();await settle();expect(api.invoke.mock.calls.some(x=>x[1]?.action==="delete_take")).toBe(true);});
  it("テイクメモはblurで保存する",async()=>{await import("../../src/main");await settle();await tab("録音");const memo=document.querySelector<HTMLTextAreaElement>("[data-take-memo]")!;memo.value="語尾";memo.dispatchEvent(new FocusEvent("blur"));await settle();expect(api.invoke.mock.calls.some(x=>x[1]?.action==="take_note")).toBe(true);});
- it("採用後は次の発話へ進む",async()=>{snapshot.project.segments.push({...structuredClone(snapshot.project.segments[0]),id:"s2",text:"次の原稿",takes:[],selected:null});await import("../../src/main");await settle();await tab("録音");action("採用");await settle();expect(document.querySelector("#text")?.textContent??document.querySelector<HTMLInputElement>("#text")?.value).toContain("次の原稿");});
+ it("採用後は次の発話へ進む",async()=>{snapshot.project.segments.push({...structuredClone(snapshot.project.segments[0]),id:"s2",text:"次の原稿",takes:[],selected:null});await import("../../src/main");await settle();await tab("録音");action("採用");await settle();expect(document.querySelector("#text, .recording-original textarea[readonly]")?.textContent??document.querySelector<HTMLInputElement>("#text, .recording-original textarea[readonly]")?.value).toContain("次の原稿");});
  it("読み確認工程に正解読み欄がある",async()=>{await import("../../src/main");await settle();await tab("読み確認");expect(document.querySelector("#kana")).toBeTruthy();});
  it("比較工程は候補名を非開示で表示する",async()=>{await import("../../src/main");await settle();await tab("比較");expect([...document.querySelectorAll("h4")].map(x=>x.textContent)).toEqual(["音声 1","音声 2","音声 3"]);});
  it("比較工程で候補名開示を送る",async()=>{await import("../../src/main");await settle();await tab("比較");action("候補名を開示");await settle();expect(api.invoke.mock.calls.some(x=>x[1]?.action==="reveal")).toBe(true);});
  it("結合・出力工程へ移動できる",async()=>{await import("../../src/main");await settle();await tab("結合・出力");expect(document.body.textContent).toContain("分割単位");});
 it("未収録フィルターは収録済み行を除く",async()=>{await import("../../src/main");await settle();await tab("録音");const f=document.querySelector<HTMLSelectElement>("#filter")!;f.value="unrecorded";f.dispatchEvent(new Event("change"));expect(document.querySelectorAll("[data-segment]")).toHaveLength(0);});
- it("原稿編集はblurで保存する",async()=>{await import("../../src/main");await settle();await tab("録音");const text=document.querySelector<HTMLTextAreaElement>("#text")!;text.value="変更";text.dispatchEvent(new FocusEvent("blur"));await settle();expect(api.invoke.mock.calls.some(x=>x[1]?.action==="edit")).toBe(true);});
+ it("原稿編集はblurで保存する",async()=>{await import("../../src/main");await settle();await tab("録音");document.querySelector<HTMLButtonElement>("[data-action=edit_script]")!.click();await settle();const text=document.querySelector<HTMLTextAreaElement>("#text")!;text.value="変更";text.dispatchEvent(new FocusEvent("blur"));await settle();expect(api.invoke.mock.calls.some(x=>x[1]?.action==="recording_draft")).toBe(true);});
  it("新規はRPCを呼ぶ",async()=>{snapshot.project=null;await import("../../src/main");await settle();action("新規プロジェクト");await settle();expect(api.invoke.mock.calls.some(x=>x[1]?.action==="new")).toBe(true);});
  it("開くはRPCを呼ぶ",async()=>{snapshot.project=null;await import("../../src/main");await settle();action("開く");await settle();expect(api.invoke.mock.calls.some(x=>x[1]?.action==="open")).toBe(true);});
  it("状態取得を多重実行しない",async()=>{await import("../../src/main");await settle();api.invoke.mockClear();await vi.advanceTimersByTimeAsync(2100);expect(api.invoke.mock.calls.filter(x=>x[1]?.action==="state").length).toBeLessThanOrEqual(3);});
@@ -211,7 +211,7 @@ it('対象の無効化は下書きに留め、確定時に録音から除外す�
 it('無効な原稿を採用後の移動から飛ばす',async()=>{
  snapshot.project.segments.push({...structuredClone(snapshot.project.segments[0]),id:'off',skip:true,text:'無効'}, {...structuredClone(snapshot.project.segments[0]),id:'active',text:'有効'});
  await import('../../src/main');await settle();await tab('録音');action('採用');await settle();
- expect(document.querySelector<HTMLTextAreaElement>('#text')?.value).toBe('有効');
+ expect(document.querySelector<HTMLTextAreaElement>('#text, .recording-original textarea[readonly]')?.value).toBe('有効');
  expect(document.querySelector('[data-segment="off"]')).toBeNull();
 });
 it('通常録音のF1は開始と取消を切り替えF2保存F3再生F4最新採用を行う',async()=>{
@@ -361,10 +361,10 @@ it('録音中のEscは停止保存ではなく破棄を送る',async()=>{
 it('PageDownとPageUpは入力欄からも前後へ移動する',async()=>{
  snapshot.project.segments.push({...structuredClone(snapshot.project.segments[0]),id:'s2',text:'次の発話'});
  await import('../../src/main');await settle();await tab('録音');
- document.querySelector('#text')!.dispatchEvent(new KeyboardEvent('keydown',{key:'PageDown',bubbles:true}));await settle();
- expect(document.querySelector<HTMLTextAreaElement>('#text')?.value).toBe('次の発話');
- document.querySelector('#text')!.dispatchEvent(new KeyboardEvent('keydown',{key:'PageUp',bubbles:true}));await settle();
- expect(document.querySelector<HTMLTextAreaElement>('#text')?.value).toBe('市場へ行きます。');
+ document.querySelector('#text, .recording-original textarea[readonly]')!.dispatchEvent(new KeyboardEvent('keydown',{key:'PageDown',bubbles:true}));await settle();
+ expect(document.querySelector<HTMLTextAreaElement>('#text, .recording-original textarea[readonly]')?.value).toBe('次の発話');
+ document.querySelector('#text, .recording-original textarea[readonly]')!.dispatchEvent(new KeyboardEvent('keydown',{key:'PageUp',bubbles:true}));await settle();
+ expect(document.querySelector<HTMLTextAreaElement>('#text, .recording-original textarea[readonly]')?.value).toBe('市場へ行きます。');
 });
 
 it('録音中の編集を原稿差分へ戻し、再確定後の各工程から対象外行を除く',async()=>{
@@ -386,15 +386,15 @@ it('録音中の編集を原稿差分へ戻し、再確定後の各工程から�
   return base(c,args);
  });
  await import('../../src/main');await settle();await tab('録音');
- snapshot.busy=true;snapshot.job='recording';await vi.advanceTimersByTimeAsync(710);await settle();
+ document.querySelector<HTMLButtonElement>('[data-action=edit_script]')!.click();await settle();snapshot.busy=true;snapshot.job='recording';await vi.advanceTimersByTimeAsync(710);await settle();
  const input=document.querySelector<HTMLTextAreaElement>('#text')!;expect(input.disabled).toBe(false);input.value='新しい原稿';input.dispatchEvent(new FocusEvent('blur'));await settle();
  expect(original.text).toBe('市場へ行きます。');expect(original.recording_draft).toBe('新しい原稿');
  snapshot.busy=false;snapshot.job='';await vi.advanceTimersByTimeAsync(710);await settle();await tab('台本');
  expect(document.querySelector<HTMLTextAreaElement>('#markdown-source')?.value).toBe('新しい原稿');expect(document.querySelector('#script-difference')?.textContent).toContain('市場へ行きます。');
  action('すべて承認');await vi.advanceTimersByTimeAsync(400);await settle();action('台本確定');await settle();
  expect(document.querySelector('[data-tab=script]')?.getAttribute('aria-selected')).toBe('true');
- await tab('録音');expect(document.querySelector<HTMLTextAreaElement>('#text')?.value).toBe('新しい原稿');
- for(const name of ['録音','読み確認','比較・採点']){await tab(name);expect(document.querySelector('[aria-label="確定原稿ツリー"]')?.textContent).toContain('新しい原稿');expect(document.querySelector('[aria-label="確定原稿ツリー"]')?.textContent).not.toContain('市場へ行きます。');}
+ await tab('録音');expect(document.querySelector<HTMLTextAreaElement>('#text, .recording-original textarea[readonly]')?.value).toBe('新しい原稿');
+ for(const name of ['録音','読み確認','比較・採点']){await tab(name);expect(document.querySelector('[aria-label="確定台本ツリー"]')?.textContent).toContain('新しい原稿');expect(document.querySelector('[aria-label="確定台本ツリー"]')?.textContent).not.toContain('市場へ行きます。');}
  await tab('台本');document.querySelector<HTMLButtonElement>('[data-script-line]')!.click();await vi.advanceTimersByTimeAsync(400);await settle();action('台本確定');await settle();for(const name of ['録音','読み確認','比較・採点']){await tab(name);expect(document.querySelectorAll('[data-segment]')).toHaveLength(0);}
 });
 
