@@ -6,7 +6,10 @@ use std::path::PathBuf;
 
 pub const WEB_URL: &str = "https://dev-k.sakura.ne.jp/tools/scriptsyncweb/";
 const LEGACY_CODEX_PROMPT: &str = "以下は日本語の発言を音声認識した結果です。発言内容、意味、語順、口調をできるだけ保持し、明らかな誤字・脱字・誤変換と、読みやすさに必要な句読点だけを修正してください。要約、意訳、文体の統一、情報の追加、省略はしないでください。固有名詞・数値・専門用語や、不確かな箇所は推測で変更しないでください。修正後の本文だけを出力してください。";
-pub const DEFAULT_CODEX_PROMPT: &str = "確定台本を参考に、読み上げ時に言い回しを調整した修正案を校正してください。修正案の発言内容・意味・口調を尊重し、明らかな誤字脱字や不自然な表記を最小限修正してください。確定台本への機械的な差し戻し、要約、情報の追加・省略は行わないでください。固有名詞・数値・不確かな箇所は推測で変更せず、修正後の本文だけを出力してください。";
+const PREVIOUS_CODEX_PROMPT: &str = "確定台本を参考に、読み上げ時に言い回しを調整した修正案を校正してください。修正案の発言内容・意味・口調を尊重し、明らかな誤字脱字や不自然な表記を最小限修正してください。確定台本への機械的な差し戻し、要約、情報の追加・省略は行わないでください。固有名詞・数値・不確かな箇所は推測で変更せず、修正後の本文だけを出力してください。";
+pub const DEFAULT_CODEX_PROMPT: &str = "確定台本を参考に、読み上げ時に言い回しを調整した修正案を校正してください。修正案の発言内容・意味・口調を尊重し、明らかな誤字脱字や不自然な表記を最小限修正してください。確定台本で英字表記の単語は、カタカナ表記で近い音の単語の部分のみを直してください。確定台本への機械的な差し戻し、要約、情報の追加・省略は行わないでください。固有名詞・数値・不確かな箇所は推測で変更せず、修正後の本文だけを出力してください。";
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct WordReplacement { pub from: String, pub to: String }
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 #[serde(default)]
 pub struct Settings {
@@ -17,6 +20,7 @@ pub struct Settings {
     pub codex_path: String,
     pub codex_prompt: String,
     pub codex_model: String,
+    pub word_replacements: Vec<WordReplacement>,
 }
 impl Default for Settings {
     fn default() -> Self {
@@ -28,6 +32,7 @@ impl Default for Settings {
             codex_path: String::new(),
             codex_prompt: DEFAULT_CODEX_PROMPT.into(),
             codex_model: "gpt-5.6-luna".into(),
+            word_replacements: Vec::new(),
         }
     }
 }
@@ -62,6 +67,13 @@ impl Settings {
         {
             return Err("補正プロンプトは空欄にせず、32000バイト以内で入力してください".into());
         }
+        if self.word_replacements.len() > 1000 { return Err("単語辞書は1000件以内で登録してください".into()); }
+        let mut seen = std::collections::HashSet::new();
+        for row in &self.word_replacements {
+            if [&row.from, &row.to].iter().any(|s| s.trim().is_empty() || s.len()>256 || s.chars().any(|c| c.is_whitespace() || c=='\0')) || row.from==row.to || !seen.insert(&row.from) {
+                return Err("辞書の単語は空白を含めず256バイト以内で入力し、置換元の重複と同一語への置換を避けてください".into());
+            }
+        }
         Ok(())
     }
 }
@@ -87,7 +99,7 @@ impl MachineSettings {
             .and_then(|mut s| {
                 s.validate()?;
                 s.asr_provider = "local".into();
-                if s.codex_prompt == LEGACY_CODEX_PROMPT { s.codex_prompt = DEFAULT_CODEX_PROMPT.into(); }
+                if s.codex_prompt == LEGACY_CODEX_PROMPT || s.codex_prompt == PREVIOUS_CODEX_PROMPT { s.codex_prompt = DEFAULT_CODEX_PROMPT.into(); }
                 Ok(s)
             });
         let load_error = if file.exists() {
@@ -233,6 +245,19 @@ fn open_link(url: &str) -> Result<()> {
 }
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn dictionary_validation_rejects_ambiguous_or_invalid_rows() {
+        let mut s = super::Settings::default();
+        for (from,to) in [("", "a"),("two words","a"),("x","x"),("x","a\nb"),("x","\0")] {
+            s.word_replacements=vec![super::WordReplacement{from:from.into(),to:to.into()}];
+            assert!(s.validate().is_err());
+        }
+        s.word_replacements=vec![super::WordReplacement{from:"カタカナ".into(),to:"English".into()}];
+        assert!(s.validate().is_ok());
+        s.word_replacements.push(s.word_replacements[0].clone());
+        assert!(s.validate().is_err());
+    }
+
     use super::*;
     #[test]
     fn settings_are_pc_local_and_survive_reopen() {
@@ -270,9 +295,11 @@ mod tests {
         let root=std::env::temp_dir().join(crate::domain::id());
         std::fs::create_dir(&root).unwrap();
         let path=root.join("settings.json");
-        let mut settings=Settings::default();settings.codex_prompt=LEGACY_CODEX_PROMPT.into();
-        std::fs::write(&path,serde_json::to_vec(&settings).unwrap()).unwrap();
-        assert_eq!(MachineSettings::load(path,root.join("asr")).settings.codex_prompt,DEFAULT_CODEX_PROMPT);
+        for prompt in [LEGACY_CODEX_PROMPT, PREVIOUS_CODEX_PROMPT] {
+            let mut settings=Settings::default();settings.codex_prompt=prompt.into();
+            std::fs::write(&path,serde_json::to_vec(&settings).unwrap()).unwrap();
+            assert_eq!(MachineSettings::load(path.clone(),root.join("asr")).settings.codex_prompt,DEFAULT_CODEX_PROMPT);
+        }
         std::fs::remove_dir_all(root).unwrap();
     }
     #[test]

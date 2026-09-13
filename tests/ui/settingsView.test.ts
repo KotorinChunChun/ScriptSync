@@ -62,3 +62,15 @@ it('設定変更を終了確認へ通知し、保存成功で解除する',async
  document.querySelector<HTMLTextAreaElement>('[name="codex_prompt"]')!.value='破棄される指示';
  document.querySelector<HTMLButtonElement>('[data-cancel]')!.click();expect(hasUnsavedSettings()).toBe(false);
 });
+
+it('辞書を追加・編集・削除して保存する',async()=>{
+ const rpc=vi.fn(async(action:string,payload?:any)=>action==='settings_devices'?{capture:[],render:[]}:action==='settings_save'?{...snapshot(),settings:payload.settings}:snapshot());
+ await openSettings({rpc:rpc as never,notice:vi.fn()});
+ document.querySelector<HTMLButtonElement>('[data-word-add]')!.click();
+ document.querySelector<HTMLInputElement>('[data-word-from]')!.value='コーデックス';
+ document.querySelector<HTMLInputElement>('[data-word-to]')!.value='Codex';
+ document.querySelector<HTMLButtonElement>('[data-word-add]')!.click();
+ document.querySelectorAll<HTMLButtonElement>('[data-word-remove]')[1].click();
+ document.querySelector<HTMLButtonElement>('[data-save]')!.click();await flush();
+ expect(rpc.mock.calls.find(c=>c[0]==='settings_save')?.[1].settings.word_replacements).toEqual([{from:'コーデックス',to:'Codex'}]);
+});

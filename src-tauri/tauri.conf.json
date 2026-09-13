@@ -12,7 +12,7 @@
   "app": {
     "windows": [
       {
-        "title": "読みあわせ (ScriptSync) 0.0.5.6",
+        "title": "読みあわせ (ScriptSync) 0.0.5.7",
         "width": 1280,
         "height": 720,
         "visible": false,

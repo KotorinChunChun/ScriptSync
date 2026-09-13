@@ -45,7 +45,8 @@ pub fn dispatch(app: &App, action: &str, payload: &Value) -> Option<Result<Value
             preview_settings.unwrap_or_else(|| a.machine_settings.settings.clone())
         };
         let confirmed = if testing { "今日は良い天気です。明日の会議は午前10時からです。" } else { payload["confirmed_text"].as_str().unwrap_or(text) };
-        let result = improve(&settings, confirmed, text);
+        let prepared_input = apply_word_replacements(text, &settings.word_replacements);
+        let result = improve(&settings, confirmed, &prepared_input);
         let mut a = app.0.lock().map_err(|e| e.to_string())?;
         a.busy = false;
         a.job.clear();
@@ -53,8 +54,26 @@ pub fn dispatch(app: &App, action: &str, payload: &Value) -> Option<Result<Value
             Ok(_) => "文章改善が完了しました".into(),
             Err(_) => String::new(),
         };
-        result.map(|result| json!({"text":result,"input":text,"confirmed_text":confirmed,"model":settings.codex_model}))
+        result.map(|result| json!({"text":result,"input":text,"prepared_input":prepared_input,"confirmed_text":confirmed,"model":settings.codex_model}))
     })())
+}
+
+/// 入力だけを左から走査し、最長一致の単語を一度だけ置換する。
+fn apply_word_replacements(text: &str, rows: &[crate::machine_settings::WordReplacement]) -> String {
+    let word = |c: char| c.is_ascii_alphanumeric() || c == '_';
+    let mut result = String::new();
+    let mut offset = 0;
+    while offset < text.len() {
+        let tail = &text[offset..];
+        let matched = rows.iter().filter(|row| !row.from.is_empty() && tail.starts_with(&row.from)).filter(|row| {
+            let left_ok = !row.from.chars().next().is_some_and(word) || !text[..offset].chars().next_back().is_some_and(word);
+            let right_ok = !row.from.chars().next_back().is_some_and(word) || !tail[row.from.len()..].chars().next().is_some_and(word);
+            left_ok && right_ok
+        }).max_by_key(|row| row.from.len());
+        if let Some(row) = matched { result.push_str(&row.to); offset += row.from.len(); }
+        else { let c=tail.chars().next().unwrap(); result.push(c); offset+=c.len_utf8(); }
+    }
+    result
 }
 
 fn validate_text(text: &str) -> Result<()> {
@@ -231,6 +250,13 @@ fn run_command(mut command: Command, output: &Path, timeout: Duration) -> Result
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn dictionary_is_longest_single_pass_and_preserves_ascii_boundaries() {
+        use crate::machine_settings::WordReplacement;
+        let rows = [("コーデックス", "Codex"),("コード", "code"),("Codex", "NEXT"),("cat", "dog")].map(|(from,to)|WordReplacement{from:from.into(),to:to.into()});
+        assert_eq!(super::apply_word_replacements("コーデックスのコード cat scatter Cat cat_1 Codex", &rows), "Codexのcode dog scatter Cat cat_1 NEXT");
+    }
+
     use super::*;
     #[test]
     #[ignore = "端末のCodex自動検出とバージョン表示を実測する"]

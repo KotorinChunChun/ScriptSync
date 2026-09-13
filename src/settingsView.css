@@ -6,3 +6,5 @@
 
 .settings-dialog textarea{width:100%;min-width:0;font:inherit;font-size:16px;resize:vertical}.settings-dialog footer button{min-width:132px}
 .settings-codex{display:grid;gap:12px}.settings-codex h3{margin:0}
+
+.settings-word-list{display:grid;gap:10px}.settings-dialog .settings-word-row{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr) auto;gap:8px;align-items:end}.settings-dialog .settings-word-row label{display:grid;grid-template-columns:1fr;gap:4px}

@@ -1,0 +1,12 @@
+#app .ai-diff-columns{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:8px}
+#app .ai-review{min-width:0;display:grid;gap:10px;margin:8px 0}
+#app .ai-diff-columns>div{min-width:0}
+#app .ai-diff-columns h4{margin:0 0 6px;font-size:14px}
+#app .ai-diff-text{border:1px solid #aabfbd;border-radius:6px;padding:10px;white-space:pre-wrap;overflow-wrap:anywhere;max-height:320px;overflow:auto;min-height:100px;font-size:var(--script-text-size,24px);line-height:1.55}
+#app .ai-diff-text del{background:#ffe3e3;color:#852525;text-decoration:line-through}
+#app .ai-diff-text ins{background:#d5f1e2;color:#174d32;text-decoration:underline}
+#app .ai-review fieldset{display:grid;gap:6px;min-width:0;border:1px solid #aabfbd;border-radius:6px}
+#app .ai-review label{display:flex;gap:6px;overflow-wrap:anywhere;align-items:center}
+#app .recording-original .script-input{font-size:var(--script-text-size,24px)}
+#app .recording-original [data-action=font_minus],#app .recording-original [data-action=font_plus]{min-width:32px;width:32px;padding:4px;font-size:20px}
+#app .recording-original .script-pane[hidden]{display:none}
