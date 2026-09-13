@@ -35,7 +35,7 @@ try {
     $layout = Join-Path $output ('layout-' + [guid]::NewGuid().ToString('N'))
     New-Item -ItemType Directory -Path (Join-Path $layout 'Assets') -Force | Out-Null
     Copy-Item -LiteralPath $exe -Destination (Join-Path $layout 'scriptsync.exe')
-    foreach ($asset in @('StoreLogo.png','Square44x44Logo.png','Square150x150Logo.png')) {
+    foreach ($asset in @('StoreLogo.png','Square44x44Logo.png','Square150x150Logo.png','ProjectFileLogo.png')) {
         Copy-Item -LiteralPath (Join-Path $source "src-tauri/icons/$asset") -Destination (Join-Path $layout "Assets/$asset")
     }
     $manifest = @"
@@ -45,7 +45,7 @@ try {
   <Properties><DisplayName>読みあわせ (ScriptSync)</DisplayName><PublisherDisplayName>KotorinChunChun</PublisherDisplayName><Description>発話別録音と台本管理</Description><Logo>Assets\StoreLogo.png</Logo></Properties>
   <Dependencies><TargetDeviceFamily Name="Windows.Desktop" MinVersion="10.0.19041.0" MaxVersionTested="10.0.26100.0" /></Dependencies>
   <Resources><Resource Language="ja-jp" /></Resources>
-  <Applications><Application Id="ScriptSync" Executable="scriptsync.exe" EntryPoint="Windows.FullTrustApplication"><uap:VisualElements DisplayName="読みあわせ (ScriptSync)" Description="発話別録音と台本管理" BackgroundColor="transparent" Square150x150Logo="Assets\Square150x150Logo.png" Square44x44Logo="Assets\Square44x44Logo.png" /><Extensions><uap:Extension Category="windows.fileTypeAssociation" EntryPoint="Windows.FullTrustApplication"><uap3:FileTypeAssociation Name="scriptsync" Parameters="&quot;%1&quot;"><uap:SupportedFileTypes><uap:FileType>.scriptsync</uap:FileType></uap:SupportedFileTypes></uap3:FileTypeAssociation></uap:Extension></Extensions></Application></Applications>
+  <Applications><Application Id="ScriptSync" Executable="scriptsync.exe" EntryPoint="Windows.FullTrustApplication"><uap:VisualElements DisplayName="読みあわせ (ScriptSync)" Description="発話別録音と台本管理" BackgroundColor="transparent" Square150x150Logo="Assets\Square150x150Logo.png" Square44x44Logo="Assets\Square44x44Logo.png" /><Extensions><uap:Extension Category="windows.fileTypeAssociation" EntryPoint="Windows.FullTrustApplication"><uap3:FileTypeAssociation Name="scriptsync" Parameters="&quot;%1&quot;"><uap:DisplayName>読みあわせプロジェクト</uap:DisplayName><uap:Logo>Assets\ProjectFileLogo.png</uap:Logo><uap:SupportedFileTypes><uap:FileType>.scriptsync</uap:FileType></uap:SupportedFileTypes></uap3:FileTypeAssociation></uap:Extension></Extensions></Application></Applications>
   <Capabilities><rescap:Capability Name="runFullTrust" /><DeviceCapability Name="microphone" /></Capabilities>
 </Package>
 "@
