@@ -72,3 +72,8 @@
 #app .take-trim-fields{justify-content:flex-start}
 
 #app .take-header .take-summary{flex-wrap:nowrap}
+@media(max-width:1100px){
+ #app .take-header{flex-wrap:wrap}
+ #app .take-header .take-annotation{flex:1 1 226px;width:auto;max-width:100%}
+ #app .take-column .take-actions{max-width:100%;flex-wrap:wrap}
+}
