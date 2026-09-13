@@ -4,6 +4,7 @@ v0.0.2は2026-09-12に終了しました。現タスクの課題はユーザー�
 
 | 読む人・目的 | 入口 |
 |---|---|
+| プロジェクトの目的・役割 | [プロジェクトビジョン](PROJECT_VISION.md) |
 | 初めて使う | [README](../README.md)、[利用者ガイド](USERS_GUIDE.md) |
 | 操作に困った | [FAQ](FAQ.md)、[読み上げテストとサンプル](../samples/reading-test/README.md) |
 | 録音キー・音の定義 | [ショートカット](../dev/SHORTCUT_KEYS.md)、[効果音](../dev/SOUND_EFFECTS.md) |

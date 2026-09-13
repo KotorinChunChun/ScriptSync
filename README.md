@@ -41,6 +41,7 @@ UI変更は開発起動中に反映されます。録音中のコード更新は
 
 ## 資料と開発の入口
 
+- [プロジェクトビジョン](docs/PROJECT_VISION.md)
 - [ドキュメント目録](docs/README.md)
 - [開発者ガイド](docs/DEVELOPERS_GUIDE.md)
 - [ファイル構成・変更箇所の目録](docs/REPOSITORY_MAP.md)
