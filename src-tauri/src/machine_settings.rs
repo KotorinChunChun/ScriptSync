@@ -5,7 +5,8 @@ use serde_json::{json, Value};
 use std::path::PathBuf;
 
 pub const WEB_URL: &str = "https://dev-k.sakura.ne.jp/tools/scriptsyncweb/";
-pub const DEFAULT_CODEX_PROMPT: &str = "以下は日本語の発言を音声認識した結果です。発言内容、意味、語順、口調をできるだけ保持し、明らかな誤字・脱字・誤変換と、読みやすさに必要な句読点だけを修正してください。要約、意訳、文体の統一、情報の追加、省略はしないでください。固有名詞・数値・専門用語や、不確かな箇所は推測で変更しないでください。修正後の本文だけを出力してください。";
+const LEGACY_CODEX_PROMPT: &str = "以下は日本語の発言を音声認識した結果です。発言内容、意味、語順、口調をできるだけ保持し、明らかな誤字・脱字・誤変換と、読みやすさに必要な句読点だけを修正してください。要約、意訳、文体の統一、情報の追加、省略はしないでください。固有名詞・数値・専門用語や、不確かな箇所は推測で変更しないでください。修正後の本文だけを出力してください。";
+pub const DEFAULT_CODEX_PROMPT: &str = "確定台本を参考に、読み上げ時に言い回しを調整した修正案を校正してください。修正案の発言内容・意味・口調を尊重し、明らかな誤字脱字や不自然な表記を最小限修正してください。確定台本への機械的な差し戻し、要約、情報の追加・省略は行わないでください。固有名詞・数値・不確かな箇所は推測で変更せず、修正後の本文だけを出力してください。";
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 #[serde(default)]
 pub struct Settings {
@@ -86,6 +87,7 @@ impl MachineSettings {
             .and_then(|mut s| {
                 s.validate()?;
                 s.asr_provider = "local".into();
+                if s.codex_prompt == LEGACY_CODEX_PROMPT { s.codex_prompt = DEFAULT_CODEX_PROMPT.into(); }
                 Ok(s)
             });
         let load_error = if file.exists() {
@@ -145,7 +147,7 @@ impl MachineSettings {
     pub fn snapshot(&self) -> Value {
         json!({ "settings": self.settings, "web_url": WEB_URL, "runtime_root": self.runtime_root,
             "ready": crate::asr_runtime::is_ready(&self.runtime_root, &self.settings.asr_model), "setup": self.setup,
-            "load_error": self.load_error })
+            "installed": self.runtime_root.join("python/python.exe").is_file(), "load_error": self.load_error })
     }
 }
 pub fn dispatch(app: &App, action: &str, payload: &Value) -> Option<Result<Value>> {
@@ -183,6 +185,8 @@ pub fn dispatch(app: &App, action: &str, payload: &Value) -> Option<Result<Value
             )
         })(),
         "asr_setup" => crate::asr_runtime::start_setup(app),
+        "asr_check" => crate::asr_runtime::check_installation(app),
+        "asr_uninstall" => crate::asr_runtime::uninstall(app),
         "open_settings_link" => (|| {
             let url = match payload["kind"].as_str().unwrap_or("web") {
                 "web" => WEB_URL,
@@ -260,6 +264,16 @@ mod tests {
         assert_eq!(s.asr_provider, "local");
         assert_eq!(s.codex_prompt, DEFAULT_CODEX_PROMPT);
         assert_eq!(s.codex_model, "gpt-5.6-luna");
+    }
+    #[test]
+    fn only_legacy_default_prompt_is_updated() {
+        let root=std::env::temp_dir().join(crate::domain::id());
+        std::fs::create_dir(&root).unwrap();
+        let path=root.join("settings.json");
+        let mut settings=Settings::default();settings.codex_prompt=LEGACY_CODEX_PROMPT.into();
+        std::fs::write(&path,serde_json::to_vec(&settings).unwrap()).unwrap();
+        assert_eq!(MachineSettings::load(path,root.join("asr")).settings.codex_prompt,DEFAULT_CODEX_PROMPT);
+        std::fs::remove_dir_all(root).unwrap();
     }
     #[test]
     fn old_codex_settings_migrate_and_custom_prompt_survives() {

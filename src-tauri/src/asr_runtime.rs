@@ -141,6 +141,73 @@ fn status(app: &App, phase: &str, message: impl Into<String>) {
         a.machine_settings.setup.message = message.into();
     }
 }
+pub fn check_installation(app: &App) -> Result<Value> {
+    let (root,model)={
+        let mut a=app.0.lock().map_err(|e|e.to_string())?;
+        if a.busy || a.auto_asr_running || a.machine_settings.setup.running { return Err("録音・認識・導入の終了後に確認してください".into()); }
+        let root=a.machine_settings.runtime_root.clone();
+        if root.as_os_str().is_empty() { return Err("文字起こしの保存先が初期化されていません".into()); }
+        a.machine_settings.setup=SetupStatus { running:true,phase:"checking".into(),message:"ライブラリと選択モデルの読込を確認しています".into() };
+        (root,a.machine_settings.settings.asr_model.clone())
+    };
+    let app=app.clone();
+    std::thread::spawn(move || {
+        let result=(|| {
+            let root=runtime_path(&root)?;
+            let mut command=Command::new(root.join("python/python.exe"));
+            command.args(["-I","-c","import sys; from pathlib import Path; root=Path(sys.argv[1]); sys.path.insert(0,str(root/'python'/'Lib'/'site-packages')); import pykakasi; from faster_whisper import WhisperModel; WhisperModel(sys.argv[2],device='cpu',compute_type='int8',download_root=str(root/'models'),local_files_only=True); print('ready')"]).arg(&root).arg(&model);
+            run_logged(command,&root,"installation-check",Duration::from_secs(180))?;
+            std::fs::write(root.join(format!("ready-{model}.json")),b"{\"verified\":true}").map_err(|e|e.to_string())
+        })();
+        if result.is_err() { let _=std::fs::remove_file(root.join(format!("ready-{model}.json"))); }
+        if let Ok(mut a)=app.0.lock() {
+            a.machine_settings.setup=SetupStatus { running:false,phase:if result.is_ok(){"ready"}else{"failed"}.into(),message:match result { Ok(())=>"Whisperのライブラリと選択モデルは利用できます".into(),Err(e)=>format!("Whisperの導入確認に失敗しました。設定画面から導入してください：{e}") } };
+        }
+    });
+    Ok(json!({"started":true}))
+}
+fn verified_removal_root(root: &Path) -> Result<std::path::PathBuf> {
+    if !root.is_absolute() || root.file_name().and_then(|s|s.to_str())!=Some("asr") || root.parent().and_then(|p|p.file_name()).and_then(|s|s.to_str())!=Some("jp.kotorinchunchun.scriptsync") {
+        return Err("専用の文字起こし環境以外は削除できません".into());
+    }
+    let parent=std::fs::canonicalize(root.parent().ok_or("削除先が不正です")?).map_err(|e|e.to_string())?;
+    let resolved=std::fs::canonicalize(root).map_err(|e|e.to_string())?;
+    if resolved!=parent.join("asr") { return Err("文字起こし環境のリンク先は削除できません".into()); }
+    for path in [root,root.parent().ok_or("削除先が不正です")?] {
+        if is_link(&std::fs::symlink_metadata(path).map_err(|e|e.to_string())?) { return Err("文字起こし環境のリンク先は削除できません".into()); }
+    }
+    Ok(resolved)
+}
+fn is_link(metadata:&std::fs::Metadata)->bool {
+    #[cfg(windows)]
+    { use std::os::windows::fs::MetadataExt; if metadata.file_attributes()&0x400!=0 { return true; } }
+    metadata.file_type().is_symlink()
+}
+// HFのsnapshotリンクは参照先を辿らず、リンク項目そのものだけを除去する。
+fn remove_runtime_tree(path:&Path)->Result<()> {
+    let metadata=std::fs::symlink_metadata(path).map_err(|e|e.to_string())?;
+    if is_link(&metadata) {
+        #[cfg(windows)]
+        {
+            use std::os::windows::fs::MetadataExt;
+            return if metadata.file_attributes()&0x10!=0 { std::fs::remove_dir(path) } else { std::fs::remove_file(path) }.map_err(|e|e.to_string());
+        }
+        #[cfg(not(windows))]
+        return std::fs::remove_file(path).map_err(|e|e.to_string());
+    }
+    if metadata.is_dir() {
+        for entry in std::fs::read_dir(path).map_err(|e|e.to_string())? { remove_runtime_tree(&entry.map_err(|e|e.to_string())?.path())?; }
+        std::fs::remove_dir(path).map_err(|e|e.to_string())
+    } else { std::fs::remove_file(path).map_err(|e|e.to_string()) }
+}
+pub fn uninstall(app:&App)->Result<Value> {
+    let mut a=app.0.lock().map_err(|e|e.to_string())?;
+    if a.busy || a.auto_asr_running || a.machine_settings.setup.running { return Err("録音・認識・導入の終了後にアンインストールしてください".into()); }
+    let root=&a.machine_settings.runtime_root;
+    if root.exists() { let resolved=verified_removal_root(root)?; remove_runtime_tree(&resolved).map_err(|e|format!("アンインストールに失敗しました：{e}"))?; }
+    a.machine_settings.setup=SetupStatus{running:false,phase:"removed".into(),message:"Whisperをアンインストールしました。再導入できます".into()};
+    Ok(a.machine_settings.snapshot())
+}
 pub fn start_setup(app: &App) -> Result<Value> {
     let (root, settings) = {
         let mut a = app.0.lock().map_err(|e| e.to_string())?;
@@ -452,6 +519,38 @@ fn run_logged(mut command: Command, root: &Path, name: &str, limit: Duration) ->
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn uninstall_removes_only_owned_runtime_and_rejects_busy() {
+        let base=std::env::temp_dir().join(format!("scriptsync-remove-{}",crate::domain::id()));
+        let root=base.join("jp.kotorinchunchun.scriptsync/asr");
+        std::fs::create_dir_all(&root).unwrap();
+        std::fs::write(root.join("model.bin"),"fixture").unwrap();
+        std::fs::write(base.join("recording.wav"),"preserve").unwrap();
+        assert!(verified_removal_root(&base).is_err());
+        assert!(verified_removal_root(Path::new("asr")).is_err());
+        let app=App::default();
+        {let mut a=app.0.lock().unwrap();a.machine_settings.runtime_root=root.clone();a.busy=true;}
+        assert!(uninstall(&app).is_err());assert!(root.exists());
+        app.0.lock().unwrap().busy=false;
+        uninstall(&app).unwrap();assert!(!root.exists());assert!(base.join("recording.wav").exists());
+        std::fs::remove_dir_all(base).unwrap();
+    }
+    #[cfg(windows)]
+    #[test]
+    fn uninstall_removes_junction_without_touching_external_files() {
+        let base=std::env::temp_dir().join(format!("scriptsync-link-remove-{}",crate::domain::id()));
+        let root=base.join("jp.kotorinchunchun.scriptsync/asr");
+        let external=base.join("external");
+        std::fs::create_dir_all(&root).unwrap();std::fs::create_dir_all(&external).unwrap();
+        std::fs::write(external.join("sentinel.txt"),"保持").unwrap();
+        let mut junction=Command::new("pwsh");
+        junction.args(["-NoProfile","-NonInteractive","-Command","New-Item -ItemType Junction -Path $env:SCRIPTSYNC_TEST_LINK -Target $env:SCRIPTSYNC_TEST_TARGET -ErrorAction Stop | Out-Null"])
+            .env("SCRIPTSYNC_TEST_LINK",root.join("snapshot")).env("SCRIPTSYNC_TEST_TARGET",&external);
+        hide(&mut junction);assert!(junction.status().unwrap().success());
+        let resolved=verified_removal_root(&root).unwrap();remove_runtime_tree(&resolved).unwrap();
+        assert!(!root.exists());assert_eq!(std::fs::read_to_string(external.join("sentinel.txt")).unwrap(),"保持");
+        std::fs::remove_dir_all(base).unwrap();
+    }
     #[test]
     fn adapter_runs_embedded_source_without_a_script_file() {
         let root =

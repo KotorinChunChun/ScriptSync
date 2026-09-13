@@ -1,0 +1,7 @@
+import {it,expect,vi} from 'vitest';
+import {createCloseGuard,askUnsavedClose} from '../../src/closeGuard';
+it('保存済みの未確定台本は確認せず閉じる',async()=>{const close=vi.fn(),ask=vi.fn();await createCloseGuard({settle:async()=>{},dirty:()=>false,save:async()=>{},close,ask,error:vi.fn()})();expect(close).toHaveBeenCalledOnce();expect(ask).not.toHaveBeenCalled();});
+it('保存失敗なら再保存を選んでも閉じない',async()=>{const close=vi.fn(),error=vi.fn();await createCloseGuard({settle:async()=>{throw Error('disk')},dirty:()=>true,save:async()=>{throw Error('disk')},close,ask:async()=> 'save',error})();expect(close).not.toHaveBeenCalled();expect(error).toHaveBeenCalled();});
+it('処理中は待ち重複終了を防ぐ',async()=>{let done!:()=>void;const close=vi.fn(),wait=new Promise<void>(r=>done=r);const guard=createCloseGuard({settle:()=>wait,dirty:()=>false,save:async()=>{},close,error:vi.fn()});const first=guard();await guard();expect(close).not.toHaveBeenCalled();done();await first;expect(close).toHaveBeenCalledOnce();});
+it('未保存確認はキャンセルと破棄を区別する',async()=>{for(const choice of ['cancel','discard'] as const){const close=vi.fn();await createCloseGuard({settle:async()=>{},dirty:()=>true,save:async()=>{},close,ask:async()=>choice,error:vi.fn()})();expect(close).toHaveBeenCalledTimes(choice==='discard'?1:0);}});
+it('Escapeは閉じる操作自体をキャンセルする',async()=>{HTMLDialogElement.prototype.showModal=function(){};const result=askUnsavedClose();document.querySelector('dialog')!.dispatchEvent(new Event('cancel',{cancelable:true}));expect(await result).toBe('cancel');});

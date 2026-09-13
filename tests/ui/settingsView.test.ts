@@ -38,3 +38,27 @@ it('未保存のモデルとプロンプトで合成テストし、設定や原�
  expect(document.querySelector('[data-codex-test-result]')?.textContent).toContain('合成結果');
  expect(document.getElementById('settings-manager')).not.toBeNull();
 });
+it('導入済みでは導入ボタンを隠して確認とアンインストールを表示する',async()=>{
+ const rpc=vi.fn(async(action:string)=>action==='settings_devices'?{capture:[],render:[]}:{...snapshot(),ready:true,installed:true});
+ await openSettings({rpc:rpc as never,notice:vi.fn()});
+ expect(document.querySelector<HTMLButtonElement>('[data-setup]')!.hidden).toBe(true);
+ expect(document.querySelector<HTMLButtonElement>('[data-uninstall]')!.hidden).toBe(false);
+ document.querySelector<HTMLButtonElement>('[data-check]')!.click();await flush();
+ expect(rpc.mock.calls.map(c=>c[0])).toContain('asr_check');
+});
+it('未導入ではアンインストールを隠して導入を表示する',async()=>{
+ const rpc=vi.fn(async(action:string)=>action==='settings_devices'?{capture:[],render:[]}:snapshot());
+ await openSettings({rpc:rpc as never,notice:vi.fn()});
+ expect(document.querySelector<HTMLButtonElement>('[data-setup]')!.hidden).toBe(false);
+ expect(document.querySelector<HTMLButtonElement>('[data-uninstall]')!.hidden).toBe(true);
+});
+it('設定変更を終了確認へ通知し、保存成功で解除する',async()=>{
+ const {hasUnsavedSettings,saveOpenSettings}=await import('../../src/settingsView');
+ const rpc=vi.fn(async(action:string,payload?:any)=>action==='settings_devices'?{capture:[],render:[]}:action==='settings_save'?{...snapshot(),settings:payload.settings}:snapshot());
+ await openSettings({rpc:rpc as never,notice:vi.fn()});
+ expect(hasUnsavedSettings()).toBe(false);
+ document.querySelector<HTMLTextAreaElement>('[name="codex_prompt"]')!.value='新しい指示';
+ expect(hasUnsavedSettings()).toBe(true);await saveOpenSettings();expect(hasUnsavedSettings()).toBe(false);
+ document.querySelector<HTMLTextAreaElement>('[name="codex_prompt"]')!.value='破棄される指示';
+ document.querySelector<HTMLButtonElement>('[data-cancel]')!.click();expect(hasUnsavedSettings()).toBe(false);
+});

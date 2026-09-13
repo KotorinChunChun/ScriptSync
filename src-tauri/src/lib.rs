@@ -12,7 +12,7 @@ mod project_open;
 mod project_rename;
 mod take_trim;
 mod ui_session;
-use tauri::Manager;
+use tauri::{Manager,Emitter};
 
 mod alignment;
 mod app;
@@ -45,6 +45,12 @@ mod window_state;
 #[cfg(test)]
 mod workflow_tests;
 
+#[tauri::command]
+fn close_application(window:tauri::WebviewWindow)->std::result::Result<(),String>{
+    window_state::save(&window);
+    hotkeys::stop();
+    window.destroy().map_err(|e|e.to_string())
+}
 fn application_title(project_title: Option<&str>) -> String {
     let version: serde_json::Value = serde_json::from_str(include_str!("../../dev/msix-version.json"))
         .expect("MSIXバージョン情報が不正です");
@@ -169,9 +175,9 @@ pub fn run() {
             window.set_title(&application_title(startup_title.as_deref()))?;
             let saved_window = window.clone();
             window.on_window_event(move |event| {
-                if matches!(event, tauri::WindowEvent::CloseRequested { .. }) {
-                    window_state::save(&saved_window);
-                    hotkeys::stop();
+                if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                    api.prevent_close();
+                    let _ = saved_window.emit("app-close-requested", ());
                 }
             });
             window.show()?;
@@ -179,6 +185,7 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             health_check,
+            close_application,
             command,
             hotkeys::continuous_hotkeys
         ])

@@ -2,7 +2,7 @@ import {showTransientError} from './transientError';
 import {installNativeAudio,registerNativeAudio} from "./nativeAudio";
 import {openCloudUpload} from "./cloudUploadView";
 import {chooseExchange,mapExchange,type ExchangePreview} from "./exchangeView";
-import {openSettings} from "./settingsView";
+import {openSettings,hasUnsavedSettings,saveOpenSettings} from "./settingsView";
 import {feedbackSource} from "./recordingFeedback";
 import type { Take, Segment, Snapshot } from "./models";
 import { escapeHtml as esc } from "./html";
@@ -22,12 +22,13 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import "./style.css";
 import {readingTestHint} from "./readingTest";
-import { exportView as modernExportView, bindExportView, resetExportDraft } from "./exportView";
+import { exportView as modernExportView, bindExportView, resetExportDraft,hasUnsavedExportDraft,saveExportDraft } from "./exportView";
 import "./exportView.css";
 import "./navigation.css";
 import "./buttonSizes.css";
 import {confirmAction} from "./confirmAction";
-import {filterFor, matchesSegment, optionsFor, renderSegmentTree, renderSourceTree, renderStageBar, resetNavigation, saveScroll, scrollFor, setCollapsed, setFilter, type Stage} from "./navigation";
+import {createCloseGuard} from './closeGuard';
+import {filterFor, matchesSegment, optionsFor, recordingNavigationRows, renderSegmentTree, renderSourceTree, renderStageBar, resetNavigation, saveScroll, scrollFor, setCollapsed, setFilter, type Stage} from "./navigation";
 const root=document.querySelector<HTMLDivElement>("#app")!;
 let state:Snapshot={project:null,root:null,busy:false,job:"",message:"",peak:0,elapsed:0};
 let selected="",tab="script",devices:{endpoint_id:string;friendly_name:string;is_default:boolean}[]=[],endpoint="",playingUrl="",playingTake="";
@@ -48,7 +49,8 @@ const value=(id:string)=>(document.getElementById(id) as HTMLInputElement)?.valu
 const num=(id:string)=>Number(value(id));
 const activeSegments=()=>state.project?.segments.filter(s=>!s.skip)??[];
 const current=()=>state.project?.segments.find(s=>s.id===selected&&!s.skip);
-async function rpc<T=unknown>(action:string,payload:unknown={}):Promise<T>{if(!desktop)throw new Error("閲覧プレビューです。保存・録音はデスクトップアプリで操作してください。");const result=await invoke<T>("command",{action,payload});if(action==="audio"&&typeof result==="string"){const v=payload as {file:string;hash:string};registerNativeAudio(result,v.file,v.hash);}return result;}
+const pendingProjectWrites=new Set<Promise<unknown>>();
+async function rpc<T=unknown>(action:string,payload:unknown={}):Promise<T>{if(!desktop)throw new Error("閲覧プレビューです。保存・録音はデスクトップアプリで操作してください。");const pending=invoke<T>("command",{action,payload});const writing=["recording_draft","script_draft","take_note","take_score","project_rename","settings_save","save_project","export_settings"].includes(action);if(writing)pendingProjectWrites.add(pending);let result:T;try{result=await pending;}finally{pendingProjectWrites.delete(pending);}if(action==="audio"&&typeof result==="string"){const v=payload as {file:string;hash:string};registerNativeAudio(result,v.file,v.hash);}return result;}
 function notice(message:string,error=false){const el=document.getElementById("notice");if(el){el.textContent=message;el.classList.toggle("error",error);}}
 let draftSave:Promise<void>=Promise.resolve();
 async function act(action:string,payload:unknown={}){
@@ -72,7 +74,7 @@ async function play(file:string,hash:string,take="",offset=0,limit?:number){try{
 const statusName=(s:string)=>({ready:"録音済み",recording:"録音中",failed:"失敗",interrupted:"中断",cancelled:"取消",pending:"待機",running:"生成中",succeeded:"生成済み"}[s]??esc(s));
 function recordingAsr(segment:Segment,take:Take){
  const result=(segment.transcriptions??[]).filter(item=>item.take_id===take.id||(item.file===take.file&&item.audio_hash===take.hash)).at(-1);
- return result?.raw&&result.status!=='stale'&&!result.error?`<span class="take-transcription">${esc(result.raw)}</span>${button("apply_recording_asr","修正案へ反映",`data-asr="${result.id}"`)}`:button('recording_asr','Whisperで文字起こし',`data-take="${take.id}" ${result?.status==='queued'||result?.status==='running'?'disabled':''}`);
+ return result?.raw&&result.status!=='stale'&&!result.error?`<span class="take-transcription">${esc(result.raw)}</span>${button("apply_recording_asr","修正案へ反映",`data-asr="${result.id}" ${result.raw===(segment.recording_draft??segment.text)?"hidden":""}`)}`:button('recording_asr','Whisperで文字起こし',`data-take="${take.id}" ${result?.status==='queued'||result?.status==='running'?'disabled':''}`);
 }
 function renderRecordingAsrCards(segment:Segment|undefined){if(!segment)return;segment.takes.filter(take=>take.status==='ready').forEach(take=>document.querySelector(`[data-take-duration="${take.id}"]`)?.insertAdjacentHTML('afterend',recordingAsr(segment,take)));}
 const button=(action:string,label:string,attrs="")=>`<button data-action="${action}" ${attrs}>${label}</button>`;
@@ -105,7 +107,7 @@ function fitWorkspace(){
 }
 function segmentView(s:Segment){
  const base=`<div class="section-head"><div class="utterance-heading"><h2>発話 ${state.project!.segments.indexOf(s)+1}</h2>${button("previous_segment","← 前へ<br><small>（PageUp）</small>",activeSegments().indexOf(s)===0?"disabled":"")}${button("next_segment","次へ →<br><small>（PageDown）</small>",activeSegments().indexOf(s)===activeSegments().length-1?"disabled":"")}</div>${tab==="recording"?"":`<span class="badge">${s.confirmed?"正解読み確定":"読み未確定"}</span>`}</div>`;
- if(tab==="recording"){const recording=state.busy&&state.job==="recording";return base+`<div class="recording-workspace"><section class="recording-script"><section class="panel record-controls"><h3>録音</h3>${state.recording_error?`<p class="recording-error" role="alert">${esc(state.recording_error)}</p>`:""}<div class="toolbar">${recording?button("cancel_record","取り消し(F1)",continuousRecording?"disabled":""):button("record","● 録音開始(F1)",`class="primary" ${continuousRecording?"disabled":""}`)}${button("stop",state.stop_scheduled?"延長収録中…":"■ 停止して保存(F2)",recording&&!continuousRecording&&!state.stop_scheduled?"":"disabled")}<label class="stop-extension">延長：<input id="stop-extension" type="number" min="0" max="60" step="0.1" value="${stopExtension}" aria-label="停止後の延長秒数"> 秒</label><label class="input-level-label">入力レベル <meter id="input-level" min="0" max="100" value="0"></meter><span id="input-level-value">0%</span></label></div><div class="live-recording"><svg id="recording-wave" viewBox="0 0 600 44" preserveAspectRatio="none" role="img" aria-label="録音中の入力波形"></svg><output id="recording-elapsed" aria-label="録音経過時間">0.0 秒</output></div></section><section class="panel recording-original"><div class="section-head"><h3>台本</h3>${button("edit_script","編集",recordingEditors.has(recordingEditorKey())?"disabled":"")}</div><label class="script-pane">確定台本（読み取り専用）<textarea class="script-input" rows="3" readonly aria-label="確定台本">${esc(s.text)}</textarea></label>${recordingEditors.has(recordingEditorKey())?`<label class="script-pane">修正案（未確定）<textarea id="text" class="script-input" rows="3" aria-label="台本の修正案">${esc(s.recording_draft??s.text)}</textarea></label>`:""}</section></section><section class="panel take-column"><div class="section-head"><h3>テイク ${s.takes.length} 件</h3></div><div class="takes">${s.takes.map((t,i)=>`<article class="take ${s.selected===t.id?"chosen":""}"><div class="take-summary"><strong>Take ${i+1} ${s.selected===t.id?"／採用中":""}</strong><div class="take-transcription-row"><span data-take-duration="${t.id}">${t.status==="ready"?`${t.duration.toFixed(2)} 秒`:statusName(t.status)}</span></div><p class="take-diagnostic">${esc(qualityMessage(t.warning))}</p></div>${t.status==="ready"?`<div class="take-wave-wrap"><svg class="take-wave" id="take-wave-${t.id}" viewBox="0 0 100 24" preserveAspectRatio="none" role="img" aria-label="Take ${i+1}の音声レベル波形"></svg><i id="take-playhead-${t.id}"></i></div><div class="take-actions">${button("play","試聴",`data-file="${esc(t.file)}" data-hash="${t.hash}" data-take="${t.id}"`)}${button("select",`採用して次へ${t.id===s.takes.filter(x=>x.status==="ready").at(-1)?.id?"(F4)":""}`,`class="primary" data-shortcut-active="${t.id===s.takes.filter(x=>x.status==="ready").at(-1)?.id}" data-id="${t.id}"`)}${button("delete_take","削除",`data-id="${t.id}"`)}</div><div class="take-annotation">${button("download_take","DL",`data-id="${t.id}" class="button-small take-download"`)}<textarea class="take-memo" id="memo-${t.id}" data-take-memo="${t.id}" rows="1" aria-label="テイクメモ" placeholder="メモ">${esc(s.take_notes?.[t.id]?.memo??"")}</textarea><label class="take-score"><select data-take-score="${t.id}" aria-label="テイク評価"><option value="" ${s.take_notes?.[t.id]?.score==null?"selected":""}>未評価</option>${Array.from({length:11},(_,n)=>n*10).map(score=>`<option value="${score}" ${s.take_notes?.[t.id]?.score===score?"selected":""}>${score}点</option>`).join("")}</select></label></div>`:""}</article>`).join("")||`<p class="muted">まだ録音がありません。</p>`}</div></section></div>`;}
+ if(tab==="recording"){const recording=state.busy&&state.job==="recording";return base+`<div class="recording-workspace"><section class="recording-script"><section class="panel record-controls"><h3>録音</h3>${state.recording_error?`<p class="recording-error" role="alert">${esc(state.recording_error)}</p>`:""}<div class="toolbar">${recording?button("cancel_record","取り消し(F1)",continuousRecording?"disabled":""):button("record","● 録音開始(F1)",`class="primary" ${continuousRecording?"disabled":""}`)}${button("stop",state.stop_scheduled?"延長収録中…":"■ 停止して保存(F2)",recording&&!continuousRecording&&!state.stop_scheduled?"":"disabled")}<label class="stop-extension">延長：<input id="stop-extension" type="number" min="0" max="60" step="0.1" value="${stopExtension}" aria-label="停止後の延長秒数"> 秒</label><label class="input-level-label">入力レベル <meter id="input-level" min="0" max="100" value="0"></meter><span id="input-level-value">0%</span></label></div><div class="live-recording"><svg id="recording-wave" viewBox="0 0 600 44" preserveAspectRatio="none" role="img" aria-label="録音中の入力波形"></svg><output id="recording-elapsed" aria-label="録音経過時間">0.0 秒</output></div></section><section class="panel recording-original"><div class="section-head"><h3>台本</h3><div class="toolbar">${button("improve_text","Codex CLIで文章を改善",improvingText?"disabled":"")}${button("edit_script","編集",recordingEditors.has(recordingEditorKey())?"disabled":"")}</div></div>${recordingEditors.has(recordingEditorKey())?`<label class="script-pane">修正案（未確定）<textarea id="text" class="script-input" rows="3" aria-label="台本の修正案">${esc(s.recording_draft??s.text)}</textarea></label>`:""}<label class="script-pane">確定台本（読み取り専用）<textarea class="script-input" rows="3" readonly aria-label="確定台本">${esc(s.text)}</textarea></label></section></section><section class="panel take-column"><div class="section-head"><h3>テイク ${s.takes.length} 件</h3></div><div class="takes">${s.takes.map((t,i)=>`<article class="take ${s.selected===t.id?"chosen":""}"><div class="take-summary"><strong>Take ${i+1} ${s.selected===t.id?"／採用中":""}</strong><div class="take-transcription-row"><span data-take-duration="${t.id}">${t.status==="ready"?`${t.duration.toFixed(2)} 秒`:statusName(t.status)}</span></div><p class="take-diagnostic">${esc(qualityMessage(t.warning))}</p></div>${t.status==="ready"?`<div class="take-wave-wrap"><svg class="take-wave" id="take-wave-${t.id}" viewBox="0 0 100 24" preserveAspectRatio="none" role="img" aria-label="Take ${i+1}の音声レベル波形"></svg><i id="take-playhead-${t.id}"></i></div><div class="take-actions">${button("play","試聴",`data-file="${esc(t.file)}" data-hash="${t.hash}" data-take="${t.id}"`)}${button("select",`採用して次へ${t.id===s.takes.filter(x=>x.status==="ready").at(-1)?.id?"(F4)":""}`,`class="primary" data-shortcut-active="${t.id===s.takes.filter(x=>x.status==="ready").at(-1)?.id}" data-id="${t.id}"`)}${button("delete_take","削除",`data-id="${t.id}"`)}</div><div class="take-annotation">${button("download_take","DL",`data-id="${t.id}" class="button-small take-download"`)}<textarea class="take-memo" id="memo-${t.id}" data-take-memo="${t.id}" rows="1" aria-label="テイクメモ" placeholder="メモ">${esc(s.take_notes?.[t.id]?.memo??"")}</textarea><label class="take-score"><select data-take-score="${t.id}" aria-label="テイク評価"><option value="" ${s.take_notes?.[t.id]?.score==null?"selected":""}>未評価</option>${Array.from({length:11},(_,n)=>n*10).map(score=>`<option value="${score}" ${s.take_notes?.[t.id]?.score===score?"selected":""}>${score}点</option>`).join("")}</select></label></div>`:""}</article>`).join("")||`<p class="muted">まだ録音がありません。</p>`}</div></section></div>`;}
  if(tab==="reading")return base+`<p class="script">${esc(s.text)}</p><p class="muted">採用音声を聴いて、実際に発音した読みをひらがなで入力します。認識誤りや言い間違いは修正し、確認してから確定してください。</p>${s.selected?button("selected_audio","採用音声を試聴"):""}<label>正解の読み<textarea id="kana" rows="3">${esc(s.kana)}</textarea></label>${button("reference","この読みを正解として確定",'class="primary"')}<h3>原文の範囲を指定して補正</h3><p class="muted">原文欄で補正したい語を選択すると位置が入ります。同じ語も出現位置ごとに扱います。</p><textarea id="range-text" readonly rows="2">${esc(s.text)}</textarea><div class="fields"><label>開始（0始まり）<input id="start" type="number" min="0" value="0"></label><label>終了（含まない）<input id="end" type="number" min="1" value="${[...s.text].length}"></label><label>正しい読み<input id="replacement" placeholder="いちば"></label></div>${button("correction","補正候補を追加")}<div>${s.corrections.map(c=>`<article class="take"><div>${esc(c.original)} → <strong>${esc(c.replacement)}</strong><p class="muted">位置 ${c.start}–${c.end} ／ ${c.decision==="accepted"?"採用":c.decision==="rejected"?"却下":"保留"}</p></div><div>${button("accept","採用",`data-id="${c.id}"`)}${button("reject","却下",`data-id="${c.id}"`)}${button("hold","保留",`data-id="${c.id}"`)}</div></article>`).join("")}</div><p>合成後は「比較・採点」で各音声を試聴し、実際の読みとの違いを確認できます。</p>`;
  return base+`<p class="script">${esc(s.text)}</p><p>原文・全文かな・採用した局所補正を、共通の声条件で生成します。</p><p class="muted">Codexへ台本を送信します。VoiSona Talkを起動してAPIを有効にしてください。声は既定を使用します。</p>${button("compare","3種類の比較音声を生成",'class="primary"')}${button("stop","生成をキャンセル")}${s.comparisons.slice().reverse().map(r=>`<section class="panel"><h3>比較 ${esc(r.id.slice(0,8))}</h3>${button("reveal","候補名を開示",`data-run="${r.id}"`)}<div class="comparison">${r.order.map((vid,i)=>{const v=r.variants.find(x=>x.id===vid)!;return `<article><h4>${r.revealed?esc({A:"原文",B:"全文かな",C:"局所補正",P0:"読点変更前",P1:"読点変更後"}[v.label]??v.label):`音声 ${i+1}`}</h4><p>${statusName(v.status)}</p><p class="warning">${esc(v.error)}</p>${v.status==="succeeded"?`${button("play","試聴",`data-file="${esc(v.file)}" data-hash="${v.hash}"`)}<details><summary>実際の読みを確認</summary><label>聴こえた読み<textarea id="transcript-${v.id}">${esc(v.transcript)}</textarea></label>${button("transcript","読みを保存",`data-run="${r.id}" data-id="${v.id}"`)}<p>${v.transcript?diff(s.kana,v.transcript):"音声を聴いて読みを確認してください"}</p></details><div class="ratings">${[["accuracy","読みの正確さ"],["naturalness","自然さ"],["accent","アクセント"],["rhythm","抑揚・間"],["emotion","感情"]].map(([k,l])=>`<label>${l}<select id="${k}-${v.id}"><option value="">未採点</option>${[1,2,3,4,5].map(n=>`<option ${v.rating?.[k]===n?"selected":""}>${n}</option>`).join("")}</select></label>`).join("")}</div><label>所見<textarea id="comment-${v.id}">${esc(v.rating?.comment??"")}</textarea></label>${button("rate","採点を保存",`data-run="${r.id}" data-id="${v.id}"`)}`:""}</article>`;}).join("")}</div></section>`).join("")}`;
 }
@@ -117,7 +119,7 @@ function enhance(s:Segment){if(tab==="reading"){const take=s.takes.find(t=>t.id=
 }
 function exportView(){return `<h2>台本を1本の音声に</h2><p>採用したテイクを発話順に結合します。未採用の発話がある場合は、その行へ戻って選択してください。</p><p class="muted">トリムと間は各発話を選び、この画面で指定します。原音は変更しません。</p>${current()?`<section class="panel"><h3>${esc(current()!.text)}</h3><div class="fields"><label>先頭を除く（秒）<input id="trim_start" type="number" min="0" step="0.01" value="${current()!.trim_start}"></label><label>末尾を除く（秒）<input id="trim_end" type="number" min="0" step="0.01" value="${current()!.trim_end}"></label><label>後ろに足す間（秒）<input id="gap" type="number" min="0" max="60" step="0.01" value="${current()!.gap}"></label></div>${button("trim","時間設定を保存")}</section>`:""}<div class="toolbar">${button("export","完成WAVを作成",'class="primary"')}${button("report","評価レポートを出力")}</div><p id="export-result"></p><p>出力：48 kHz / ステレオ / PCM16 WAV<br>作業フォルダの exports に、音声と結合順の記録を保存します。</p>`;}
 function bind(){const extension=document.getElementById("stop-extension") as HTMLInputElement|null;if(extension)extension.onchange=()=>{stopExtension=Math.max(0,Math.min(60,Number(extension.value)||0));extension.value=String(stopExtension);};root.querySelectorAll<HTMLButtonElement>("[data-segment]").forEach(b=>b.onclick=()=>{selected=b.dataset.segment!;focusTake="";render();});root.querySelectorAll<HTMLButtonElement>("[data-tab]").forEach(b=>b.onclick=async()=>{try{await draftSave;await saveScriptDraft();if(b.dataset.tab==='script')await applyRecordingFeedback();}catch(e){notice(String(e),true);return;}const before=tab as Stage;const scroll=root.querySelector<HTMLElement>("[data-navigation-scroll]");if(scroll)saveScroll(before,scroll.scrollTop);const next=b.dataset.tab as Stage;if(next!=="recording")await endContinuous();tab=next;if(["recording","reading","evaluation"].includes(next)&&current()&&!matchesSegment(next,current()!))setFilter(next,"all");render();});const f=document.getElementById("filter") as HTMLSelectElement|null;if(f)f.onchange=()=>{setFilter(tab as Stage,f.value);render();};root.querySelectorAll<HTMLButtonElement>("[data-reset-filter]").forEach(b=>b.onclick=()=>{setFilter(tab as Stage,"all");render();});root.querySelectorAll<HTMLButtonElement>("[data-source-tree-line]").forEach(b=>b.onclick=()=>{const target=document.getElementById(`source-line-${b.dataset.sourceTreeLine}`);root.querySelectorAll(".source-line.focused").forEach(row=>row.classList.remove("focused"));target?.classList.add("focused");target?.scrollIntoView?.({block:"center"});});
- const script=document.getElementById("text")as HTMLTextAreaElement|null;if(script)script.oninput=()=>{recordingEditVersion++;};if(script)script.onblur=()=>{draftSave=saveScriptDraft();void draftSave.catch(()=>{});};const skip=document.getElementById("skip")as HTMLInputElement|null;if(skip)skip.onchange=()=>{void saveScriptDraft();};root.querySelectorAll<HTMLTextAreaElement>('[data-take-memo]').forEach(memo=>memo.onblur=()=>{void saveTakeMemo(memo);});root.querySelectorAll<HTMLSelectElement>("[data-take-score]").forEach(field=>field.onchange=()=>{void saveTakeScore(field);});
+ const script=document.getElementById("text")as HTMLTextAreaElement|null;if(script)script.oninput=()=>{recordingEditVersion++;syncAsrApplyButtons();};if(script)script.onblur=()=>{draftSave=saveScriptDraft();void draftSave.catch(()=>{});};const skip=document.getElementById("skip")as HTMLInputElement|null;if(skip)skip.onchange=()=>{void saveScriptDraft();};root.querySelectorAll<HTMLTextAreaElement>('[data-take-memo]').forEach(memo=>memo.onblur=()=>{void saveTakeMemo(memo);});root.querySelectorAll<HTMLSelectElement>("[data-take-score]").forEach(field=>field.onchange=()=>{void saveTakeScore(field);});
  const range=document.getElementById("range-text") as HTMLTextAreaElement|null;if(range)range.onselect=()=>{(document.getElementById("start")as HTMLInputElement).value=String([...range.value.slice(0,range.selectionStart)].length);(document.getElementById("end")as HTMLInputElement).value=String([...range.value.slice(0,range.selectionEnd)].length);};
  root.querySelectorAll<HTMLButtonElement>("[data-action]").forEach(b=>b.onclick=async()=>{const action=b.dataset.action!;const s=current();const sid={segment:s?.id};switch(action){
  case"talk_export":try{const r=await rpc<{path:string;warning:string}>(action,{...sid,run:b.dataset.run,variant:b.dataset.id});notice(`${r.path} ／ ${r.warning}`);}catch(e){notice(String(e),true);}break;
@@ -147,9 +149,9 @@ function bind(){const extension=document.getElementById("stop-extension") as HTM
  case"adopt_next":await adoptNext();break;
  case"previous_take":case"next_take":await cycleTake(action==="previous_take"?-1:1);break;
  case"stop":await stopRecording();break;
- case"close_project":await endContinuous();player()?.pause();if(await act("close_project")){resetExportDraft();drafts.clear();renderedKey="";sourceBaselines.clear();recordingFeedbackPending.clear();pendingExchange=null;}break;
+ case"close_project":await requestProjectClose();break;
  case"settings":await openSettings({rpc,notice,onSaved:async()=>{const data=await rpc<any>("machine_settings");endpoint=data.settings.capture_endpoint;}});break;
- case"save_project":await act("save_project");break;
+ case"save_project":try{await savePendingProject();notice('プロジェクトを保存しました');}catch(error){showTransientError(String(error));}break;
  case"download_take":await act("download_take",{segment:selected,take:b.dataset.id});break;
  case"new":case"open":case"cancel_record":case"import_script":case"report":if(action==="report"){try{const r=await rpc<{path:string}>(action);notice(`レポート保存先：${r.path}`);}catch(e){notice(String(e),true)}}else await act(action);break;
  case"append":await act(action,{text:value("append")});break;
@@ -161,7 +163,7 @@ function bind(){const extension=document.getElementById("stop-extension") as HTM
   await refresh(true);selected=state.project?.segments.find(row=>!previous.has(row.id))?.id??selected;render();
  }catch(e){notice(String(e),true);}break;
  case"edit_script":recordingEditors.add(recordingEditorKey());render();document.getElementById("text")?.focus();break;
- case"apply_recording_asr":{const result=s?.transcriptions?.find(t=>t.id===b.dataset.asr);if(!result?.raw)break;await saveScriptDraft();recordingEditors.add(recordingEditorKey());render();const input=document.getElementById("text") as HTMLTextAreaElement;input.value=result.raw;recordingEditVersion++;await saveScriptDraft();drafts.delete(`${selected}:recording`);notice("文字起こし結果を台本の修正案へ反映しました。");break;}
+ case"apply_recording_asr":{const result=s?.transcriptions?.find(t=>t.id===b.dataset.asr);if(!result?.raw)break;await saveScriptDraft();recordingEditors.add(recordingEditorKey());render();const input=document.getElementById("text") as HTMLTextAreaElement;input.value=result.raw;recordingEditVersion++;await saveScriptDraft();drafts.delete(`${selected}:recording`);render();notice("文字起こし結果を台本の修正案へ反映しました。");break;}
  case"improve_text":await improveRecordingText();break;
  case"recording_asr":try{await rpc('recording_asr',{segment:selected,take:b.dataset.take});await refresh(true);}catch(e){showTransientError('Whisperの文字起こしに失敗しました。設定画面の「Whisper」で導入状況を確認し、未導入の場合は導入してください。\n'+String(e));}break;
  case"record":await startRecording();break;
@@ -349,7 +351,7 @@ function scriptTree(segments:Segment[],depth=0):string{
  let html="";for(let i=0;i<segments.length;){const n=segments[i].hierarchy?.[depth]??0;if(!n){html+=scriptTree([segments[i++]],depth+1);continue;}let end=i+1;while(end<segments.length&&segments[end].hierarchy?.[depth]===n)end++;const key=(segments[i].hierarchy??[]).slice(0,depth+1).join("-");html+=`<details class="tree-group" data-tree="${key}" ${collapsed.has(key)?"":"open"}><summary>第${n}${["部","章","節"][depth]}</summary>${scriptTree(segments.slice(i,end),depth+1)}</details>`;i=end;}return html;
 }
 function render(){
- const nextViewKey=JSON.stringify([state.root,selected,tab]);if(nextViewKey!==recordingViewKey){recordingViewKey=nextViewKey;recordingViewVersion++;}
+ const nextViewKey=JSON.stringify([state.root,selected,tab]);if(nextViewKey!==recordingViewKey){recordingViewKey=nextViewKey;recordingViewVersion++;const segment=current();if(segment?.recording_draft!=null&&segment.recording_draft!==segment.text)recordingEditors.add(recordingEditorKey());else recordingEditors.delete(recordingEditorKey());}
  const previousNavigation=root.querySelector<HTMLElement>("[data-navigation-scroll]");if(previousNavigation)saveScroll(navigationRenderedStage,previousNavigation.scrollTop);
  const priorScroll=root.querySelector<HTMLElement>("[data-navigation-scroll]");if(priorScroll)saveScroll(tab as Stage,priorScroll.scrollTop);
  root.removeAttribute("aria-busy");
@@ -364,7 +366,7 @@ function render(){
  const exportContext={confirm:confirmAction,project:p,selected,select:(_id:string)=>{},rpc,play:(file:string,hash:string)=>play(file,hash),notice};
  const stage=tab as Stage;
  ensureScriptDraft();
- const sidebar=tab==="export"||(tab==="script"&&(hasSourceMode()||!markdownDraft!.lines.length))?"":tab==="script"?`<aside class="navigation-aside"><label>台本フィルタ<select id="filter">${optionsFor("script").map(([value,label])=>`<option value="${value}" ${filterFor(stage)===value?"selected":""}>${label}</option>`).join("")}</select></label><nav data-navigation-scroll aria-label="元Markdownの構成">${renderSourceTree(markdownDraft!.lines)}</nav></aside>`:`<aside class="navigation-aside"><label>台本フィルタ<select id="filter">${optionsFor(stage as "recording"|"reading"|"evaluation").map(([value,label])=>`<option value="${value}" ${filterFor(stage)===value?"selected":""}>${label}</option>`).join("")}</select></label><nav data-navigation-scroll aria-label="確定台本ツリー">${renderSegmentTree(p.segments,stage as "recording"|"reading"|"evaluation",selected)}</nav></aside>`;
+ const sidebar=tab==="export"||(tab==="script"&&(hasSourceMode()||!markdownDraft!.lines.length))?"":tab==="script"?`<aside class="navigation-aside"><label>台本フィルタ<select id="filter">${optionsFor("script").map(([value,label])=>`<option value="${value}" ${filterFor(stage)===value?"selected":""}>${label}</option>`).join("")}</select></label><nav data-navigation-scroll aria-label="元Markdownの構成">${renderSourceTree(markdownDraft!.lines)}</nav></aside>`:`<aside class="navigation-aside"><label>台本フィルタ<select id="filter">${optionsFor(stage as "recording"|"reading"|"evaluation").map(([value,label])=>`<option value="${value}" ${filterFor(stage)===value?"selected":""}>${label}</option>`).join("")}</select></label><nav data-navigation-scroll aria-label="確定台本ツリー">${renderSegmentTree(stage==="recording"?recordingNavigationRows(p.segments,(p as any).script_sources??[]):p.segments,stage as "recording"|"reading"|"evaluation",selected)}</nav></aside>`;
  root.innerHTML=`<header>${projectNameEditing?`<input id="project-name" aria-label="プロジェクト名" value="${esc(projectNameValue)}">`:`<button id="project-name-button" title="クリックしてプロジェクト名を変更">${esc(p.title)}</button>`}<div class="statusbar"><span id="notice" role="status">${esc(state.message?.startsWith('文字起こし結果を保存できません:')?'':state.message)}</span><span id="meter"></span>${button("save_project","保存")}${button("close_project","閉じる",'class="button-large"')}${button("settings","設定",'class="button-large"')}</div></header>${renderStageBar(stage,activeSegments().length>0&&activeSegments().every(s=>s.takes.some(t=>t.id===s.selected&&t.status==="ready")))}<div class="layout navigation-layout ${!sidebar?"no-sidebar":""}">${sidebar}<main>${tab==="script"?scriptTab():tab==="export"?modernExportView(exportContext):s?segmentView(s):"<p>台本画面で原稿を追加してください。</p>"}<div id="stage-extras" class="stage-extras"></div></main></div><footer><label>試聴 <audio id="player" controls></audio></label></footer>`;
  if(tab==="script")root.querySelector("footer")?.setAttribute("hidden","");
  if(keepPlayer)document.getElementById("player")?.replaceWith(keepPlayer);
@@ -372,7 +374,7 @@ function render(){
  if(s&&(tab==="reading"||tab==="evaluation")){enhance(s);comparisonTools(s);ruleView(s);}
 
  if(tab==="reading"||tab==="evaluation")batchView(tab);
- if(tab==="recording"){testGuide();if(s)root.querySelector('#text')?.closest('.script-pane')?.insertAdjacentHTML('afterend',`<p class="muted script-edit-help">行の分割・結合は台本画面で行えます。</p><div class="toolbar">${button("script_insert_empty","空の台本行を挿入")}${button("improve_text","Codex CLIで文章を改善",improvingText?"disabled":"")}${improvingText?'<span class="improve-status" role="status">文章を改善しています…</span>':""}</div>`);else root.querySelector('#stage-extras')?.insertAdjacentHTML('beforeend',button("script_insert_empty","空の台本行を挿入"));renderRecordingAsrCards(s);bindContinuousControls();}
+ if(tab==="recording"){testGuide();renderRecordingAsrCards(s);bindContinuousControls();bindRecordingResize();}
  fitWorkspace();bind();bindProjectName();bindSourceScriptTab();bindBatch();updateMeter();void loadTakeWaves();
  if(tab==="recording"&&s)bindTakeTrim({segment:s,rpc:async<T>(action:string,payload?:unknown)=>{const result=await rpc<T>(action,payload);if(action!=="trim_take")return result;const latest=await rpc<Snapshot>("state");return latest.project?.segments.find(x=>x.id===s.id)?.takes.find(x=>x.id===(payload as {take:string}).take) as T;},play,isPlaying:take=>playingTake===take&&!player()?.paused,stop:()=>{player()?.pause();syncTakePlayback();},notice,onSaved:async()=>{player()?.pause();await refresh(true);}});
  if(player()){player().onplay=syncTakePlayback;player().onpause=syncTakePlayback;player().onended=()=>{updateTakeProgress();syncTakePlayback();};}syncTakePlayback();
@@ -469,6 +471,8 @@ let sourceRenamePending=false;
 let sourceEpoch=0;
 let sourceRoot:string|null|undefined,sourceRevision=0,sourceGeneration=-1,sourceDirty=false,sourceSaveTimer:ReturnType<typeof setTimeout>|undefined,sourcePreviewTimer:ReturnType<typeof setTimeout>|undefined,sourceSaveVersion=0,sourceSaveScheduled=false,sourceSavePromise:Promise<void>=Promise.resolve();
 let sourcePreviewVersion=0,sourcePreviewPending=false,sourcePreviewError="",sourceSaveError="";
+let persistedSourceDraft='';
+function sourceDraftFingerprint(){return JSON.stringify({sources:sourceOrder.map(id=>sourceDrafts.get(id)).filter((draft):draft is SourceDraft=>!!draft).map(sourcePayload),deleted:[...deletedSourceIds]});}
 function hasSourceMode(){return Array.isArray((state.project as any)?.script_sources);}
 function ensureScriptDraft(){
  if(!hasSourceMode()){legacyEnsureScriptDraft();return;}
@@ -478,11 +482,12 @@ function ensureScriptDraft(){
   sourceEpoch++;clearTimeout(sourceSaveTimer);clearTimeout(sourcePreviewTimer);sourceSaveScheduled=false;sourcePreviewPending=false;sourcePreviewVersion++;sourceSavePromise=Promise.resolve();sourceDrafts=new Map(sources.map(source=>[source.id,makeDraft(source)]));sourceOrder=sources.map(source=>source.id);deletedSourceIds=new Set(p.pending_source_deletions??[]);selectedSource=sourceOrder.find(id=>!deletedSourceIds.has(id))??"";sourceRoot=state.root;sourceRevision=p.script_revision??0;sourceGeneration=p.generation??-1;sourceDirty=false;sourceSaveError='';
  }else if(p.generation!==undefined&&p.generation>sourceGeneration){if(p.script_revision!==sourceRevision){sourceSaveError='確定台本が更新されています。閉じて開き直してください。';}sourceGeneration=p.generation;}
  sourceDrafts.forEach(draft=>rememberSourceBaseline(draft));
+ if(!sourceDirty)persistedSourceDraft=sourceDraftFingerprint();
 }
 function selectedDraft(){ensureScriptDraft();return sourceDrafts.get(selectedSource);}
 function sourceRows(){ensureScriptDraft();return sourceOrder.map(id=>sourceDrafts.get(id)).filter((x):x is SourceDraft=>!!x);}
 function unresolvedScript(){return hasSourceMode()?sourceRows().filter(draft=>!deletedSourceIds.has(draft.source.id)).reduce((total,draft)=>total+unresolvedSource(draft),0):legacyUnresolvedScript();}
-function scriptBlocked(){return hasSourceMode()?sourcePreviewPending||!!sourcePreviewError||!!sourceSaveError||unresolvedScript()>0:legacyScriptBlocked();}
+function scriptBlocked(){return hasSourceMode()?scriptAlreadyConfirmed()||sourcePreviewPending||!!sourcePreviewError||!!sourceSaveError||unresolvedScript()>0:legacyScriptBlocked();}
 function scriptStatus(){return hasSourceMode()?sourceSaveError||sourcePreviewError||`未確認 ${unresolvedScript()}件${sourcePreviewPending?' ／ 読み上げ対象を更新中':' ／ ファイルごとに承認してから全体を確定します'}`:legacyScriptStatus();}
 function scriptSeparator(index:number){return `<div class="script-separator" role="separator" tabindex="0" aria-label="${index+1}番目のペイン境界" aria-orientation="vertical" data-separator="${index}" aria-valuemin="15" aria-valuemax="85" aria-valuenow="50"></div>`;}
 function sourceListHtml(){return `<div class="script-source-actions">${button('script_empty','新規')}${button('script_import','開く')}${button('exchange_import','WebZip取り込み')}${button('script_rename','名前変更',selectedDraft()?'':'disabled')}${button('script_delete','削除',selectedDraft()?'':'disabled')}</div><div id="script-source-list" class="script-source-list">${sourceRows().filter(draft=>!deletedSourceIds.has(draft.source.id)).map(draft=>`<div class="script-source-row">${renamingSource===draft.source.id?`<input id="script-source-name" aria-label="原稿名" value="${esc(draft.source.name)}">`:`<button draggable="false" class="script-source ${draft.source.id===selectedSource?'selected':''}" data-source-id="${esc(draft.source.id)}" data-source-index="${sourceOrder.indexOf(draft.source.id)}"><b title="${esc(draft.source.name)}">${esc(draft.source.name||'無題の原稿')}</b><span>${unresolvedSource(draft)?`未確認 ${unresolvedSource(draft)}件`:'確認済み'}</span></button>`}</div>`).join('')||'<p class="muted">原稿ファイルを開いてください。</p>'}</div>${deletedSourceIds.size?`<div class="script-pending-deletions">${[...deletedSourceIds].map(id=>`<p>${esc(sourceDrafts.get(id)?.source.name??'原稿')}：削除予定 <button data-source-restore="${esc(id)}">取り消す</button></p>`).join('')}</div>`:''}`;}
@@ -499,12 +504,17 @@ function mappingDetails(draft:SourceDraft,line:any){
  return `<select class="source-mapping" data-previous-id="${esc(lineToken(line))}" aria-label="${line.line+1}行目の対応先" ${mapping.matched?'disabled':''}><option value="">(新規)</option>${mapping.candidates.map(segment=>`<option value="${esc(segment.id)}" ${mapping.selected===segment.id?'selected':''}>${esc(segment.text||'空の発話')}${segment.source_line!=null?`（${segment.source_line+1}行）`:''}</option>`).join('')}</select>`;
 }
 function scriptTargetHtml(){if(!hasSourceMode())return legacyScriptTargetHtml();const draft=selectedDraft();return readingLines(draft?.lines??[]).filter(line=>String((line as any).text??(line as any).raw??'').trim()).map(line=>`<div class="source-target-row" data-target-line="${line.line}"><button draggable="false" class="source-line ${line.enabled?'enabled':'disabled'}" aria-pressed="${line.enabled}" data-script-line="${line.line}"><span>${line.enabled?'☑':'☐'}</span><em>${esc((line as any).text??(line as any).raw??'')}</em></button>${mappingDetails(draft!,line)}</div>`).join('')||'<p class="muted">読み上げ対象の行はありません。</p>';}
-function scriptTab(){if(!hasSourceMode())return legacyScriptTab();ensureScriptDraft();return `<section class="script-tab script-workspace ${fullReview&&expandedReview?'review-expanded':''}"><div class="script-heading"><h2>台本</h2>${button('script_archives','アーカイブ管理')}</div><div class="script-columns script-four-columns" style="grid-template-columns:${scriptGrid()}"><section class="script-files ${scriptCollapsed[0]?'collapsed':''}">${scriptPaneHeading(0,'原稿を登録する')}${sourceListHtml()}</section>${scriptSeparator(0)}<section class="script-editor ${scriptCollapsed[1]?'collapsed':''}">${scriptPaneHeading(1,'原稿を閲覧／編集する')}<div class="script-restore">${button('script_restore','編集を取り消す',`title="原稿の読込時点へ戻す" ${selectedDraft()?'':'disabled'}`)}</div><textarea id="markdown-source" aria-label="選択した原稿を編集" spellcheck="false" ${selectedDraft()?'':'disabled'}>${esc(selectedDraft()?.text??'')}</textarea></section>${scriptSeparator(1)}<section class="script-review"><h3>差分を確認する${scriptInfo(2)}</h3><div id="script-difference" class="script-difference">${scriptDiffHtml()}</div></section>${scriptSeparator(2)}<section class="script-targets"><h3>読み上げ対象を選択する${scriptInfo(3)}</h3><p class="script-target-help">読み上げる必要がない文章については文字をクリックして取り消し線を引いてください</p><div id="script-target-list" class="source-list">${scriptTargetHtml()}</div></section></div><div class="script-bottom">${button('script_commit','台本確定',`class="primary" ${scriptBlocked()?'disabled':''}`)}${button('exchange_export','ウェブ版用にエクスポート',scriptOutputBlocked()?'disabled':'')}${button('script_send','ウェブ版にアップロード',scriptOutputBlocked()?'disabled':'')}<span id="script-review-status">${scriptStatus()}</span>${pendingExchange?button('exchange_audio','取込音声を追加'):''}</div></section>`;}
+function scriptTab(){if(!hasSourceMode())return legacyScriptTab();ensureScriptDraft();return `<section class="script-tab script-workspace ${fullReview&&expandedReview?'review-expanded':''}"><div class="script-heading"><h2>台本</h2>${button('script_archives','アーカイブ管理')}</div><div class="script-columns script-four-columns" style="grid-template-columns:${scriptGrid()}"><section class="script-files ${scriptCollapsed[0]?'collapsed':''}">${scriptPaneHeading(0,'原稿を登録する')}${sourceListHtml()}</section>${scriptSeparator(0)}<section class="script-editor ${scriptCollapsed[1]?'collapsed':''}">${scriptPaneHeading(1,'原稿を閲覧／編集する')}<div class="script-restore">${button('script_restore','編集を取り消す',`title="原稿の読込時点へ戻す" ${selectedDraft()?'':'disabled'}`)}</div><textarea id="markdown-source" aria-label="選択した原稿を編集" spellcheck="false" ${selectedDraft()?'':'disabled'}>${esc(selectedDraft()?.text??'')}</textarea></section>${scriptSeparator(1)}<section class="script-review ${scriptCollapsed[2]?'collapsed':''}">${scriptPaneHeading(2,'差分を確認する')}<div id="script-difference" class="script-difference">${scriptDiffHtml()}</div></section>${scriptSeparator(2)}<section class="script-targets ${scriptCollapsed[3]?'collapsed':''}">${scriptPaneHeading(3,'読み上げ対象を選択する')}<p class="script-target-help">読み上げる必要がない文章については文字をクリックして取り消し線を引いてください</p><div id="script-target-list" class="source-list">${scriptTargetHtml()}</div></section></div><div class="script-bottom">${button('script_commit','台本確定',`class="primary" ${scriptBlocked()?'disabled':''}`)}${button('exchange_export','エクスポート',scriptOutputBlocked()?'disabled':'')}${button('script_send','アップロード',scriptOutputBlocked()?'disabled':'')}<span id="script-review-status">${scriptStatus()}</span>${pendingExchange?button('exchange_audio','取込音声を追加'):''}</div></section>`;}
 let scriptWidths=[1,1,1,1];
-let scriptCollapsed=[false,false];
+let scriptCollapsed=[false,false,false,false];
 function scriptGrid(){return scriptWidths.flatMap((width,index)=>{const column=scriptCollapsed[index]?(index===0?'var(--script-files-collapsed, 180px)':'52px'):`minmax(0, ${width}fr)`;return index<3?[column,'8px']:[column];}).join(' ');}
 function scriptInfo(index:number){const messages=["現在、TXT形式とMD形式のテキストデータの読み込みに対応しています。同じ名前のファイルを読み込むと、前回との差分モードになります。","ここで変更した内容は、取り込んだ原稿のMDファイルには影響を与えません。","ここでは、台本確定された時点と、新たに読み込まれた原稿との差分を表示しています。","無効化したものは録音対象から除外できます。データは即座に削除されません。完全消去を希望する場合は、アーカイブ管理ボタンから削除を行ってください。"];return `<span class="script-info"><button type="button" data-script-info aria-label="説明" aria-expanded="false" aria-describedby="script-info-${index}">i</button><span role="tooltip" id="script-info-${index}">${messages[index]}</span></span>`;}
-function scriptOutputBlocked(){return busy||state.busy||sourceDirty||sourceSaveScheduled||sourcePreviewPending||!!sourceSaveError||!!sourcePreviewError||deletedSourceIds.size>0||!selectedDraft()||!(state.script_export_ready_source_ids??[]).includes(selectedSource);}
+function scriptAlreadyConfirmed(){
+ if(deletedSourceIds.size||!sourceOrder.length||!((state.project as any)?.script_revision??0))return false;
+ const signature=(lines:ScriptSource["lines"])=>JSON.stringify(readingLines(lines).map(line=>[line.line,line.enabled]));
+ return sourceOrder.every(id=>{const draft=sourceDrafts.get(id),source=(((state.project as any)?.script_sources??[]) as ScriptSource[]).find(source=>source.id===id);return !!draft&&!!source&&draft.text===source.confirmed_text&&signature(draft.lines)===signature(source.lines)&&!state.project?.segments.some(segment=>segment.source_id===id&&segment.recording_draft!=null&&segment.recording_draft!==segment.text);});
+}
+function scriptOutputBlocked(){return busy||state.busy||!scriptAlreadyConfirmed()||sourceSaveScheduled||sourcePreviewPending||!!sourceSaveError||!!sourcePreviewError||deletedSourceIds.size>0||!selectedDraft()||!(state.script_export_ready_source_ids??[]).includes(selectedSource);}
 function scriptPaneHeading(index:number,title:string){return `<div class="script-pane-heading"><h3 title="${title}">${title}${scriptInfo(index)}</h3><button data-collapse-pane="${index}" aria-label="${title}を${scriptCollapsed[index]?'展開':'折りたたむ'}" aria-expanded="${!scriptCollapsed[index]}">${scriptCollapsed[index]?'›':'‹'}</button></div>`;}
 function bindReviewAll(){
  root.querySelectorAll<HTMLButtonElement>('[data-diff-mode]').forEach(button=>button.onclick=()=>{fullReview=button.dataset.diffMode==='full';render();});
@@ -525,7 +535,7 @@ async function previewSelectedSource(version:number,sourceId=selectedSource){
  }catch(error){if(version===sourcePreviewVersion){sourcePreviewError=String(error);sourcePreviewPending=false;updateScriptPanels();}}
 }
 function sourcePayloads(){return sourceRows().map(sourcePayload);}
-function queueSourceDraftSave(){sourceDirty=true;sourceSaveScheduled=true;sourceSaveVersion++;clearTimeout(sourceSaveTimer);}
+function queueSourceDraftSave(){sourceDirty=true;sourceSaveScheduled=true;sourceSaveVersion++;clearTimeout(sourceSaveTimer);sourceSaveTimer=setTimeout(startSourceSave,450);}
 function startSourceSave(){if(!sourceSaveScheduled)return;sourceSaveScheduled=false;const version=sourceSaveVersion,epoch=sourceEpoch;sourceSavePromise=sourceSavePromise.then(()=>saveSourceDraft(version,epoch));}
 async function flushSourceDraft(){
  do{if(sourceSaveScheduled){clearTimeout(sourceSaveTimer);startSourceSave();}await sourceSavePromise;}while(sourceSaveScheduled);
@@ -544,10 +554,12 @@ async function saveSourceDraft(version:number,epoch:number){
   if(epoch!==sourceEpoch)return;
   const payload={project_id:(state.project as any)?.id,base_revision:sourceRevision,base_generation:sourceGeneration,deleted_source_ids:[...deletedSourceIds],sources:drafts.map(sourcePayload)};
   await rpc('script_validate_draft',payload);
-  const result={generation:state.project?.generation,script_revision:sourceRevision};
+  const savedFingerprint=sourceDraftFingerprint();
+  const result=await rpc<{generation?:number;script_revision?:number}>('script_draft',payload);
   if(epoch!==sourceEpoch)return;
   sourceGeneration=result?.generation??sourceGeneration;sourceRevision=result?.script_revision??sourceRevision;sourceSaveError='';
-  // 確定するまで下書きは未保存として保持する。
+  persistedSourceDraft=savedFingerprint;
+  // 未確定でも下書きは復元できる。確定本文と採用音声は変更しない。
   updateScriptPanels();
  }catch(error){if(epoch===sourceEpoch){sourceDirty=true;sourceSaveError=String(error);notice(`下書きを保存できません: ${sourceSaveError}`,true);updateScriptPanels();}}
 }
@@ -640,9 +652,10 @@ function updateRecordingWave(){
  svg.innerHTML=`<path d="M0 22H600" stroke="#c8d9d0"/><path d="${lines}" stroke="#29836b" stroke-width="1"/>`;
 }
 function bindContinuousControls(){
- if(tab!=='recording'||!current())return;
+ if(tab!=='recording')return;
+ if(!current()){root.querySelector('#stage-extras')?.insertAdjacentHTML('beforeend',`<div class="toolbar continuous-controls">${button("script_insert_empty","空の台本行を挿入")}</div>`);return;}
  const controls=document.querySelector('.utterance-heading');if(!controls)return;
- controls.insertAdjacentHTML('beforeend',`<div class="toolbar continuous-controls"><button id="continuous-start" class="primary" ${continuousRecording?'disabled':''}>連続録音開始<br><small>（F5）</small></button><button id="continuous-stop" ${continuousRecording?'':'disabled'}>連続録音終了<br><small>（F6）</small></button>${continuousRecording?'<span class="badge">F1 取消して再録音 / F2 保存 / F3 リプレイ / F4 採用して次へ</span>':''}</div>`);
+ controls.insertAdjacentHTML('beforeend',`<div class="toolbar continuous-controls">${button("script_insert_empty","空の台本行を挿入")}<button id="continuous-start" class="primary" ${continuousRecording?'disabled':''}>連続録音開始<br><small>（F5）</small></button><button id="continuous-stop" ${continuousRecording?'':'disabled'}>連続録音終了<br><small>（F6）</small></button>${continuousRecording?'<span class="badge">F1 取消して再録音 / F2 保存 / F3 リプレイ / F4 採用して次へ</span>':''}</div>`);
  document.getElementById('continuous-start')!.onclick=async()=>{if(continuousRecording||busy||state.busy)return;if(current()?.skip){showTransientError('この台本は読み上げ対象外です。台本画面で読み上げ対象に設定してください。');return;}try{await invoke('continuous_hotkeys',{enabled:true});continuousRecording=true;render();await startRecording();}catch(e){notice(String(e),true);}};
  document.getElementById('continuous-stop')!.onclick=async()=>{try{await endContinuous();if(state.job==='recording')await act('stop');render();}catch(e){notice(String(e),true);}};
 }
@@ -734,16 +747,16 @@ async function mergeExchangeAudio(){if(!pendingExchange||sourceDirty)return;try{
 
 async function improveRecordingText(){
  const segment=current();
- if(improvingText||busy||state.busy||!segment)return;if(!value('text').trim()){showTransientError('改善する台本を入力してください。');return;}
+ if(improvingText||busy||state.busy||!segment)return;if(!recordingEditors.has(recordingEditorKey())){recordingEditors.add(recordingEditorKey());render();}if(!value('text').trim()){showTransientError('改善する台本を入力してください。');return;}
  try{await saveScriptDraft();}catch(error){showTransientError(String(error));return;}
  const projectRoot=state.root,segmentId=segment.id,original=value('text'),editVersion=recordingEditVersion,viewVersion=recordingViewVersion,raw=original;
  improvingText=true;render();
  try{
-  const improved=await rpc<{text:string}>('text_improve',{text:raw});
+  const improved=await rpc<{text:string}>('text_improve',{text:raw,confirmed_text:segment.text});
   if(recordingViewVersion!==viewVersion||recordingEditVersion!==editVersion||state.root!==projectRoot||selected!==segmentId||tab!=='recording'||value('text')!==original){notice('台本または選択が変更されたため、改善結果は反映しませんでした。',true);return;}
   if(!improved.text?.trim())throw new Error('Codex CLIの改善結果が空です');
   const input=document.getElementById('text') as HTMLTextAreaElement;input.value=improved.text;
-  await saveScriptDraft();drafts.delete(segmentId+':recording');notice('改善結果を台本の修正案に反映しました。台本画面で差分を確認して再確定してください。');
+  await saveScriptDraft();syncAsrApplyButtons();drafts.delete(segmentId+':recording');notice('改善結果を台本の修正案に反映しました。台本画面で差分を確認して再確定してください。');
  }catch(error){showTransientError('Codex CLIによる文章改善に失敗しました。\n'+String(error));}finally{improvingText=false;root.querySelectorAll<HTMLButtonElement>('[data-action=improve_text]').forEach(button=>{button.disabled=busy||state.busy||!value('text').trim();});root.querySelectorAll('.improve-status').forEach(el=>el.remove());}
 }
 
@@ -751,8 +764,62 @@ function arrangeTakeControls(){
  root.querySelectorAll<HTMLElement>('.take').forEach(card=>{
   const summary=card.querySelector<HTMLElement>('.take-summary'),annotation=card.querySelector<HTMLElement>('.take-annotation');
   if(summary&&annotation){const header=document.createElement('div');header.className='take-header';card.prepend(header);header.append(summary,annotation);const diagnostic=summary.querySelector('.take-diagnostic');if(diagnostic)header.after(diagnostic);}
+  const wave=card.querySelector<HTMLElement>('.take-wave-wrap'),actions=card.querySelector<HTMLElement>('.take-actions');if(wave&&actions){const transport=document.createElement('div');transport.className='take-transport';wave.before(transport);transport.append(wave,actions);}
   const duration=card.querySelector('[data-take-duration]');if(duration&&summary?.querySelector('strong'))summary.querySelector('strong')!.after(duration);
   const row=card.querySelector('.take-transcription-row'),fields=card.querySelector('.take-trim-fields');
   if(row&&fields){while(row.firstChild)fields.append(row.firstChild);row.remove();}
  });
 }
+
+let recordingSidebarWidth=0,recordingSplit=.5;
+function bindRecordingResize(){
+ const layout=root.querySelector<HTMLElement>('.navigation-layout'),workspace=root.querySelector<HTMLElement>('.recording-workspace');if(!layout||!workspace)return;
+ const bind=(bar:HTMLElement,change:(x:number)=>void)=>{bar.tabIndex=0;bar.setAttribute('role','separator');bar.setAttribute('aria-orientation','vertical');let prior=0;bar.onpointerdown=e=>{prior=e.clientX;bar.setPointerCapture(e.pointerId);e.preventDefault();};bar.onpointermove=e=>{if(bar.hasPointerCapture(e.pointerId)){change(e.clientX-prior);prior=e.clientX;}};bar.onpointerup=e=>{if(bar.hasPointerCapture(e.pointerId))bar.releasePointerCapture(e.pointerId);};bar.onkeydown=e=>{if(e.key==='ArrowLeft'||e.key==='ArrowRight'){e.preventDefault();change(e.key==='ArrowLeft'?-16:16);}};};
+ const aside=layout.querySelector<HTMLElement>('aside');if(aside){const bar=document.createElement('div');bar.className='recording-resizer';bar.setAttribute('aria-label','台本フィルタの幅');aside.after(bar);const apply=()=>{layout.style.gridTemplateColumns=recordingSidebarWidth+'px 8px minmax(0,1fr)';};if(!recordingSidebarWidth)recordingSidebarWidth=aside.getBoundingClientRect().width||240;apply();bind(bar,delta=>{recordingSidebarWidth=Math.max(150,Math.min(layout.clientWidth-360,recordingSidebarWidth+delta));apply();});}
+ const bar=document.createElement('div');bar.className='recording-resizer';bar.setAttribute('aria-label','台本とテイクの幅');workspace.firstElementChild?.after(bar);const apply=()=>{workspace.style.gridTemplateColumns='minmax(0,'+recordingSplit+'fr) 8px minmax(0,'+(1-recordingSplit)+'fr)';};apply();bind(bar,delta=>{recordingSplit=Math.max(.2,Math.min(.8,recordingSplit+delta/Math.max(1,workspace.clientWidth)));apply();});
+}
+
+function syncAsrApplyButtons(){const segment=current(),text=(document.getElementById('text') as HTMLTextAreaElement|null)?.value??segment?.recording_draft??segment?.text;root.querySelectorAll<HTMLButtonElement>('[data-action=apply_recording_asr]').forEach(button=>{const raw=segment?.transcriptions?.find(result=>result.id===button.dataset.asr)?.raw;button.hidden=!raw||raw===text;});}
+
+// 未確定と未保存を分ける。復元できる下書きは終了を妨げない。
+function hasUnsavedProject(){
+ if(hasUnsavedSettings())return true;
+ if(!state.project)return false;
+ if(projectNameEditing&&projectNameValue.trim()!==state.project.title)return true;
+ if(hasSourceMode()&&(sourcePreviewPending||sourceSaveScheduled||!!sourceSaveError||sourceDraftFingerprint()!==persistedSourceDraft))return true;
+ const s=current(),field=document.getElementById('text') as HTMLTextAreaElement|null;
+ if(s&&field&&field.value!==(s.recording_draft??s.text))return true;
+ if(s&&[...document.querySelectorAll<HTMLTextAreaElement>('[data-take-memo]')].some(input=>input.value!==(s.take_notes?.[input.dataset.takeMemo!]?.memo??'')))return true;
+ return hasUnsavedExportDraft();
+}
+async function savePendingProject(){
+ await saveOpenSettings();
+ if(!state.project)return;
+ draftSave=Promise.resolve();await saveScriptDraft();
+ if(hasSourceMode()){
+  if(sourcePreviewPending){clearTimeout(sourcePreviewTimer);await previewSelectedSource(sourcePreviewVersion);}
+  if(sourceDraftFingerprint()!==persistedSourceDraft||sourceSaveError){sourceSaveError='';queueSourceDraftSave();}
+  await flushSourceDraft();
+ }
+ for(const field of document.querySelectorAll<HTMLTextAreaElement>('[data-take-memo]'))await saveTakeMemo(field);
+ if(projectNameEditing&&projectNameValue.trim()!==state.project.title)await renameProject();
+ await saveExportDraft({project:state.project,selected,select:id=>{selected=id;},rpc,play,notice});
+ await rpc('save_project');
+ if(hasUnsavedProject())throw new Error('未保存の変更が残っています。各欄の保存状態を確認してください。');
+}
+let exitInProgress=false,exitApplication=false;
+const guardedExit=createCloseGuard({
+ settle:async()=>{await Promise.all([...pendingProjectWrites]);await draftSave;if(hasSourceMode()){if(sourcePreviewPending){clearTimeout(sourcePreviewTimer);await previewSelectedSource(sourcePreviewVersion);}await flushSourceDraft();}},
+ dirty:hasUnsavedProject,save:savePendingProject,
+ close:async()=>{if(!await guardTakeTrimMove(()=>{}))return;await endContinuous();player()?.pause();
+  if(exitApplication){await invoke('close_application');return;}
+  if(await act('close_project')){resetExportDraft();drafts.clear();renderedKey='';sourceBaselines.clear();recordingFeedbackPending.clear();pendingExchange=null;}
+ },error:message=>showTransientError(message)
+});
+async function requestExit(application:boolean){
+ if(exitInProgress)return;
+ if(busy||state.busy){showTransientError('録音や処理が終了してから閉じてください。');return;}
+ exitInProgress=true;exitApplication=application;try{await guardedExit();}finally{exitInProgress=false;}
+}
+async function requestProjectClose(){await requestExit(false);}
+if(desktop)void listen('app-close-requested',()=>void requestExit(true)).catch(error=>notice(String(error),true));

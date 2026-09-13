@@ -16,6 +16,8 @@ let preparation="";
 let settings=defaults(), selectedBlock=0, preview:Preview|undefined, projectKey="", lastOutputId="", playbackBlock=-1;
 let boundPlayer:HTMLAudioElement|null=null, previewMode="combined", previewStart=0,previewPlaying=false;
 let history:Settings[]=[], savedSettings=JSON.stringify(settings), confirming=false, session=0;
+export function hasUnsavedExportDraft(){return !!projectKey&&JSON.stringify(settings)!==savedSettings;}
+export async function saveExportDraft(context:ExportContext){if(!hasUnsavedExportDraft())return;const snapshot=structuredClone(settings);await context.rpc('export_settings',{settings:snapshot});savedSettings=JSON.stringify(snapshot);context.project.export_settings=snapshot;}
 let undoKeyHandler:((event:KeyboardEvent)=>void)|undefined;
 /** プロジェクトを閉じると未出力の編集と履歴を破棄する。同じIDを開き直す場合も必ず呼ぶ。 */
 export function resetExportDraft(){session++;projectKey="";settings=defaults();history=[];savedSettings=JSON.stringify(settings);preparation="";confirming=false;selectedBlock=0;preview=undefined;lastOutputId="";previewPlaying=false;playbackBlock=-1;if(undoKeyHandler)document.removeEventListener("keydown",undoKeyHandler);undoKeyHandler=undefined;}

@@ -77,3 +77,19 @@
  #app .take-header .take-annotation{flex:1 1 226px;width:auto;max-width:100%}
  #app .take-column .take-actions{max-width:100%;flex-wrap:wrap}
 }
+/* 0.0.5.6: 名前・台本編集・音声操作の配置 */
+#app>header>#project-name-button,#app>header>#project-name{font-size:24px;font-weight:700;line-height:1.3}
+#app .recording-original .section-head{flex-wrap:wrap;gap:8px}
+#app .recording-original .section-head>.toolbar{margin-left:auto;gap:6px}
+#app .continuous-controls [data-action=script_insert_empty]{height:54px;min-height:54px;width:112px;white-space:normal;padding:4px 8px;line-height:1.3}
+#app .take-transport{display:flex;align-items:flex-start;gap:8px;flex-wrap:nowrap}
+#app .take-transport .take-wave-wrap{flex:1 1 0;min-width:0;width:auto}
+#app .take-transport .take-actions{flex:0 0 100px;align-self:flex-start;max-width:100px;flex-direction:column;flex-wrap:nowrap}.take-transport .take-actions button{width:100%}
+#app .recording-resizer{width:8px;align-self:stretch;cursor:col-resize;touch-action:none;border-radius:4px;background:#dde7e1}
+#app .recording-resizer:hover,#app .recording-resizer:focus-visible{background:#78a999;outline:2px solid #176b57}
+#app .script-review.collapsed>:not(.script-pane-heading),#app .script-targets.collapsed>:not(.script-pane-heading){display:none}
+#app .script-review.collapsed .script-pane-heading,#app .script-targets.collapsed .script-pane-heading{flex-direction:column}
+#app .script-review.collapsed h3,#app .script-targets.collapsed h3{writing-mode:vertical-rl}
+#app .script-info>button{display:inline-flex;align-items:center;justify-content:center;box-sizing:border-box;width:20px!important;height:20px!important;min-width:20px!important;min-height:20px!important;flex:0 0 20px;padding:0!important;border:1px solid currentColor;border-radius:50%;line-height:1;font-size:13px}
+.action-confirm .toolbar{justify-content:flex-end}
+.cloud-upload-dialog button{min-height:48px;padding:12px 20px}

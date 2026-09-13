@@ -387,7 +387,21 @@ pub fn commit(project: &mut Project, value: &Value) -> Result<()> {
     for ((source_id, text, rows, selections), source) in parsed.into_iter().zip(staged.script_sources.iter_mut()) {
         if source.id != source_id { return Err("台本ファイルの順序またはIDが不正です".into()); }
         source.confirmed_text = text.clone(); source.draft_text = text;
-        source.lines = rows; source.draft_lines = selections; source.blank_rows.retain(|row| still_blank.contains(&row.segment_id)); source.approved_text = None;
+        // 差分確認の対応付けは確定前の一時情報。確定後は現在の発話IDと行へ張り直す。
+        // force_newや古いprevious_lineを残すと、次回の無編集保存・再確定でも別世代として扱われる。
+        source.draft_lines = rows.iter().map(|row| {
+            let mut choice = serde_json::to_value(row).expect("ScriptLine is serializable");
+            if let Some(order) = row_choice(&selections, row.line).and_then(|c| c["reading_order"].as_u64()) {
+                choice["reading_order"] = json!(order);
+            }
+            choice["previous_line"] = json!(row.line);
+            if let Some(segment) = staged.segments.iter().find(|s| s.source_id == source_id && s.source_line == Some(row.line)) {
+                choice["previous_id"] = json!(segment.id);
+                choice["keep"] = json!(true);
+            } else { choice["keep"] = json!(false); }
+            choice
+        }).collect();
+        source.lines = rows; source.blank_rows.retain(|row| still_blank.contains(&row.segment_id)); source.approved_text = None;
     }
     staged.source_markdown = staged.script_sources.iter().map(|s| s.confirmed_text.as_str()).collect::<Vec<_>>().join("\n\n");
     staged.script_lines = legacy_script_lines(&staged.script_sources)?;
@@ -409,6 +423,55 @@ mod tests {
         let s = &p.script_sources[0];
         json!({"base_revision":p.script_revision,"sources":[{"id":s.id,"name":s.name,"kind":s.kind,"text":text,"lines":markdown::parse(text).unwrap(),"approved_text":if approved { Value::String(text.into()) } else { Value::Null }}]})
     }
+    #[test]
+    fn confirmed_choices_rebase_new_rows_and_survive_noop_save_and_reconfirm() {
+        let mut p=Project::new("normalized".into());p.script_sources.push(source("a.md","本文"));
+        let mut initial=payload(&p,"本文",true);
+        initial["sources"][0]["lines"][0]["force_new"]=json!(true);
+        initial["sources"][0]["lines"][0]["previous_line"]=Value::Null;
+        commit(&mut p,&initial).unwrap();
+        let sid=p.script_sources[0].id.clone();let segment_id=p.segments[0].id.clone();
+        assert_eq!(p.script_sources[0].draft_lines[0]["previous_id"],segment_id);
+        assert_eq!(p.script_sources[0].draft_lines[0]["previous_line"],0);
+        assert!(p.script_sources[0].draft_lines[0].get("force_new").is_none());
+        assert!(crate::exchange::ensure_export_ready(&p,&sid).is_ok());
+        let mut saved=payload(&p,"本文",true);
+        saved["sources"][0]["lines"]=json!(p.script_sources[0].draft_lines);
+        // UIのsourcePayloadと同じ、無編集のkeep再計算。
+        saved["sources"][0]["lines"][0]["keep"]=json!(true);
+        update_draft(&mut p,&saved).unwrap();
+        assert!(crate::exchange::ensure_export_ready(&p,&sid).is_ok());
+        commit(&mut p,&saved).unwrap();assert_eq!(p.segments[0].id,segment_id);
+        assert!(p.archived_segments.is_empty());
+        assert!(crate::exchange::ensure_export_ready(&p,&sid).is_ok());
+    }
+    #[test]
+    fn explicit_mapping_without_keep_remains_exportable_after_ui_resave() {
+        let mut p=Project::new("mapping".into());p.script_sources.push(source("a.md","本文"));
+        let initial=payload(&p,"本文",true);commit(&mut p,&initial).unwrap();
+        let sid=p.script_sources[0].id.clone();let segment_id=p.segments[0].id.clone();
+        let mut mapped=payload(&p,"本文",true);
+        mapped["sources"][0]["lines"][0]["previous_id"]=json!(segment_id);
+        // 旧版の「previous_idはあるがkeepはない」保存形では、無編集のUI保存で指紋が変わる。
+        let mut legacy=p.clone();
+        legacy.script_sources[0].draft_lines=mapped["sources"][0]["lines"].as_array().unwrap().clone();
+        legacy.script_export_fingerprint=Some(crate::exchange::script_fingerprint(&legacy));
+        assert!(crate::exchange::ensure_export_ready(&legacy,&sid).is_ok());
+        let mut ui_saved=mapped.clone();ui_saved["sources"][0]["lines"][0]["keep"]=json!(true);
+        update_draft(&mut legacy,&ui_saved).unwrap();
+        assert!(crate::exchange::ensure_export_ready(&legacy,&sid).is_err());
+        commit(&mut p,&mapped).unwrap();
+        mapped["base_revision"]=json!(p.script_revision);
+        mapped["sources"][0]["lines"]=json!(p.script_sources[0].draft_lines);
+        mapped["sources"][0]["lines"][0]["keep"]=json!(true);
+        update_draft(&mut p,&mapped).unwrap();
+        assert!(crate::exchange::ensure_export_ready(&p,&sid).is_ok());
+        let before=serde_json::to_value(&p).unwrap();
+        mapped["sources"][0]["lines"][0]["previous_id"]=json!("nonexistent-segment");
+        assert!(commit(&mut p,&mapped).unwrap_err().contains("指定した維持元"));
+        assert_eq!(serde_json::to_value(&p).unwrap(),before);
+    }
+
     #[test]
     fn recording_feedback_stays_draft_until_commit_and_preserves_reading() {
         let mut p=Project::new("feedback".into());p.script_sources.push(source("a.md","原稿"));

@@ -1,0 +1,21 @@
+import {afterEach,it,expect,vi} from 'vitest';
+HTMLMediaElement.prototype.pause=vi.fn();
+const api=vi.hoisted(()=>({invoke:vi.fn(),listen:vi.fn(async()=>()=>{})}));
+vi.mock('@tauri-apps/api/core',()=>({invoke:api.invoke}));vi.mock('@tauri-apps/api/event',()=>({listen:api.listen}));vi.mock('../../src/soundEffects',()=>({playCue:vi.fn(async()=>{})}));
+afterEach(()=>{vi.clearAllTimers();vi.useRealTimers();});
+const settle=async()=>{for(let i=0;i<80;i++)await Promise.resolve();};
+it('未確定下書きは実保存後に確認なしで閉じ、ディスク失敗時はキャンセルできる',async()=>{
+ vi.resetModules();vi.useFakeTimers();document.body.innerHTML='<div id="app"></div>';HTMLDialogElement.prototype.showModal=function(){};Object.defineProperty(window,'__TAURI_INTERNALS__',{value:{},configurable:true});
+ const rows=(text:string)=>text.split('\n').map((text,line)=>({line,text,raw:text,enabled:true,kind:0,hierarchy:[0,0,0]}));
+ let failed=false;let project:any={id:'p',title:'確認',generation:1,script_revision:1,script_sources:[{id:'a',name:'a.md',kind:'markdown',confirmed_text:'元本文',draft_text:'元本文',lines:rows('元本文')}],segments:[]};
+ api.invoke.mockReset();api.listen.mockClear();api.invoke.mockImplementation(async(cmd,args)=>{if(cmd!=='command')return {};const {action,payload}=args;if(action==='state')return {project:structuredClone(project),root:project?'fixture':null,busy:false,job:'',peak:0,elapsed:0};if(action==='markdown_preview')return {lines:rows(payload.text)};if(action==='script_draft'){if(failed)throw Error('ディスクに保存できません');project.script_sources=payload.sources.map((s:any)=>({...project.script_sources.find((x:any)=>x.id===s.id),draft_text:s.text,draft_lines:s.lines,approved_text:s.approved_text}));return {generation:++project.generation,script_revision:1};}if(action==='close_project'){project=null;return {};}return action==='devices'?[]:{};});
+ await import('../../src/main');await settle();
+ const edit=(text:string)=>{const input=document.querySelector<HTMLTextAreaElement>('#markdown-source')!;input.value=text;input.dispatchEvent(new Event('input',{bubbles:true}));};
+ edit('復元する下書き');await vi.advanceTimersByTimeAsync(700);await settle();
+ expect(project.script_sources[0]).toMatchObject({confirmed_text:'元本文',draft_text:'復元する下書き'});
+ failed=true;edit('まだ保存できない本文');await vi.advanceTimersByTimeAsync(700);await settle();
+ document.querySelector<HTMLButtonElement>('[data-action=close_project]')!.click();await settle();expect(document.querySelector('dialog')).toBeTruthy();document.querySelector<HTMLButtonElement>('[data-choice=cancel]')!.click();await settle();expect(project).not.toBeNull();
+ failed=false;document.querySelector<HTMLButtonElement>('[data-action=save_project]')!.click();await settle();expect(project.script_sources[0]).toMatchObject({confirmed_text:'元本文',draft_text:'まだ保存できない本文'});
+ document.querySelector<HTMLButtonElement>('[data-action=close_project]')!.click();await settle();expect(document.querySelector('dialog')).toBeNull();expect(project).toBeNull();
+ const native=api.listen.mock.calls.find((call:any)=>call[0]==='app-close-requested') as any;expect(native).toBeTruthy();native[1]({});await settle();expect(api.invoke.mock.calls.some(call=>call[0]==='close_application')).toBe(true);
+});

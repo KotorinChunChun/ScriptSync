@@ -18,7 +18,7 @@ it('対応候補は未使用の削除行と過去アーカイブだけで、新�
  updateParsedLines(draft,lines(draft.text));
  expect(sourcePayload(draft).lines[1]).toMatchObject({previous_line:null,force_new:true,keep:false});
 });
-it('F2の名前入力、同名取り込みの差分、削除予定の取消を確定まで保存しない',async()=>{
+it('F2の名前入力、同名取り込みの差分、削除予定は確定本文を保持して下書き保存する',async()=>{
  vi.resetModules();vi.useFakeTimers();document.body.innerHTML='<div id="app"></div>';
  Object.defineProperty(window,'__TAURI_INTERNALS__',{value:{},configurable:true});
  const target={id:'a',name:'台本.md',kind:'markdown',confirmed_text:'既存',draft_text:'既存',lines:lines('既存'),draft_lines:lines('既存')};
@@ -41,17 +41,17 @@ it('F2の名前入力、同名取り込みの差分、削除予定の取消を�
  expect(document.activeElement).toBe(input);
  input.value='台本.md';input.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',isComposing:true,bubbles:true}));
  expect(document.querySelector('#script-source-name')).toBeTruthy();
- input.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true}));await settle();await vi.advanceTimersByTimeAsync(400);await settle();
- expect(project.script_sources.find((s:any)=>s.id==='a')).toMatchObject({confirmed_text:'既存',draft_text:'既存'});
- expect(project.pending_source_deletions).toEqual([]);
+ input.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true}));await settle();await vi.advanceTimersByTimeAsync(600);await settle();
+ expect(project.script_sources.find((s:any)=>s.id==='a')).toMatchObject({confirmed_text:'既存',draft_text:'修正版'});
+ expect(project.pending_source_deletions).toEqual(['b']);
  expect(document.querySelectorAll('.script-source')).toHaveLength(1);
  expect(document.querySelector('.diff-text')?.textContent).toBeTruthy();
  const direct=importedSource(makeDraft(target),{name:'台本.md',text:'修正版'},'a');
  expect(document.querySelector<HTMLTextAreaElement>('#markdown-source')!.value).toBe(direct.text);
- expect(api.invoke.mock.calls.some(call=>call[1]?.action==='script_draft')).toBe(false);
- document.querySelector<HTMLButtonElement>('[data-action=script_delete]')!.click();await vi.advanceTimersByTimeAsync(400);await settle();
- expect(project.pending_source_deletions).toEqual([]);
+ expect(api.invoke.mock.calls.some(call=>call[1]?.action==='script_draft')).toBe(true);
+ document.querySelector<HTMLButtonElement>('[data-action=script_delete]')!.click();await vi.advanceTimersByTimeAsync(600);await settle();
+ expect(project.pending_source_deletions).toEqual(['b','a']);
  expect(document.querySelectorAll('.script-source')).toHaveLength(0);
- document.querySelector<HTMLButtonElement>('[data-source-restore=a]')!.click();await vi.advanceTimersByTimeAsync(400);await settle();
- expect(project.pending_source_deletions).toEqual([]);
+ document.querySelector<HTMLButtonElement>('[data-source-restore=a]')!.click();await vi.advanceTimersByTimeAsync(600);await settle();
+ expect(project.pending_source_deletions).toEqual(['b']);
 });
