@@ -1,6 +1,6 @@
 # 開発者ガイド
 
-対象はv0.0.5です。[実装記録](../dev/v0.0.5-imp.md)で自動試験・ネイティブ操作確認・未確認範囲を確認してください。v0.0.2の終了記録はdev/history/v0.0.2に保存しています。
+開発対象はv0.0.6です。[実装記録](../dev/history/v0.0.6/v0.0.6-imp.md)で自動試験・ネイティブ操作確認・未確認範囲を確認してください。最終公開版v0.0.5の記録はdev直下に保持しています。
 
 ## 開発起動とビルド
 
@@ -70,7 +70,7 @@ cargo test --manifest-path src-tauri/Cargo.toml --lib synthetic_asr_measurement 
 
 ## バージョンと文書更新
 
-要求は `dev/vX.Y.Z-req.md`、設計・実装結果は `dev/vX.Y.Z-imp.md`、進捗は `dev/vX.Y.Z-task.md` に日本語で記録します。次版へ進む際は旧版を `dev/history/` に残します。v0.0.2はdev/history/v0.0.2へ保存済みです。v0.0.3の実装・検証は完了しています。アプリ版は0.0.5、保存形式は5です。
+要求は `dev/history/vX.Y.Z/vX.Y.Z-req.md`、設計・実装結果は同フォルダーの `vX.Y.Z-imp.md`、進捗は `vX.Y.Z-task.md` に日本語で記録します。アプリ版は0.0.6、保存形式は5です。
 
 キー変更時は[キー定義](../dev/SHORTCUT_KEYS.md)、効果音変更時は[効果音定義](../dev/SOUND_EFFECTS.md)、画面操作変更時は利用者ガイドとサンプル手順も更新します。生成物、個人原稿・音声、認証情報、ユーザー提供の `dev/sample/` を文書整理のために追加・削除しないでください。
 
