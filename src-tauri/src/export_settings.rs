@@ -1,5 +1,15 @@
 use crate::domain::Result;
 use serde_json::{json, Value};
+
+/// 保存済み設定がまだないプロジェクトでも、画面の初期値と同じ規則で見積もれるようにする。
+pub fn defaults() -> Value {
+    json!({
+        "unit":"all", "naming":"jp", "format":"flac", "subtitle_format":"vtt", "normalize":true,
+        "boundaries":[],
+        "global_gaps":{"normal":0.3,"part":1.2,"chapter":0.8,"section":0.5,"head":0.1,"tail":0.3},
+        "blocks":{}
+    })
+}
 pub fn validate(value: &Value) -> Result<Value> {
     if !value.is_object() {
         return Err("出力設定が必要です".into());

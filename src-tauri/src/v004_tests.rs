@@ -20,6 +20,26 @@ fn draft_validation_does_not_persist_and_new_source_commits_atomically(){
 }
 
 #[test]
+fn script_draft_persists_without_changing_confirmed_text_or_revision(){
+ let root=std::env::temp_dir().join(id());let store=Store::open(root.clone(),true).unwrap();
+ let app=App::default();app.0.lock().unwrap().store=Some(store);
+ let before=app.snapshot().unwrap()["project"].clone();let source=id();
+ let payload=json!({"project_id":before["id"],"base_revision":before["script_revision"],"base_generation":before["generation"],"sources":[{"id":source,"name":"下書き.md","kind":"markdown","text":"保存する下書き","lines":[{"line":0,"enabled":true}]}],"deleted_source_ids":[]});
+ let result=app.dispatch("script_draft",payload).unwrap();
+ assert_eq!(result["script_revision"],before["script_revision"]);
+ assert!(result["generation"].as_u64().unwrap()>before["generation"].as_u64().unwrap());
+ let current=app.snapshot().unwrap()["project"].clone();
+ assert_eq!(current["script_sources"][0]["confirmed_text"],"");
+ assert_eq!(current["script_sources"][0]["draft_text"],"保存する下書き");
+ app.dispatch("close_project",json!({})).unwrap();
+ let reopened=Store::open(root.clone(),false).unwrap();
+ assert_eq!(reopened.project.script_revision,0);
+ assert_eq!(reopened.project.script_sources[0].confirmed_text,"");
+ assert_eq!(reopened.project.script_sources[0].draft_text,"保存する下書き");
+ drop(reopened);drop(app);std::fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
 #[ignore = "ネイティブ画面確認用の非機密fixtureを指定先へ新規作成して保持する"]
 fn create_native_v004_fixture() {
  let path=std::path::PathBuf::from(std::env::var("SCRIPTSYNC_V004_FIXTURE").expect("fixture保存先が必要です"));

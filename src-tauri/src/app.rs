@@ -142,7 +142,7 @@ impl App {
             })();
             if result.is_err(){a.exchange=Some(exchange);}return result;
         }
-        if action == "script_draft" || action == "script_validate_draft" {
+        if action == "script_validate_draft" {
             let a = self.0.lock().map_err(|e| e.to_string())?;
             let store = a.store.as_ref().ok_or("プロジェクトを開いてください")?;
             if v["project_id"].as_str().is_some_and(|id| id != store.project.id) { return Err("プロジェクトが変わりました".into()); }
@@ -413,7 +413,19 @@ impl App {
             if let Err(error)=a.project_location.remember(&path){a.message=format!("名前変更は完了しました。保存先設定を更新できません: {error}");}
             return Ok(Value::Null);
         }
+        if action == "take_move_to_source"
+            && (a.auto_asr_running || !a.auto_asr_queue.is_empty())
+        {
+            return Err("文字起こしが終了してからテイクを移動してください".into());
+        }
         let store = a.store.as_mut().ok_or("プロジェクトを開いてください")?;
+        if action == "take_move_to_source"
+            && (v["project_id"].as_str() != Some(store.project.id.as_str())
+                || v["base_generation"].as_u64() != Some(store.project.generation)
+                || v["base_revision"].as_u64() != Some(store.project.script_revision))
+        {
+            return Err("台本またはテイクが更新されています。開き直して確認してください".into());
+        }
         if action.starts_with("script_") && v["project_id"].as_str().is_some_and(|id| id != store.project.id) {
             return Err("編集中のプロジェクトが変更されました".into());
         }
@@ -456,6 +468,33 @@ impl App {
             let (clip, file) = crate::take_trim::preview_wav(&store.root, &input, start, end)?;
             return Ok(json!({"file": file, "hash": hash_file(&clip)?}));
         }
+        if action == "preview_take_edit" {
+            let sid = string(&v, "segment")?;
+            let tid = string(&v, "take")?;
+            let edit = crate::take_trim::edit_range(
+                v["start"].as_f64().ok_or("開始秒が必要です")?,
+                v["end"].as_f64().ok_or("終了秒が必要です")?,
+                v["cut_start"].as_f64(),
+                v["cut_end"].as_f64(),
+            )?;
+            crate::take_trim::validate_edit(&store.project, &sid, &tid, edit)?;
+            let take = store
+                .project
+                .segments
+                .iter()
+                .find(|segment| segment.id == sid)
+                .and_then(|segment| segment.takes.iter().find(|take| take.id == tid))
+                .ok_or("テイクがありません")?;
+            let input = safe(&store.root, &take.file)?;
+            if hash_file(&input)? != take.hash {
+                return Err("音声が変わっています".into());
+            }
+            let (clip, file) = crate::take_trim::preview_edit_wav(&store.root, &input, edit)?;
+            return Ok(json!({"file": file, "hash": hash_file(&clip)?}));
+        }
+        if action == "duration_summary" {
+            return crate::export_blocks::duration_summary(&store.project, &v);
+        }
         if action == "export" {
             let result = audio::assemble(&store.root, &store.project)?;
             a.message = "完成WAVをexportsへ保存しました".into();
@@ -495,6 +534,7 @@ impl App {
         }
         let previous = store.project.clone();
         let mut deleted_take_folder = None;
+        let mut enqueue_asr_after_save = None;
         let result = (|| -> Result<()> {
             match action {
                 "rule_create" | "rule_validate" | "rule_decide" => {
@@ -511,14 +551,38 @@ impl App {
                     }
                     s.gain_db = gain;
                 }
-                "trim_take" => crate::take_trim::save(
-                    &store.root,
-                    &mut store.project,
-                    &string(&v, "segment")?,
-                    &string(&v, "take")?,
-                    v["start"].as_f64().ok_or("開始秒が必要です")?,
-                    v["end"].as_f64().ok_or("終了秒が必要です")?,
-                )?,
+                "trim_take" => {
+                    let sid = string(&v, "segment")?;
+                    let tid = string(&v, "take")?;
+                    let edit = crate::take_trim::edit_range(
+                        v["start"].as_f64().ok_or("開始秒が必要です")?,
+                        v["end"].as_f64().ok_or("終了秒が必要です")?,
+                        v["cut_start"].as_f64(),
+                        v["cut_end"].as_f64(),
+                    )?;
+                    crate::take_trim::save_edit(
+                        &store.root,
+                        &mut store.project,
+                        &sid,
+                        &tid,
+                        edit,
+                    )?;
+                    enqueue_asr_after_save = Some((sid, tid));
+                }
+                "take_unselect" => {
+                    crate::script_sources::cancel_take_selection(
+                        &mut store.project,
+                        &string(&v, "segment")?,
+                    )?;
+                }
+                "take_move_to_source" => {
+                    crate::script_sources::move_take_to_source(
+                        &mut store.project,
+                        &string(&v, "segment")?,
+                        &string(&v, "take")?,
+                        &string(&v, "target_source_id")?,
+                    )?;
+                }
                 "take_note" => {
                     let s = segment(&mut store.project, &string(&v, "segment")?)?;
                     let tid = string(&v, "take")?;
@@ -852,7 +916,13 @@ impl App {
         }
         let saved = json!({"generation":store.project.generation,"script_revision":store.project.script_revision});
         a.message = "保存しました".into();
-        Ok(if matches!(action,"recording_feedback"|"recording_draft"|"script_draft"|"script_commit"|"script_insert_empty"|"script_rebind_legacy") {saved} else {Value::Null})
+        let response = if matches!(action,"recording_feedback"|"recording_draft"|"script_draft"|"script_commit"|"script_insert_empty"|"script_rebind_legacy") {saved} else {Value::Null};
+        drop(a);
+        if let Some((sid, tid)) = enqueue_asr_after_save {
+            // 加工済みWAVの保存を確定してから認識を予約する。予約失敗で音声を巻き戻さない。
+            let _ = self.enqueue_recording_asr(&sid, &tid);
+        }
+        Ok(response)
     }
     fn record(&self, v: Value) -> Result<Value> {
         self.record_with_resolver(v, |endpoint|crate::native_playback::resolve_selected_endpoint(endpoint, DeviceDirection::Capture))

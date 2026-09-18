@@ -33,6 +33,97 @@ pub fn recording_feedback(project: &mut Project, value: &Value) -> Result<()> {
     Ok(())
 }
 
+/// 採用状態だけを解除する。録音、メモ、文字起こしは変更しない。
+pub fn cancel_take_selection(project: &mut Project, segment_id: &str) -> Result<bool> {
+    let segment = project
+        .segments
+        .iter_mut()
+        .find(|segment| segment.id == segment_id)
+        .ok_or("発話がありません")?;
+    if segment.selected.is_none() {
+        return Ok(false);
+    }
+    segment.selected = None;
+    segment.needs_review = true;
+    segment.confirmed = false;
+    Ok(true)
+}
+
+/// テイクを別原稿の末尾へ新規発話として移す。
+///
+/// 音声ファイルはプロジェクト内の相対参照なので、実体を移動せず既存の参照を引き継ぐ。
+/// 台本の確定本文とrevisionは変更しない。`source_line: None` の新規発話は次回の台本確定時にも
+/// 対象原稿の末尾に保持される。
+pub fn move_take_to_source(
+    project: &mut Project,
+    segment_id: &str,
+    take_id: &str,
+    target_source_id: &str,
+) -> Result<String> {
+    let mut staged = project.clone();
+    if staged.pending_source_deletions.iter().any(|source_id| source_id == target_source_id) {
+        return Err("削除予定の台本ファイルへはテイクを移動できません".into());
+    }
+    if !staged.script_sources.iter().any(|source| source.id == target_source_id) {
+        return Err("移動先の台本ファイルが見つかりません".into());
+    }
+    let source_index = staged
+        .segments
+        .iter()
+        .position(|segment| segment.id == segment_id)
+        .ok_or("発話がありません")?;
+    if staged.segments[source_index].source_id == target_source_id {
+        return Err("移動先には別の台本ファイルを選んでください".into());
+    }
+    let source = &mut staged.segments[source_index];
+    let take_index = source
+        .takes
+        .iter()
+        .position(|take| take.id == take_id)
+        .ok_or("テイクがありません")?;
+    let take = source.takes.remove(take_index);
+    let note = source.take_notes.remove(take_id);
+    let (moved_transcriptions, retained_transcriptions) = std::mem::take(&mut source.transcriptions)
+        .into_iter()
+        .partition::<Vec<_>, _>(|record| record["take_id"].as_str() == Some(take_id));
+    source.transcriptions = retained_transcriptions;
+    if source.selected.as_deref() == Some(take_id) {
+        source.selected = None;
+        source.needs_review = true;
+        source.confirmed = false;
+    }
+
+    let source_text = if source.source_text.is_empty() {
+        source.text.clone()
+    } else {
+        source.source_text.clone()
+    };
+    let mut target = Segment::new(source_text.clone());
+    target.source_id = target_source_id.to_owned();
+    target.source_line = None;
+    target.source_text = source_text;
+    target.takes.push(take);
+    if let Some(note) = note {
+        target.take_notes.insert(take_id.to_owned(), note);
+    }
+    target.transcriptions = moved_transcriptions;
+    target.needs_review = true;
+    target.confirmed = false;
+    let target_id = target.id.clone();
+    let insert_at = staged
+        .segments
+        .iter()
+        .rposition(|segment| segment.source_id == target_source_id)
+        .map(|index| index + 1)
+        .unwrap_or(staged.segments.len());
+    if staged.segments.len() >= MAX_SEGMENTS {
+        return Err("読み上げる行は1000行以内で選んでください".into());
+    }
+    staged.segments.insert(insert_at, target);
+    *project = staged;
+    Ok(target_id)
+}
+
 pub fn snapshot(project: &Project) -> Value {
     json!({"script_revision": project.script_revision, "sources": project.script_sources})
 }
@@ -248,15 +339,20 @@ fn checked_rows(item: &Value, old: &ScriptSource) -> Result<(String, Vec<ScriptL
     let mut previous_ids = HashSet::new();
     let mut previous_lines = HashSet::new();
     for choice in &selections {
+        let force_new = choice["force_new"].as_bool() == Some(true);
         if let Some(order)=choice.get("reading_order") {
             let order=order.as_u64().ok_or("読み上げ順は0以上の整数で指定してください")?;
             if !reading_orders.insert(order) { return Err("読み上げ順が重複しています".into()); }
         }
-        if let Some(previous_id) = choice["previous_id"].as_str() {
-            if !previous_ids.insert(previous_id.to_owned()) { return Err("同じ元行を複数回対応付けできません".into()); }
+        if !force_new {
+            if let Some(previous_id) = choice["previous_id"].as_str() {
+                if !previous_ids.insert(previous_id.to_owned()) { return Err("同じ元行を複数回対応付けできません".into()); }
+            }
         }
-        if let Some(previous_line) = choice["previous_line"].as_u64() {
-            if !previous_lines.insert(previous_line) || !old.lines.iter().any(|line| line.line == previous_line as usize) { return Err("対応する元原稿行がありません".into()); }
+        if !force_new {
+            if let Some(previous_line) = choice["previous_line"].as_u64() {
+                if !previous_lines.insert(previous_line) || !old.lines.iter().any(|line| line.line == previous_line as usize) { return Err("対応する元原稿行がありません".into()); }
+            }
         }
     }
     for row in &mut rows {
@@ -302,13 +398,24 @@ pub fn commit(project: &mut Project, value: &Value) -> Result<()> {
     let mut active = Vec::new();
     let mut used = HashSet::new();
     let mut automatic = HashMap::new();
-    for (source_id, _, rows, selections) in &parsed {
+    for (source_id, text, rows, selections) in &parsed {
+        let old = project.script_sources.iter().find(|source| source.id == source_id.as_str()).expect("parsed source exists");
+        let changed = text != &old.confirmed_text;
         for row in rows {
             let choice = row_choice(selections, row.line);
-            let prior = choice.and_then(|c| c["previous_line"].as_u64()).map(|n| n as usize)
-                .or_else(|| if choice.is_none_or(|c| c.get("previous_line").is_none()) { Some(row.line) } else { None });
-            if let Some(segment) = old_active.iter().find(|s| &s.source_id == source_id && s.source_line == prior && s.source_text == row.text && prior.is_some()) {
-                automatic.insert(segment.id.clone(), (source_id.clone(), row.line));
+            let force_new = choice.is_some_and(|choice| choice["force_new"].as_bool() == Some(true));
+            let prior = if force_new { None } else {
+                choice.and_then(|c| c["previous_line"].as_u64()).map(|n| n as usize)
+                    .or_else(|| if choice.is_none_or(|c| c.get("previous_line").is_none()) { Some(row.line) } else { None })
+            };
+            let duplicate = old_active.iter().filter(|segment| &segment.source_id == source_id && segment.source_text == row.text).nth(1).is_some();
+            // 差分がある重複本文は、行番号だけでは挿入行と既存行を区別できない。
+            // 保持するなら不変の previous_id を明示させ、暗黙の行番号照合では奪わない。
+            let stable = !force_new && (!changed || !duplicate || choice.and_then(|choice| choice["previous_id"].as_str()).is_some());
+            if stable {
+                if let Some(segment) = old_active.iter().find(|s| &s.source_id == source_id && s.source_line == prior && s.source_text == row.text && prior.is_some()) {
+                    automatic.insert(segment.id.clone(), (source_id.clone(), row.line));
+                }
             }
         }
     }
@@ -317,19 +424,28 @@ pub fn commit(project: &mut Project, value: &Value) -> Result<()> {
         ordered_rows.sort_by_key(|row| (row_choice(selections,row.line).and_then(|choice|choice["reading_order"].as_u64()).unwrap_or(row.line as u64),row.line));
         for row in ordered_rows {
             let choice = row_choice(selections, row.line);
-            let requested_id = choice.and_then(|c| c["previous_id"].as_str());
-            let has_previous_line = choice.is_some_and(|c| c.get("previous_line").is_some());
-            let requested_line = choice.and_then(|c| c["previous_line"].as_u64()).map(|n| n as usize);
+            let force_new = choice.is_some_and(|choice| choice["force_new"].as_bool() == Some(true));
+            let requested_id = (!force_new).then(|| choice.and_then(|c| c["previous_id"].as_str())).flatten();
+            let has_previous_line = !force_new && choice.is_some_and(|c| c.get("previous_line").is_some());
+            let requested_line = (!force_new).then(|| choice.and_then(|c| c["previous_line"].as_u64()).map(|n| n as usize)).flatten();
             let candidate = if let Some(previous_id) = requested_id {
                 old_active.iter().chain(old_archived.iter()).find(|segment| segment.source_id == source_id.as_str()
                     && !used.contains(&segment.id) && (previous_id == segment.id || previous_id == segment.line_id))
             } else if !has_previous_line {
                 // 自動維持は現役行だけに限定する。アーカイブは明示対応でのみ復帰する。
-                old_active.iter().find(|segment| segment.source_id == source_id.as_str() && !used.contains(&segment.id)
-                    && segment.source_line == Some(row.line) && segment.source_text == row.text)
+                let changed = project.script_sources.iter().find(|source| source.id == source_id.as_str()).is_some_and(|source| _text != &source.confirmed_text);
+                let duplicate = old_active.iter().filter(|segment| segment.source_id == source_id.as_str() && segment.source_text == row.text).nth(1).is_some();
+                if changed && duplicate { None } else {
+                    old_active.iter().find(|segment| segment.source_id == source_id.as_str() && !used.contains(&segment.id)
+                        && segment.source_line == Some(row.line) && segment.source_text == row.text)
+                }
             } else if let Some(previous_line) = requested_line {
-                old_active.iter().find(|segment| segment.source_id == source_id.as_str() && !used.contains(&segment.id)
-                    && segment.source_line == Some(previous_line) && segment.source_text == row.text)
+                let changed = project.script_sources.iter().find(|source| source.id == source_id.as_str()).is_some_and(|source| _text != &source.confirmed_text);
+                let duplicate = old_active.iter().filter(|segment| segment.source_id == source_id.as_str() && segment.source_text == row.text).nth(1).is_some();
+                if changed && duplicate { None } else {
+                    old_active.iter().find(|segment| segment.source_id == source_id.as_str() && !used.contains(&segment.id)
+                        && segment.source_line == Some(previous_line) && segment.source_text == row.text)
+                }
             } else { None };
             if requested_id.is_some() && candidate.is_none() {
                 return Err("指定した維持元の発話が見つからないか、別の台本ファイルです".into());
@@ -374,6 +490,18 @@ pub fn commit(project: &mut Project, value: &Value) -> Result<()> {
                     active.insert(position, blank_segment);
                 }
             }
+        }
+        // 他原稿から移した発話は原稿本文の行対応を持たない。台本正本を勝手に変更せず、
+        // この原稿の末尾に残す。空録音行は blank_rows 側で処理済みなので本文ありだけが対象。
+        let retained: Vec<_> = old_active.iter().filter(|segment| {
+            segment.source_id == source_id.as_str()
+                && segment.source_line.is_none()
+                && !segment.text.trim().is_empty()
+                && !used.contains(&segment.id)
+        }).cloned().collect();
+        for segment in retained {
+            used.insert(segment.id.clone());
+            active.push(segment);
         }
     }
     if active.len() > MAX_SEGMENTS { return Err("読み上げる行は1000行以内で選んでください".into()); }
@@ -422,6 +550,9 @@ mod tests {
     fn payload(p: &Project, text: &str, approved: bool) -> Value {
         let s = &p.script_sources[0];
         json!({"base_revision":p.script_revision,"sources":[{"id":s.id,"name":s.name,"kind":s.kind,"text":text,"lines":markdown::parse(text).unwrap(),"approved_text":if approved { Value::String(text.into()) } else { Value::Null }}]})
+    }
+    fn take(file: &str) -> Take {
+        Take { script_text:String::new(), trim_start:0., trim_end:1., id:id(), file:file.into(), hash:"a".repeat(64), status:"ready".into(), duration:1., peak:0., warning:String::new(), created:0, endpoint:String::new() }
     }
     #[test]
     fn confirmed_choices_rebase_new_rows_and_survive_noop_save_and_reconfirm() {
@@ -699,6 +830,52 @@ mod tests {
         ]);
         assert!(commit(&mut p,&request).unwrap_err().contains("一致済み"));
         assert_eq!(p.segments.len(),1);
+    }
+
+    #[test]
+    fn duplicate_insert_marked_new_does_not_reuse_a_stale_automatic_identity() {
+        let mut p=Project::new("重複行".into());p.script_sources.push(source("a.md","同文\n同文"));
+        let initial=payload(&p,"同文\n同文",true);commit(&mut p,&initial).unwrap();
+        let first=p.segments[0].id.clone();let second=p.segments[1].id.clone();
+        p.segments[0].takes.push(take("takes/one/audio.wav"));
+        let request=json!({"base_revision":p.script_revision,"sources":[{"id":p.script_sources[0].id,"name":"a.md","kind":"markdown","text":"同文\n同文\n同文","approved_text":"同文\n同文\n同文","lines":[
+            {"line":0,"enabled":true,"force_new":true,"previous_id":first,"previous_line":0},
+            {"line":1,"enabled":true,"previous_id":first,"keep":true,"previous_line":0},
+            {"line":2,"enabled":true,"previous_id":second,"keep":true,"previous_line":1}
+        ]}]});
+        commit(&mut p,&request).unwrap();
+        assert_eq!(p.segments.len(),3);
+        assert_ne!(p.segments[0].id,first,"挿入行へ古い発話を自動対応しない");
+        assert_eq!(p.segments[1].id,first);assert_eq!(p.segments[2].id,second);
+        assert_eq!(p.segments[1].takes.len(),1,"既存発話のテイクを保持する");
+    }
+
+    #[test]
+    fn cancelling_selection_preserves_take_notes_and_transcriptions() {
+        let mut p=Project::new("取消".into());let mut segment=Segment::new("本文".into());
+        let take=take("takes/keep/audio.wav");let tid=take.id.clone();segment.takes.push(take);segment.selected=Some(tid.clone());segment.confirmed=true;
+        segment.take_notes.insert(tid.clone(), crate::domain::TakeNote {score:Some(80),memo:"残す".into(),favorite:true});
+        segment.transcriptions.push(json!({"take_id":tid,"raw":"認識結果"}));let sid=segment.id.clone();p.segments.push(segment);
+        assert!(cancel_take_selection(&mut p,&sid).unwrap());
+        let segment=&p.segments[0];assert_eq!(segment.selected,None);assert!(segment.needs_review);assert!(!segment.confirmed);
+        assert_eq!(segment.takes.len(),1);assert_eq!(segment.take_notes[&tid].memo,"残す");assert_eq!(segment.transcriptions.len(),1);
+        assert!(!cancel_take_selection(&mut p,&sid).unwrap());
+    }
+
+    #[test]
+    fn moving_take_keeps_files_and_metadata_without_changing_script_revision() {
+        let mut p=Project::new("移動".into());let left=source("left.md","移動元本文");let right=source("right.md","移動先本文");let left_id=left.id.clone();let right_id=right.id.clone();p.script_sources=vec![left,right];
+        let mut source=Segment::new("移動元本文".into());source.source_id=left_id;source.source_line=Some(0);let sid=source.id.clone();let take=take("takes/shared/audio.wav");let tid=take.id.clone();source.takes.push(take);source.selected=Some(tid.clone());source.confirmed=true;
+        source.take_notes.insert(tid.clone(),crate::domain::TakeNote {score:Some(90),memo:"移動する".into(),favorite:true});source.transcriptions=vec![json!({"take_id":tid,"raw":"移動済み認識"}),json!({"take_id":"別テイク","raw":"残す"})];
+        let mut destination=Segment::new("移動先本文".into());destination.source_id=right_id.clone();destination.source_line=Some(0);let destination_id=destination.id.clone();p.segments=vec![source,destination];p.script_revision=7;
+        let new_id=move_take_to_source(&mut p,&sid,&tid,&right_id).unwrap();
+        assert_eq!(p.script_revision,7);assert_eq!(p.script_sources[1].confirmed_text,"移動先本文");
+        let source=&p.segments[0];assert!(source.takes.is_empty());assert!(source.take_notes.is_empty());assert_eq!(source.transcriptions.len(),1);assert_eq!(source.selected,None);assert!(source.needs_review);assert!(!source.confirmed);
+        let target=&p.segments[2];assert_eq!(target.id,new_id);assert_eq!(target.source_id,right_id);assert_eq!(target.source_line,None);assert_eq!(target.text,"移動元本文");assert_eq!(target.selected,None);assert!(target.needs_review);assert!(!target.confirmed);assert_eq!(target.takes[0].id,tid);assert_eq!(target.takes[0].file,"takes/shared/audio.wav");assert_eq!(target.take_notes[&tid].memo,"移動する");assert_eq!(target.transcriptions.len(),1);
+        assert_eq!(p.segments[1].id,destination_id);
+        let request=json!({"base_revision":7,"sources":p.script_sources.iter().map(|source|json!({"id":source.id,"name":source.name,"kind":source.kind,"text":source.confirmed_text,"lines":source.draft_lines,"approved_text":source.confirmed_text})).collect::<Vec<_>>()});
+        commit(&mut p,&request).unwrap();
+        assert!(p.segments.iter().any(|segment|segment.id==new_id),"次回の台本確定でも移動先末尾の発話を保持する");
     }
 
 }

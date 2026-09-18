@@ -31,6 +31,44 @@ fn source_take<'a>(
     Ok(take)
 }
 
+/// 編集画面が持つ範囲。`cut` は残す範囲の内側から取り除く一組だけを表す。
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct EditRange {
+    pub start: f64,
+    pub end: f64,
+    pub cut: Option<(f64, f64)>,
+}
+
+pub fn edit_range(
+    start: f64,
+    end: f64,
+    cut_start: Option<f64>,
+    cut_end: Option<f64>,
+) -> Result<EditRange> {
+    if cut_start.is_some() != cut_end.is_some() {
+        return Err("途中カットの開始と終了は両方指定してください".into());
+    }
+    let cut = cut_start.zip(cut_end);
+    if let Some((cut_start, cut_end)) = cut {
+        if !cut_start.is_finite()
+            || !cut_end.is_finite()
+            || cut_start <= start
+            || cut_end >= end
+            || cut_end <= cut_start
+        {
+            return Err("途中カットは残す範囲の内側に、空でない範囲で指定してください".into());
+        }
+    }
+    Ok(EditRange { start, end, cut })
+}
+
+fn kept_sample_ranges(edit: EditRange) -> Vec<(f64, f64)> {
+    match edit.cut {
+        Some((cut_start, cut_end)) => vec![(edit.start, cut_start), (cut_end, edit.end)],
+        None => vec![(edit.start, edit.end)],
+    }
+}
+
 pub fn validate(
     project: &Project,
     segment_id: &str,
@@ -42,6 +80,21 @@ pub fn validate(
     Ok(())
 }
 
+pub fn validate_edit(
+    project: &Project,
+    segment_id: &str,
+    take_id: &str,
+    edit: EditRange,
+) -> Result<()> {
+    source_take(project, segment_id, take_id, edit.start, edit.end)?;
+    // `edit_range` is deliberately separate so app.rs can turn an RPC payload
+    // into this value before it reaches the file-writing path.
+    if let Some((cut_start, cut_end)) = edit.cut {
+        edit_range(edit.start, edit.end, Some(cut_start), Some(cut_end))?;
+    }
+    Ok(())
+}
+
 pub fn save(
     root: &Path,
     project: &mut Project,
@@ -50,12 +103,33 @@ pub fn save(
     start: f64,
     end: f64,
 ) -> Result<()> {
-    let source = source_take(project, segment_id, take_id, start, end)?.clone();
+    save_edit(
+        root,
+        project,
+        segment_id,
+        take_id,
+        EditRange {
+            start,
+            end,
+            cut: None,
+        },
+    )
+}
+
+pub fn save_edit(
+    root: &Path,
+    project: &mut Project,
+    segment_id: &str,
+    take_id: &str,
+    edit: EditRange,
+) -> Result<()> {
+    validate_edit(project, segment_id, take_id, edit)?;
+    let source = source_take(project, segment_id, take_id, edit.start, edit.end)?.clone();
     let input = crate::storage::safe(root, &source.file)?;
     if crate::storage::hash_file(&input)? != source.hash {
         return Err("音声が変わっています".into());
     }
-    let (path, file) = write_trimmed_wav(root, &source.id, &input, start, end)?;
+    let (path, file) = write_edited_wav(root, &source.id, &input, edit)?;
     let hash = crate::storage::hash_file(&path)?;
     let (duration, peak) = crate::audio::inspect(&path)?;
     let segment = project
@@ -94,19 +168,23 @@ pub fn save(
 
 /// 未公開の一意な一時ファイルへ完成させてから、テイク専用の新WAVとして確定する。
 /// 旧WAVはrevisionsから参照され得るため残す。
-fn write_trimmed_wav(
+fn write_edited_wav(
     root: &Path,
     take_id: &str,
     source: &Path,
-    start: f64,
-    end: f64,
+    edit: EditRange,
 ) -> Result<(PathBuf, String)> {
     let samples = crate::audio::samples(source)?;
-    let from = (start * 48_000.0).round() as usize * 2;
-    let until = (end * 48_000.0).round() as usize * 2;
-    let clip = samples
-        .get(from..until)
-        .ok_or("終了位置は音声の長さを超えています")?;
+    let mut clip = Vec::new();
+    for (start, end) in kept_sample_ranges(edit) {
+        let from = (start * 48_000.0).round() as usize * 2;
+        let until = (end * 48_000.0).round() as usize * 2;
+        clip.extend_from_slice(
+            samples
+                .get(from..until)
+                .ok_or("終了位置は音声の長さを超えています")?,
+        );
+    }
     if clip.is_empty() {
         return Err("保存する音声がありません".into());
     }
@@ -124,7 +202,7 @@ fn write_trimmed_wav(
             .map_err(|e| e.to_string())?;
         let mut writer = hound::WavWriter::new(BufWriter::new(pending_file), crate::audio::spec())
             .map_err(|e| e.to_string())?;
-        for &sample in clip {
+        for sample in clip {
             writer
                 .write_sample((sample.clamp(-1.0, 1.0) * 32767.0).round() as i16)
                 .map_err(|e| e.to_string())?;
@@ -142,12 +220,30 @@ fn write_trimmed_wav(
 
 /// 編集途中の範囲だけを一時WAVへ書き出す。元ファイルは開いて読むだけで変更しない。
 pub fn preview_wav(root: &Path, source: &Path, start: f64, end: f64) -> Result<(PathBuf, String)> {
+    preview_edit_wav(
+        root,
+        source,
+        EditRange {
+            start,
+            end,
+            cut: None,
+        },
+    )
+}
+
+/// 編集後に残る範囲だけを一時WAVへ書き出す。途中カットは二つの残存区間を連結する。
+pub fn preview_edit_wav(root: &Path, source: &Path, edit: EditRange) -> Result<(PathBuf, String)> {
     let samples = crate::audio::samples(source)?;
-    let from = (start * 48_000.0).round() as usize * 2;
-    let until = (end * 48_000.0).round() as usize * 2;
-    let clip = samples
-        .get(from..until)
-        .ok_or("試聴範囲が音声の長さを超えています")?;
+    let mut clip = Vec::new();
+    for (start, end) in kept_sample_ranges(edit) {
+        let from = (start * 48_000.0).round() as usize * 2;
+        let until = (end * 48_000.0).round() as usize * 2;
+        clip.extend_from_slice(
+            samples
+                .get(from..until)
+                .ok_or("試聴範囲が音声の長さを超えています")?,
+        );
+    }
     if clip.is_empty() {
         return Err("試聴する音声がありません".into());
     }
@@ -159,7 +255,7 @@ pub fn preview_wav(root: &Path, source: &Path, start: f64, end: f64) -> Result<(
     }
     let mut writer =
         hound::WavWriter::create(&path, crate::audio::spec()).map_err(|e| e.to_string())?;
-    for &sample in clip {
+    for sample in clip {
         writer
             .write_sample((sample.clamp(-1.0, 1.0) * 32767.0).round() as i16)
             .map_err(|e| e.to_string())?;
@@ -202,6 +298,16 @@ mod tests {
         assert!(validate(&p, &sid, &tid, 1.0, 1.0).is_err());
         assert!(validate(&p, &sid, &tid, 1.5, 1.0).is_err());
         assert!(validate(&p, &sid, &tid, 0.25, 1.75).is_ok());
+    }
+    #[test]
+    fn edit_range_accepts_one_internal_cut_only() {
+        assert_eq!(
+            edit_range(0.0, 2.0, Some(0.5), Some(1.5)).unwrap(),
+            EditRange { start: 0.0, end: 2.0, cut: Some((0.5, 1.5)) }
+        );
+        assert!(edit_range(0.0, 2.0, Some(0.5), None).is_err());
+        assert!(edit_range(0.0, 2.0, Some(0.0), Some(1.0)).is_err());
+        assert!(edit_range(0.0, 2.0, Some(1.0), Some(2.0)).is_err());
     }
     #[test]
     fn preview_wav_contains_only_the_requested_range() {
@@ -277,6 +383,44 @@ mod tests {
         assert_eq!(crate::audio::samples(&file).unwrap().len(), 5_760);
         assert_eq!(crate::storage::hash_file(&original).unwrap(), original_hash);
         drop(reopened);
+        std::fs::remove_dir_all(root).unwrap();
+    }
+    #[test]
+    fn save_edit_joins_the_two_remaining_ranges_and_resets_the_edit() {
+        let root = std::env::temp_dir().join(format!("scriptsync-cut-save-{}", id()));
+        std::fs::create_dir_all(&root).unwrap();
+        let source = root.join("source.wav");
+        let mut writer = hound::WavWriter::create(&source, crate::audio::spec()).unwrap();
+        for frame in 0..480 {
+            let sample = if frame < 160 { 1000i16 } else if frame < 320 { 2000i16 } else { 3000i16 };
+            for _ in 0..2 { writer.write_sample(sample).unwrap(); }
+        }
+        writer.finalize().unwrap();
+        let mut store = crate::storage::Store::open(root.clone(), true).unwrap();
+        let take = crate::app::take_from_file(&root, &source, "test".into()).unwrap();
+        let original = crate::storage::safe(&root, &take.file).unwrap();
+        let original_file = take.file.clone();
+        let mut segment = Segment::new("line".into());
+        let sid = segment.id.clone();
+        let tid = take.id.clone();
+        segment.takes.push(take);
+        store.project.segments.push(segment);
+        save_edit(
+            &root,
+            &mut store.project,
+            &sid,
+            &tid,
+            edit_range(0.0, 0.01, Some(0.003_333_333), Some(0.006_666_667)).unwrap(),
+        ).unwrap();
+        let edited = &store.project.segments[0].takes[0];
+        let samples = crate::audio::samples(&crate::storage::safe(&root, &edited.file).unwrap()).unwrap();
+        assert_eq!(samples.len(), 640);
+        assert!(samples[..320].iter().all(|sample| (*sample - 1000.0 / 32768.0).abs() < 0.0001));
+        assert!(samples[320..].iter().all(|sample| (*sample - 3000.0 / 32768.0).abs() < 0.0001));
+        assert_eq!(edited.trimmed_range().unwrap(), (0.0, edited.duration));
+        assert_ne!(edited.file, original_file);
+        assert!(original.exists());
+        drop(store);
         std::fs::remove_dir_all(root).unwrap();
     }
 }

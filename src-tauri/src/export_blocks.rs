@@ -20,6 +20,36 @@ struct Gap {
     tail: f64,
 }
 
+#[derive(Default)]
+struct BlockTiming {
+    active: Vec<usize>,
+    audio_seconds: f64,
+    normal_seconds: f64,
+    part_seconds: f64,
+    chapter_seconds: f64,
+    section_seconds: f64,
+    head_seconds: f64,
+    tail_seconds: f64,
+    unselected_count: usize,
+}
+
+impl BlockTiming {
+    fn add_gap(&mut self, key: &str, seconds: f64) {
+        match key {
+            "part" => self.part_seconds += seconds,
+            "chapter" => self.chapter_seconds += seconds,
+            "section" => self.section_seconds += seconds,
+            "head" => self.head_seconds += seconds,
+            "tail" => self.tail_seconds += seconds,
+            _ => self.normal_seconds += seconds,
+        }
+    }
+    fn wait_seconds(&self) -> f64 {
+        self.normal_seconds + self.part_seconds + self.chapter_seconds + self.section_seconds
+            + self.head_seconds + self.tail_seconds
+    }
+}
+
 fn number(v: &Value, key: &str, default: f64) -> Result<f64> {
     let n = v.get(key).and_then(Value::as_f64).unwrap_or(default);
     if !n.is_finite() || !(0.0..=60.0).contains(&n) {
@@ -128,6 +158,117 @@ fn kind(project: &Project, index: usize) -> String {
         _ => "normal",
     }
     .into()
+}
+fn gap_key(project: &Project, current: usize, next: usize) -> String {
+    // 見出し自体を読まない場合も所属階層の変化から区切りを判定する。
+    let hierarchy = &project.segments[current].hierarchy;
+    let next_hierarchy = &project.segments[next].hierarchy;
+    (0..3)
+        .find(|&level| hierarchy.get(level) != next_hierarchy.get(level))
+        .map(|level| ["part", "chapter", "section"][level].to_owned())
+        .unwrap_or_else(|| kind(project, next))
+}
+fn resolved_gap(gap: Gap, settings: &Value, key: &str) -> Result<f64> {
+    let seconds = if settings[key]["mode"] == "manual" {
+        settings[key]["value"]
+            .as_f64()
+            .ok_or("手入力の間隔が不正です")?
+    } else {
+        gap_for(gap, key)
+    };
+    if !seconds.is_finite() || !(0.0..=60.0).contains(&seconds) {
+        return Err("間隔は0～60秒にしてください".into());
+    }
+    Ok(seconds)
+}
+fn effective_range(segment: &Segment, take: &Take) -> Result<(f64, f64)> {
+    let (take_start, take_end) = take.trimmed_range()?;
+    let kept = take_end - take_start;
+    if !segment.trim_start.is_finite()
+        || !segment.trim_end.is_finite()
+        || segment.trim_start < 0.0
+        || segment.trim_end < 0.0
+        || segment.trim_start + segment.trim_end >= kept
+    {
+        return Err("トリム範囲が不正です".into());
+    }
+    Ok((take_start + segment.trim_start, take_end - segment.trim_end))
+}
+fn block_timing(
+    project: &Project,
+    start: usize,
+    end: usize,
+    from: usize,
+    gap: Gap,
+    overrides: &Value,
+) -> Result<BlockTiming> {
+    if start >= end || end > project.segments.len() {
+        return Err("出力する原稿がありません".into());
+    }
+    let settings = &overrides[&project.segments[start].id]["gaps"];
+    let mut timing = BlockTiming::default();
+    for index in start.max(from)..end {
+        let segment = &project.segments[index];
+        if segment.skip {
+            continue;
+        }
+        if segment.selected.is_none() {
+            timing.unselected_count += 1;
+            continue;
+        }
+        let take = segment.selected_take().map_err(|error| format!("{}: {error}", segment.text))?;
+        let (from, to) = effective_range(segment, take)?;
+        timing.audio_seconds += to - from;
+        timing.active.push(index);
+    }
+    if timing.active.is_empty() {
+        return Ok(timing);
+    }
+    timing.add_gap("head", resolved_gap(gap, settings, "head")?);
+    let active = timing.active.clone();
+    for pair in active.windows(2) {
+        let key = gap_key(project, pair[0], pair[1]);
+        timing.add_gap(&key, resolved_gap(gap, settings, &key)?);
+    }
+    timing.add_gap("tail", resolved_gap(gap, settings, "tail")?);
+    Ok(timing)
+}
+/// 出力と同じ境界・間隔・トリム規則で、採用済み音声の見込み時間を返す。
+/// 未採用の発話は書き出し対象にはできないため、音声・待ち時間には含めず件数で返す。
+pub fn duration_summary(project: &Project, input: &Value) -> Result<Value> {
+    let settings = if input.as_object().map(|value| value.is_empty()).unwrap_or(true) {
+        if project.export_settings.is_object() { project.export_settings.clone() } else { crate::export_settings::defaults() }
+    } else {
+        input.clone()
+    };
+    let starts = boundaries(project, &settings)?;
+    let gap = gaps(settings.get("global_gaps").or_else(|| settings.get("gaps")).unwrap_or(&Value::Null))?;
+    let overrides = settings.get("blocks").unwrap_or(&Value::Null);
+    let mut total = BlockTiming::default();
+    for (block, &start) in starts.iter().enumerate() {
+        let end = starts.get(block + 1).copied().unwrap_or(project.segments.len());
+        let timing = block_timing(project, start, end, start, gap, overrides)?;
+        total.audio_seconds += timing.audio_seconds;
+        total.normal_seconds += timing.normal_seconds;
+        total.part_seconds += timing.part_seconds;
+        total.chapter_seconds += timing.chapter_seconds;
+        total.section_seconds += timing.section_seconds;
+        total.head_seconds += timing.head_seconds;
+        total.tail_seconds += timing.tail_seconds;
+        total.unselected_count += timing.unselected_count;
+    }
+    let wait_seconds = total.wait_seconds();
+    Ok(json!({
+        "audio_seconds": total.audio_seconds,
+        "wait_seconds": {
+            "normal": total.normal_seconds, "part": total.part_seconds,
+            "chapter": total.chapter_seconds, "section": total.section_seconds,
+            "head": total.head_seconds, "tail": total.tail_seconds
+        },
+        "wait_total_seconds": wait_seconds,
+        "total_seconds": total.audio_seconds + wait_seconds,
+        "unselected_count": total.unselected_count
+    }))
 }
 fn stem(v: &Value, project: &Project, start: usize, block: usize) -> String {
     let raw = v
@@ -293,29 +434,17 @@ fn collect_block_with_subtitles(
     if start >= end || end > project.segments.len() {
         return Err("出力する原稿がありません".into());
     }
-    let settings = &overrides[&project.segments[start].id]["gaps"];
-    let seconds = |key: &str| -> Result<f64> {
-        let n = if settings[key]["mode"] == "manual" {
-            settings[key]["value"]
-                .as_f64()
-                .ok_or("手入力の間隔が不正です")?
-        } else {
-            gap_for(gap, key)
-        };
-        if !n.is_finite() || !(0.0..=60.0).contains(&n) {
-            return Err("間隔は0～60秒にしてください".into());
-        }
-        Ok(n)
-    };
-    let active: Vec<_> = (start..end)
-        .filter(|&i| {
-            !project.segments[i].skip && i >= v["_preview_from"].as_u64().unwrap_or(0) as usize
-        })
-        .collect();
+    let from = v["_preview_from"].as_u64().unwrap_or(0) as usize;
+    let timing = block_timing(project, start, end, from, gap, overrides)?;
+    let active = timing.active;
+    if timing.unselected_count > 0 {
+        return Err("採用テイクが存在しません".into());
+    }
     if active.is_empty() {
         return Err("出力対象の原稿がありません".into());
     }
-    let mut out = vec![0.0; (seconds("head")? * RATE as f64).round() as usize * CHANNELS];
+    let settings = &overrides[&project.segments[start].id]["gaps"];
+    let mut out = vec![0.0; (resolved_gap(gap, settings, "head")? * RATE as f64).round() as usize * CHANNELS];
     for (offset, &i) in active.iter().enumerate() {
         let seg = &project.segments[i];
         let take = seg
@@ -326,18 +455,9 @@ fn collect_block_with_subtitles(
             return Err(format!("採用音声が差し替えられています: {}", seg.text));
         }
         let input = audio::samples(&path)?;
-        let (take_start, take_end) = take.trimmed_range()?;
-        let kept = take_end - take_start;
-        if !seg.trim_start.is_finite()
-            || !seg.trim_end.is_finite()
-            || seg.trim_start < 0.0
-            || seg.trim_end < 0.0
-            || seg.trim_start + seg.trim_end >= kept
-        {
-            return Err("トリム範囲が不正です".into());
-        }
-        let from = ((take_start + seg.trim_start) * RATE as f64).round() as usize * CHANNELS;
-        let end = ((take_end - seg.trim_end) * RATE as f64).round() as usize * CHANNELS;
+        let (take_from, take_to) = effective_range(seg, take)?;
+        let from = (take_from * RATE as f64).round() as usize * CHANNELS;
+        let end = (take_to * RATE as f64).round() as usize * CHANNELS;
         if from >= end || end > input.len() {
             return Err("トリム範囲が不正です".into());
         }
@@ -372,22 +492,16 @@ fn collect_block_with_subtitles(
             text
         ));
         if let Some(&next) = active.get(offset + 1) {
-            // 見出し自体を読まない場合も所属階層の変化から区切りを判定する。
-            let nh = &project.segments[next].hierarchy;
-            let h = &seg.hierarchy;
-            let boundary = (0..3).find(|&k| h.get(k) != nh.get(k));
-            let key = boundary
-                .map(|k| ["part", "chapter", "section"][k].to_owned())
-                .unwrap_or_else(|| kind(project, next));
+            let key = gap_key(project, i, next);
             out.extend(std::iter::repeat_n(
                 0.0,
-                (seconds(&key)? * RATE as f64).round() as usize * CHANNELS,
+                (resolved_gap(gap, settings, &key)? * RATE as f64).round() as usize * CHANNELS,
             ));
         }
     }
     out.extend(std::iter::repeat_n(
         0.0,
-        (seconds("tail")? * RATE as f64).round() as usize * CHANNELS,
+        (resolved_gap(gap, settings, "tail")? * RATE as f64).round() as usize * CHANNELS,
     ));
     Ok((out, subtitles, utterances))
 }
@@ -653,6 +767,54 @@ pub fn preview_blocks(root: &Path, project: &Project, v: &Value) -> Result<Value
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn timing_take(name: &str, duration: f64) -> Take {
+        Take {
+            script_text: String::new(), trim_start: 0.0, trim_end: 0.0,
+            id: name.into(), file: format!("takes/{name}.wav"), hash: String::new(),
+            status: "ready".into(), duration, peak: 0.0, warning: String::new(),
+            created: 0, endpoint: String::new(),
+        }
+    }
+
+    #[test]
+    fn duration_summary_uses_export_gap_boundaries_trims_and_skips() {
+        let mut project = Project::new("時間集計".into());
+        for (index, hierarchy) in [[1, 1, 1], [1, 1, 1], [2, 1, 1], [2, 2, 1], [2, 2, 2]]
+            .into_iter()
+            .enumerate()
+        {
+            let mut segment = Segment::new(format!("発話{index}"));
+            segment.hierarchy = hierarchy.to_vec();
+            let take = timing_take(&format!("take{index}"), if index == 0 { 2.0 } else { 1.0 });
+            segment.selected = Some(take.id.clone());
+            segment.takes.push(take);
+            if index == 0 { segment.trim_start = 0.2; segment.trim_end = 0.1; }
+            project.segments.push(segment);
+        }
+        project.segments.push(Segment::new("未採用".into()));
+        let mut skipped = Segment::new("対象外".into());
+        skipped.skip = true;
+        project.segments.push(skipped);
+        let first = project.segments[0].id.clone();
+        let summary = duration_summary(&project, &json!({
+            "unit":"all",
+            "global_gaps":{"normal":0.3,"part":1.2,"chapter":0.8,"section":0.4,"head":0.1,"tail":0.3},
+            "blocks":{first:{"gaps":{
+                "normal":{"mode":"manual","value":0.15},
+                "chapter":{"mode":"manual","value":0.25},
+                "head":{"mode":"manual","value":0.7},
+                "tail":{"mode":"manual","value":0.8}
+            }}}
+        })).unwrap();
+        assert_eq!(summary["unselected_count"], 1);
+        assert_eq!(summary["audio_seconds"], json!(5.7));
+        assert_eq!(summary["wait_seconds"], json!({
+            "normal":0.15,"part":1.2,"chapter":0.25,"section":0.4,"head":0.7,"tail":0.8
+        }));
+        assert_eq!(summary["wait_total_seconds"], json!(3.5));
+        assert_eq!(summary["total_seconds"], json!(9.2));
+    }
     #[test]
     fn naming_is_fixed_four_digits_by_default() {
         let p = Project::new("x".into());
