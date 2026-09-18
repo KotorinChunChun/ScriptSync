@@ -14,7 +14,7 @@ $version=(Get-Content (Join-Path $root 'package.json') -Raw | ConvertFrom-Json).
 . (Join-Path $PSScriptRoot "msix-version.ps1")
 $packageVersion=Get-ScriptSyncMsixVersion $root
 $base='https://excel-chunchun.sakura.ne.jp/download/ScriptSync/'
-$names=@("ScriptSync_${packageVersion}_x64.msix",'ScriptSync.cer','ScriptSync.appinstaller')
+$names=@("ScriptSync_${packageVersion}_x64.msix",'ScriptSync.cer','ScriptSync.appinstaller','index.html','icon.png')
 $site=Join-Path $WebsiteDirectory 'www/download/ScriptSync'
 if($Mode -eq 'Plan'){
     $names | ForEach-Object { Write-Output "$base$_ -> $(Join-Path $site $_)" }
@@ -51,6 +51,8 @@ $installer=@"
 $appPath=Join-Path $artifact $names[2]
 if($Mode -eq 'Prepare'){
     [IO.File]::WriteAllText($appPath,$installer,[Text.UTF8Encoding]::new($false))
+    Copy-Item -LiteralPath (Join-Path $root 'dev/release-page/index.html') -Destination (Join-Path $artifact 'index.html') -Force
+    Copy-Item -LiteralPath (Join-Path $root 'dev/release-page/icon.png') -Destination (Join-Path $artifact 'icon.png') -Force
     Write-Output "App Installer生成・署名・Identity確認完了: $appPath"
     return
 }
@@ -81,7 +83,7 @@ if($Mode -eq 'Publish'){
     }
 }
 # Verify/Publish: 公開先を取得し、HTTP、MIME、長さ、内容hashをローカルと比較。
-$mime=@('application/msix','application/pkix-cert','application/appinstaller')
+$mime=@('application/msix','application/pkix-cert','application/appinstaller','text/html','image/png')
 for($i=0;$i -lt $names.Count;$i++){
     $name=$names[$i]
     $response=Invoke-WebRequest -Uri "$base$name" -SkipHttpErrorCheck
