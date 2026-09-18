@@ -63,7 +63,7 @@ if($Mode -eq 'Stage'){
     if((Test-Path $destination) -and (Get-FileHash $destination).Hash -ne (Get-FileHash $msix).Hash){throw '同じ版の異なるMSIXが既にあります。版を更新してください。'}
     New-Item -ItemType Directory -Force $site | Out-Null
     foreach($name in $names){Copy-Item -LiteralPath (Join-Path $artifact $name) -Destination (Join-Path $site $name) -Force}
-    Write-Output 'ScriptSyncの3ファイルだけをステージしました。Website側で対象差分を確認してコミットしてください。'
+    Write-Output 'ScriptSyncの5ファイルだけをステージしました。Website側で対象差分を確認してコミットしてください。'
     return
 }
 if($Mode -eq 'Publish'){
