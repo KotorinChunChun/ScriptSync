@@ -4,9 +4,10 @@ export type TrimTake={id:string;duration:number;file:string;hash:string;trim_sta
 export type TakeTrimContext={
   segment:{id:string;takes:TrimTake[]};
   rpc:<T>(action:string,payload?:unknown)=>Promise<T>;
-  /** `loop` は境界試聴でだけ使う。未対応の再生器でも全体試聴は保存条件を満たす。 */
+  /** `loop` は編集中の反復試聴に使う。 */
   play:(file:string,hash:string,takeId?:string,start?:number,duration?:number,loop?:boolean)=>Promise<void>;
   isPlaying?:(takeId:string)=>boolean;
+  seek?:(seconds:number)=>void;
   stop?:()=>void;
   notice:(message:string,error?:boolean)=>void;
   /** WAV を実加工した後に、親画面でテイクと波形を読み直す。 */
@@ -19,6 +20,7 @@ const saved=new Map<string,Range>();
 const previewed=new Map<string,string>();
 const contexts=new Map<string,Entry>();
 const pending=new Set<string>();
+const playheads=new Map<string,number>();
 const eps=.0001;
 let activeModal:HTMLElement|undefined;
 
@@ -63,13 +65,11 @@ function updateModal(entry:Entry,preserve=false){
   const cutStart=modal.querySelector<HTMLElement>('[data-trim-edge="cut-start"]')!,cutEnd=modal.querySelector<HTMLElement>('[data-trim-edge="cut-end"]')!;
   cutStart.hidden=!cutEnabled;cutEnd.hidden=!cutEnabled;
   if(cutEnabled){cut.style.left=`${range.cutStart!/duration*100}%`;cut.style.width=`${(range.cutEnd!-range.cutStart!)/duration*100}%`;cutStart.style.left=`calc(${range.cutStart!/duration*100}% - 6px)`;cutEnd.style.left=`calc(${range.cutEnd!/duration*100}% - 6px)`;}
-  modal.querySelector<HTMLElement>("[data-trim-summary]")!.textContent=cutEnabled
-    ?`残す範囲 ${range.start.toFixed(2)}–${range.cutStart!.toFixed(2)} 秒 と ${range.cutEnd!.toFixed(2)}–${range.end.toFixed(2)} 秒`
-    :`残す範囲 ${range.start.toFixed(2)}–${range.end.toFixed(2)} 秒`;
+  const playhead=modal.querySelector<HTMLElement>("[data-trim-playhead]");
+  if(playhead)playhead.style.left=`${Math.max(0,Math.min(100,(playheads.get(entry.take.id)??0)/duration*100))}%`;
   const checked=previewed.get(entry.take.id)===fingerprint(range);
   const save=modal.querySelector<HTMLButtonElement>("[data-trim-save]")!;
   save.disabled=!isTakeTrimDirty(entry.take.id)||!checked||pending.has(entry.take.id);
-  modal.querySelector<HTMLElement>("[data-trim-check]")!.textContent=checked?"現在の編集内容を試聴済みです":"編集すると、保存前にもう一度試聴が必要です";
 }
 function closeModal(){
   const modal=activeModal;if(!modal)return;
@@ -83,8 +83,9 @@ function openModal(entry:Entry){
   const modal=document.createElement("div");
   modal.className="take-trim-modal take-trim-editor";modal.dataset.takeId=entry.take.id;
   modal.setAttribute("role","dialog");modal.setAttribute("aria-modal","true");modal.setAttribute("aria-labelledby","take-trim-title");
-  modal.innerHTML=`<section><header><h2 id="take-trim-title">テイクを編集</h2><button type="button" data-trim-close aria-label="編集を閉じる">閉じる</button></header><p class="muted">前後の残す範囲と、途中の削除範囲を一組指定できます。保存前に編集後の音声を試聴してください。</p><div class="take-trim-timeline" aria-label="音声編集範囲"><i class="take-trim-keep"></i><i class="take-trim-cut" hidden></i><button type="button" class="take-trim-marker start" data-trim-edge="start" aria-label="残す範囲の開始"></button><button type="button" class="take-trim-marker end" data-trim-edge="end" aria-label="残す範囲の終了"></button><button type="button" class="take-trim-marker cut-start" data-trim-edge="cut-start" aria-label="途中カットの開始"></button><button type="button" class="take-trim-marker cut-end" data-trim-edge="cut-end" aria-label="途中カットの終了"></button></div><div class="take-trim-fields"><label>開始 <input data-trim-start type="number" min="0" step="0.01" inputmode="decimal"></label><label>終了 <input data-trim-end type="number" min="0" step="0.01" inputmode="decimal"></label><label class="take-trim-cut-toggle"><input data-trim-cut-enabled type="checkbox"> 途中を削除</label><label>削除開始 <input data-trim-cut-start type="number" min="0" step="0.01" inputmode="decimal"></label><label>削除終了 <input data-trim-cut-end type="number" min="0" step="0.01" inputmode="decimal"></label></div><output data-trim-summary></output><p data-trim-check class="take-trim-check"></p><div class="toolbar take-trim-preview-actions"><button type="button" data-trim-preview="full">編集後を全体試聴</button><button type="button" data-trim-preview="boundaries">境界を反復試聴</button></div><div class="toolbar"><button type="button" data-trim-cancel>キャンセル</button><button type="button" data-trim-save class="primary">音声を加工して保存</button></div></section>`;
+  modal.innerHTML=`<section><header><h2 id="take-trim-title">テイクを編集</h2></header><div class="take-trim-timeline" aria-label="音声編集範囲"><svg class="take-trim-wave" viewBox="0 0 100 24" preserveAspectRatio="none" aria-label="音量波形"></svg><i class="take-trim-keep"></i><i class="take-trim-cut" hidden></i><i class="take-trim-playhead" data-trim-playhead aria-label="再生位置"></i><button type="button" class="take-trim-marker start" data-trim-edge="start" aria-label="開始"></button><button type="button" class="take-trim-marker end" data-trim-edge="end" aria-label="終了時刻"></button><button type="button" class="take-trim-marker cut-start" data-trim-edge="cut-start" aria-label="削除開始"></button><button type="button" class="take-trim-marker cut-end" data-trim-edge="cut-end" aria-label="削除終了"></button></div><div class="take-trim-fields"><label>開始 <input data-trim-start type="number" min="0" step="0.01" inputmode="decimal"></label><label>削除開始 <input data-trim-cut-start type="number" min="0" step="0.01" inputmode="decimal"></label><label>削除終了 <input data-trim-cut-end type="number" min="0" step="0.01" inputmode="decimal"></label><label>終了時刻 <input data-trim-end type="number" min="0" step="0.01" inputmode="decimal"></label></div><div class="toolbar take-trim-preview-actions"><button type="button" data-trim-preview="before">編集前視聴</button><button type="button" data-trim-preview="after">編集後視聴</button><button type="button" data-trim-stop>停止</button><label><input data-trim-loop type="checkbox"> 反復</label><label><input data-trim-cut-enabled type="checkbox"> カット</label></div><div class="toolbar"><button type="button" data-trim-cancel>キャンセル</button><button type="button" data-trim-save class="primary">音声を加工して保存</button></div></section>`;
   const siblings=[...document.body.children] as HTMLElement[];modal._siblings=siblings;modal._restore=document.activeElement as HTMLElement;siblings.forEach(node=>node.inert=true);document.body.append(modal);activeModal=modal;
+  const sourceWave=document.getElementById(`take-wave-${entry.take.id}`);const editorWave=modal.querySelector<SVGElement>(".take-trim-wave");if(sourceWave&&editorWave)editorWave.innerHTML=sourceWave.innerHTML;
   const edit=(name:"start"|"end"|"cut-start"|"cut-end",value:number)=>{
     if(pending.has(entry.take.id)||!Number.isFinite(value))return;
     const next=copy(drafts.get(entry.take.id)!);
@@ -96,13 +97,16 @@ function openModal(entry:Entry){
   };
   (["start","end","cut-start","cut-end"] as const).forEach(name=>{const field=input(modal,name);field.oninput=()=>edit(name,field.valueAsNumber);field.onchange=()=>{edit(name,field.valueAsNumber);updateModal(entry);};});
   input(modal,"cut-enabled").onchange=event=>{const enabled=(event.currentTarget as HTMLInputElement).checked,next=copy(drafts.get(entry.take.id)!);if(enabled){const third=(next.end-next.start)/3;next.cutStart=next.start+third;next.cutEnd=next.end-third;}else{delete next.cutStart;delete next.cutEnd;}setDraft(entry.take.id,next);updateModal(entry);};
-  let dragging:"start"|"end"|"cut-start"|"cut-end"|undefined;
-  modal.querySelectorAll<HTMLButtonElement>("[data-trim-edge]").forEach(marker=>marker.onpointerdown=event=>{if(marker.classList.contains("cut-")&&!input(modal,"cut-enabled").checked)return;dragging=marker.dataset.trimEdge as typeof dragging;marker.setPointerCapture?.(event.pointerId);event.preventDefault();});
+  let dragging:"start"|"end"|"cut-start"|"cut-end"|undefined,playheadDragging=false;
+  modal.querySelectorAll<HTMLButtonElement>("[data-trim-edge]").forEach(marker=>marker.onpointerdown=event=>{if(marker.classList.contains("cut-start")||marker.classList.contains("cut-end")){if(!input(modal,"cut-enabled").checked)return;}dragging=marker.dataset.trimEdge as typeof dragging;marker.setPointerCapture?.(event.pointerId);event.preventDefault();});
   const timeline=modal.querySelector<HTMLElement>(".take-trim-timeline")!;
-  const move=(event:PointerEvent)=>{if(!dragging)return;const rect=timeline.getBoundingClientRect();edit(dragging,Math.max(0,Math.min(entry.take.duration,(event.clientX-rect.left)/Math.max(rect.width,1)*entry.take.duration)));};
-  timeline.onpointermove=move;timeline.onpointerup=()=>dragging=undefined;timeline.onpointercancel=()=>dragging=undefined;
-  modal.querySelector<HTMLButtonElement>("[data-trim-close]")!.onclick=closeModal;modal.querySelector<HTMLButtonElement>("[data-trim-cancel]")!.onclick=closeModal;
-  modal.querySelectorAll<HTMLButtonElement>("[data-trim-preview]").forEach(button=>button.onclick=()=>void preview(entry,button.dataset.trimPreview as "full"|"boundaries"));
+  const position=(event:PointerEvent)=>Math.max(0,Math.min(entry.take.duration,(event.clientX-timeline.getBoundingClientRect().left)/Math.max(timeline.getBoundingClientRect().width,1)*entry.take.duration));
+  timeline.onpointerdown=event=>{if((event.target as HTMLElement).closest("[data-trim-edge]"))return;playheadDragging=true;timeline.setPointerCapture?.(event.pointerId);playheads.set(entry.take.id,position(event));updateModal(entry,true);event.preventDefault();};
+  timeline.onpointermove=event=>{if(playheadDragging) {playheads.set(entry.take.id,position(event));updateModal(entry,true);} else if(dragging) edit(dragging,position(event));};
+  timeline.onpointerup=()=>{dragging=undefined;playheadDragging=false;};timeline.onpointercancel=()=>{dragging=undefined;playheadDragging=false;};
+  modal.querySelector<HTMLButtonElement>("[data-trim-cancel]")!.onclick=closeModal;
+  modal.querySelectorAll<HTMLButtonElement>("[data-trim-preview]").forEach(button=>button.onclick=()=>void preview(entry,button.dataset.trimPreview as "before"|"after"));
+  modal.querySelector<HTMLButtonElement>("[data-trim-stop]")!.onclick=()=>{entry.context.stop?.();playheads.set(entry.take.id,0);updateModal(entry);};
   modal.querySelector<HTMLButtonElement>("[data-trim-save]")!.onclick=()=>void saveTake(entry.take.id);
   modal.onkeydown=event=>{
     if(event.key==="Escape"){event.preventDefault();event.stopPropagation();closeModal();return;}
@@ -110,14 +114,26 @@ function openModal(entry:Entry){
   };
   updateModal(entry);input(modal,"start").focus();
 }
-async function preview(entry:Entry,mode:"full"|"boundaries"){
+async function preview(entry:Entry,mode:"before"|"after"){
   const range=copy(drafts.get(entry.take.id)!);
   if(!valid(range,entry.take.duration)){entry.context.notice("開始・終了と途中カットを正しい範囲にしてください",true);return;}
   try{
     if(entry.context.isPlaying?.(entry.take.id)){entry.context.stop?.();return;}
-    const clip=await entry.context.rpc<{file:string;hash:string}>("preview_take_edit",{segment:entry.context.segment.id,take:entry.take.id,start:range.start,end:range.end,cut_start:range.cutStart,cut_end:range.cutEnd,mode});
-    await entry.context.play(clip.file,clip.hash,entry.take.id,0,undefined,mode==="boundaries");
-    previewed.set(entry.take.id,fingerprint(range));updateModal(entry);
+    const sourceCursor=playheads.get(entry.take.id)??0;
+    const sourceStart=sourceCursor<range.start||sourceCursor>range.end?range.start:sourceCursor;
+    let file=entry.take.file,hash=entry.take.hash,cursor=Math.max(0,sourceStart);
+    if(mode==="after"){
+      const clip=await entry.context.rpc<{file:string;hash:string}>("preview_take_edit",{segment:entry.context.segment.id,take:entry.take.id,start:range.start,end:range.end,cut_start:range.cutStart,cut_end:range.cutEnd,mode:"full"});
+      file=clip.file;hash=clip.hash;
+      const insideCut=range.cutStart!==undefined&&range.cutEnd!==undefined&&sourceStart>range.cutStart&&sourceStart<range.cutEnd;
+      const removed=range.cutStart!==undefined&&range.cutEnd!==undefined&&sourceStart>=range.cutEnd?range.cutEnd-range.cutStart:0;
+      cursor=Math.max(0,(insideCut?range.cutStart!:sourceStart)-range.start-removed);
+    }
+    await entry.context.play(file,hash,entry.take.id,0,undefined,(document.querySelector<HTMLInputElement>("[data-trim-loop]")?.checked??false));
+    entry.context.seek?.(cursor);
+    playheads.set(entry.take.id,sourceStart);
+    if(mode==="after")previewed.set(entry.take.id,fingerprint(range));
+    updateModal(entry);
   }catch(error){entry.context.notice(String(error),true);}
 }
 export function bindTakeTrim(context:TakeTrimContext){

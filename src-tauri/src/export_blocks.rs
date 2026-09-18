@@ -437,9 +437,6 @@ fn collect_block_with_subtitles(
     let from = v["_preview_from"].as_u64().unwrap_or(0) as usize;
     let timing = block_timing(project, start, end, from, gap, overrides)?;
     let active = timing.active;
-    if timing.unselected_count > 0 {
-        return Err("採用テイクが存在しません".into());
-    }
     if active.is_empty() {
         return Err("出力対象の原稿がありません".into());
     }
@@ -860,6 +857,28 @@ mod tests {
         }
         assert!(export_blocks(&root, &project, &json!({"subtitle_format":"srt"})).is_err());
         assert!(export_blocks(&root, &project, &json!({"subtitle_format":null})).is_err());
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn export_skips_unselected_utterances_when_another_take_is_available() {
+        let root = std::env::temp_dir().join(format!("scriptsync-skip-unselected-{}", id()));
+        std::fs::create_dir_all(&root).unwrap();
+        let path = root.join("input.wav");
+        write_wav(&path, &vec![0.1; 9600], false).unwrap();
+        let take = crate::app::take_from_file(&root, &path, "test".into()).unwrap();
+        let mut project = Project::new("未採用を飛ばす".into());
+        let mut selected = Segment::new("採用する発話".into());
+        selected.selected = Some(take.id.clone());
+        selected.takes.push(take);
+        project.segments.push(selected);
+        project.segments.push(Segment::new("未採用の発話".into()));
+        let manifest = export_blocks(&root, &project, &json!({"format":"wav","subtitle_format":"none"})).unwrap();
+        assert_eq!(manifest["files"].as_array().map(Vec::len), Some(1));
+        let output = safe(&root, manifest["files"][0]["file"].as_str().unwrap()).unwrap();
+        let map: Value = serde_json::from_slice(&std::fs::read(output.parent().unwrap().join("block-map.json")).unwrap()).unwrap();
+        assert_eq!(map["blocks"][0]["utterances"].as_array().map(Vec::len), Some(1));
+        assert_eq!(map["blocks"][0]["utterances"][0]["text"], "採用する発話");
         std::fs::remove_dir_all(root).unwrap();
     }
 
