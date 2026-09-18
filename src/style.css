@@ -99,3 +99,4 @@ footer audio{max-width:38vw;height:40px}
 .recording-original .script-edit-help{font-size:12px;margin:6px 0}
 .utterance-heading>button,.utterance-heading .continuous-controls button{height:54px;min-height:54px;line-height:1.25}
 .utterance-heading .continuous-controls button{padding:5px 9px;min-width:104px}
+.recording-heading-actions{display:flex;align-items:center;gap:12px;margin-left:auto}.recording-heading-actions>button{flex-shrink:0}.recording-duration{font-size:12px;text-align:right;white-space:nowrap}.recording-duration strong{font-size:14px}.take-move-sources{display:grid;gap:8px;margin:16px 0;max-height:45vh;overflow:auto}.take-move-sources button{text-align:left}.take-move-modal>section{min-width:min(520px,90vw)}

@@ -9,11 +9,12 @@ afterEach(()=>{vi.clearAllTimers();vi.useRealTimers();vi.restoreAllMocks();});
 it('確定後は台本に残り、再編集で出力を無効化し、Codexは別操作で原稿へ反映する',async()=>{
  vi.resetModules();vi.useFakeTimers();vi.spyOn(HTMLMediaElement.prototype,'pause').mockImplementation(()=>{});document.body.innerHTML='<div id="app"></div>';
  Object.defineProperty(window,'__TAURI_INTERNALS__',{value:{},configurable:true});
- const lines=[{line:0,text:'原稿',raw:'原稿',enabled:true,kind:0}];
- const project:any={id:'p',title:'試験',generation:1,script_revision:1,script_sources:[{id:'a',name:'a.md',confirmed_text:'原稿',draft_text:'原稿',lines,draft_lines:lines}],segments:[{id:'s',source_id:'a',source_line:0,text:'原稿',source_text:'原稿',takes:[{id:'t',file:'a.wav',hash:'h',status:'ready',duration:1,warning:'',peak:.2}],selected:'t',kana:'',confirmed:false,mappings:[],corrections:[],comparisons:[],trim_start:0,trim_end:0,gap:0,skip:false,transcriptions:[{id:'asr',take_id:'t',file:'a.wav',audio_hash:'h',status:'succeeded',raw:'発言の誤字',kana:'はつげん'}]}],archived_segments:[],pending_source_deletions:[]};
+ const lines=[{line:0,text:'原稿',raw:'原稿',enabled:true,kind:0},{line:1,text:'対象外',raw:'対象外',enabled:false,kind:0}];
+ const otherLines=[{line:0,text:'別原稿',raw:'別原稿',enabled:true,kind:0}];
+ const project:any={id:'p',title:'試験',generation:1,script_revision:1,script_sources:[{id:'a',name:'a.md',confirmed_text:'原稿\n対象外',draft_text:'原稿\n対象外',lines,draft_lines:lines},{id:'b',name:'b.md',confirmed_text:'別原稿',draft_text:'別原稿',lines:otherLines,draft_lines:otherLines}],segments:[{id:'s',source_id:'a',source_line:0,text:'原稿',source_text:'原稿',takes:[{id:'t',file:'a.wav',hash:'h',status:'ready',duration:1,warning:'',peak:.2}],selected:'t',kana:'',confirmed:false,mappings:[],corrections:[],comparisons:[],trim_start:0,trim_end:0,gap:0,skip:false,transcriptions:[{id:'asr',take_id:'t',file:'a.wav',audio_hash:'h',status:'succeeded',raw:'発言の誤字',kana:'はつげん'}]}],archived_segments:[],pending_source_deletions:[]};
  let resolveImprove:(result:{text:string})=>void=()=>{};
  api.invoke.mockReset();api.invoke.mockImplementation(async(_command:string,{action,payload}:any)=>{
-  if(action==='state')return {project:structuredClone(project),root:'p',busy:false,job:'',message:'',peak:0,elapsed:0,script_export_ready_source_ids:['a']};
+  if(action==='state')return {project:structuredClone(project),root:'p',busy:false,job:'',message:'',peak:0,elapsed:0,script_export_ready_source_ids:['a','b']};
   if(action==='markdown_preview')return {lines};
   if(action==='text_improve')return new Promise(resolve=>{resolveImprove=resolve;});
   if(action==='recording_draft'){project.segments[0].recording_draft=payload.text;project.generation++;}
@@ -25,6 +26,7 @@ it('確定後は台本に残り、再編集で出力を無効化し、Codexは�
  expect([...document.querySelectorAll('.script-source-actions>[data-action]')].slice(0,5).map(b=>b.getAttribute('data-action'))).toEqual(['script_empty','script_import','exchange_import','script_rename','script_delete']);
  expect(document.querySelector('#script-send-target')).toBeNull();
  expect(document.querySelectorAll('[data-script-info]')).toHaveLength(4);
+ expect([...document.querySelectorAll<HTMLSelectElement>('.source-mapping[disabled]')].some(select=>select.textContent?.includes('対象外'))).toBe(true);
  expect(button('exchange_export').disabled).toBe(false);
  button('script_commit').click();await settle();expect(document.querySelector('.script-workspace')).not.toBeNull();
  const input=document.querySelector<HTMLTextAreaElement>('#markdown-source')!;input.value='変更';input.dispatchEvent(new Event('input'));
@@ -37,7 +39,7 @@ it('確定後は台本に残り、再編集で出力を無効化し、Codexは�
  button('next_segment').click();await settle();button('previous_segment').click();await settle();expect(document.querySelector('#text')).toBeNull();expect(button('improve_text').disabled).toBe(false);
  button('font_plus').click();await settle();expect(document.querySelector<HTMLElement>('#app')!.style.getPropertyValue('--script-text-size')).toBe('26px');button('font_minus').click();await settle();expect(document.querySelector<HTMLElement>('#app')!.style.getPropertyValue('--script-text-size')).toBe('24px');expect(document.querySelectorAll('.recording-resizer')).toHaveLength(2);expect(document.querySelector('.continuous-controls')?.firstElementChild).toBe(button('script_insert_empty'));expect(document.querySelector('.take-transport .take-actions')).not.toBeNull();
  const startKey=new KeyboardEvent('keydown',{key:'F5',bubbles:true,cancelable:true});document.dispatchEvent(startKey);await settle();expect(startKey.defaultPrevented).toBe(true);expect(api.invoke).toHaveBeenCalledWith('continuous_hotkeys',{enabled:true});document.dispatchEvent(new KeyboardEvent('keydown',{key:'F6',bubbles:true,cancelable:true}));await settle();expect(api.invoke).toHaveBeenCalledWith('continuous_hotkeys',{enabled:false});
- expect(document.querySelector('[data-action=recording_asr]')).toBeNull();expect(document.querySelector('.take-trim-fields')?.textContent).toContain('発言の誤字');expect(document.querySelector('.recording-original [data-action=improve_text]')).not.toBeNull();
+ expect(document.querySelector('[data-action=recording_asr]')).toBeNull();expect(document.querySelector('.take-transcription')?.textContent).toContain('発言の誤字');expect(document.querySelector('[data-trim-edit]')).not.toBeNull();expect(document.querySelector('.recording-original [data-action=improve_text]')).not.toBeNull();
  expect(api.invoke.mock.calls.some(call=>(call[1] as any)?.action==='text_improve')).toBe(false);
  button('improve_text').click();await settle();expect(api.invoke).toHaveBeenCalledWith('command',{action:'text_improve',payload:{text:'原稿',confirmed_text:'原稿'}});expect(document.querySelector('.recording-original .script-pane')?.textContent).toContain('修正案');resolveImprove({text:'発言の修正'});await settle();expect(project.segments[0].recording_draft??'原稿').toBe('原稿');expect(document.querySelector('.ai-review')).not.toBeNull();button('discard_ai').click();await settle();expect(project.segments[0].recording_draft??'原稿').toBe('原稿');button('improve_text').click();await settle();resolveImprove({text:'発言の修正'});await settle();button('approve_ai').click();await settle();expect(document.querySelector('.ai-review')).toBeNull();
  expect(project.segments[0].text).toBe('原稿');expect(project.segments[0].recording_draft).toBe('発言の修正');expect(project.segments[0].transcriptions[0].raw).toBe('発言の誤字');
@@ -47,4 +49,7 @@ it('確定後は台本に残り、再編集で出力を無効化し、Codexは�
  project.segments[0].transcriptions=[];project.generation++;await vi.advanceTimersByTimeAsync(750);await settle();
  button('recording_asr').click();await settle();
  expect(api.invoke).toHaveBeenCalledWith('command',{action:'recording_asr',payload:{segment:'s',take:'t'}});
+ button('unselect_take').click();await settle();expect(api.invoke).toHaveBeenCalledWith('command',{action:'take_unselect',payload:{segment:'s'}});
+ document.querySelector<HTMLButtonElement>('[data-action=move_take]')!.click();await settle();expect(document.querySelector('.take-move-modal')?.textContent).toContain('b.md');
+ document.querySelector<HTMLButtonElement>('[data-move-source=b]')!.click();await settle();expect(api.invoke.mock.calls.some(call=>(call[1] as any)?.action==='take_move_to_source'&&(call[1] as any)?.payload.target_source_id==='b')).toBe(true);
 },30000);

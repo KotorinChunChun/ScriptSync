@@ -8,7 +8,7 @@ vi.mock("@tauri-apps/api/event",()=>({listen:api.listen}));
 let snapshot:any;
 async function settle(){for(let i=0;i<40;i++)await Promise.resolve();}
 async function tab(name:string){const b=[...document.querySelectorAll<HTMLButtonElement>("[data-tab]")].find(x=>x.textContent?.includes(name));expect(b).toBeTruthy();b!.click();await settle();}
-function action(name:string){const b=[...document.querySelectorAll<HTMLButtonElement>("[data-action]")].find(x=>x.textContent===name||x.textContent?.includes(name));expect(b).toBeTruthy();b!.click();}
+function action(name:string){const buttons=[...document.querySelectorAll<HTMLButtonElement>("[data-action]")];const b=buttons.find(x=>x.textContent===name)||buttons.find(x=>name==='採用'?x.dataset.action==='select':x.textContent?.includes(name));expect(b).toBeTruthy();b!.click();}
 beforeEach(()=>{api.listen.mockClear();vi.spyOn(HTMLMediaElement.prototype,"pause").mockImplementation(()=>{});vi.resetModules();vi.useFakeTimers();document.body.innerHTML='<div id="app"></div>';Object.defineProperty(window,"__TAURI_INTERNALS__",{value:{},configurable:true});snapshot={project:{title:"試験",generation:1,source_markdown:"# 部\n本文",script_lines:[{line:1,raw:"# 部",text:"部",enabled:true,kind:1,hierarchy:[1,0,0,0]},{line:2,raw:"本文",text:"本文",enabled:true,kind:0,hierarchy:[1,0,0,0]}],segments:[{id:"s1",text:"市場へ行きます。",source_text:"市場へ行きます。",kind:0,hierarchy:[1,0,0,0],revision:1,takes:[{id:"t1",status:"ready",duration:1.4,file:"takes/a.wav",hash:"hash",warning:""}],selected:"t1",kana:"いちばへいきます。",confirmed:true,mappings:[],corrections:[],comparisons:[{id:"r1",order:["v1","v2","v3"],revealed:false,variants:["A","B","C"].map((label,i)=>({id:`v${i+1}`,label,status:"succeeded",file:`${label}.wav`,hash:label,error:"",text:label,transcript:"",rating:null}))}],trim_start:0,trim_end:0,gap:0,skip:false}]},root:"test",busy:false,job:"",message:"保存済み",peak:.1,elapsed:0};api.invoke.mockReset();api.invoke.mockImplementation(async(_cmd:string,{action,payload}:any)=>{if(action==="state")return structuredClone(snapshot);if(action==="devices")return [{endpoint_id:"mic1",friendly_name:"試験マイク",is_default:true}];if(action==="waveform")return {peaks:Array.from({length:800},(_,i)=>(i%50)/50)};if(action==="markdown_preview")return {lines:snapshot.project.script_lines};if(action==="markdown_import")return {text:"# 部\n本文",lines:snapshot.project.script_lines};return null;});});
 afterEach(()=>{vi.clearAllTimers();vi.useRealTimers();});
 describe("再設計した作業フロー",()=>{
@@ -180,11 +180,18 @@ it('保存中のF1は追加録音を予約し保存済みテイクを取り消�
  const {playCue}=await import('../../src/soundEffects');vi.mocked(playCue).mockClear();handler({payload:'F3'});await settle();expect(playCue).toHaveBeenCalledWith('invalid');
 });
 it('未保存トリミングをF4で採用せず、移動前に保存を選択できる',async()=>{
+ vi.spyOn(HTMLMediaElement.prototype,'play').mockResolvedValue();
+ const original=api.invoke.getMockImplementation()!;
+ api.invoke.mockImplementation(async(command:string,args:any)=>{
+  if(args.action==='preview_take_edit')return {file:'exports/preview.wav',hash:'preview'};
+  if(args.action==='audio')return 'data:audio/wav;base64,';
+  return original(command,args);
+ });
  await import('../../src/main');await settle();await tab('録音');document.querySelector<HTMLButtonElement>('#continuous-start')!.click();await settle();
- const wave=document.querySelector<HTMLElement>('.take-wave-wrap')!,handle=wave.querySelector<HTMLButtonElement>('.take-trim-handle.start')!;
- vi.spyOn(wave,'getBoundingClientRect').mockReturnValue({left:0,width:100} as DOMRect);
- const pointer=(x:number)=>Object.assign(new Event('pointermove',{bubbles:true}),{clientX:x,pointerId:1}) as PointerEvent;
- handle.onpointerdown!(pointer(0));wave.onpointermove!(pointer(25));wave.onpointerup!(pointer(25));
+ document.querySelector<HTMLButtonElement>('[data-trim-edit]')!.click();
+ const start=document.querySelector<HTMLInputElement>('[data-trim-start]')!;start.value='.25';start.dispatchEvent(new Event('input'));start.dispatchEvent(new Event('change'));
+ document.querySelector<HTMLButtonElement>('[data-trim-preview=full]')!.click();await settle();
+ document.querySelector<HTMLButtonElement>('[data-trim-close]')!.click();
  const handler=api.listen.mock.calls.find(x=>x[0]==='scriptsync-hotkey')![1];handler({payload:'F4'});await settle();expect(api.invoke.mock.calls.some(x=>x[1]?.action==='select')).toBe(false);
  await tab('結合・出力');expect(document.querySelector('.take-trim-modal')).toBeTruthy();document.querySelector<HTMLButtonElement>('[data-choice=save]')!.click();await settle();
  expect(api.invoke.mock.calls.some(x=>x[1]?.action==='trim_take')).toBe(true);expect(document.querySelector('[data-tab=export]')?.getAttribute('aria-selected')).toBe('true');
@@ -234,16 +241,15 @@ it('通常録音のF1は開始と取消を切り替えF2保存F3再生F4最新�
  expect(api.invoke.mock.calls.some(x=>x[0]==='continuous_hotkeys')).toBe(false);
  expect(api.invoke.mock.calls.filter(x=>x[1]?.action==='record')).toHaveLength(2);
 });
-it('テイク範囲試聴は指定した終了時間で停止する',async()=>{
+it('編集ポップアップの試聴は指定範囲を加工プレビューへ渡す',async()=>{
  const original=api.invoke.getMockImplementation()!;
- api.invoke.mockImplementation(async(c:string,a:any)=>{if(a.action==='preview_take_trim')return {file:'clip.wav',hash:'clip'};if(a.action==='audio')return 'clip.wav';return original(c,a);});
+ api.invoke.mockImplementation(async(c:string,a:any)=>{if(a.action==='preview_take_edit')return {file:'clip.wav',hash:'clip'};if(a.action==='audio')return 'clip.wav';return original(c,a);});
  vi.spyOn(HTMLMediaElement.prototype,'play').mockResolvedValue();
  await import('../../src/main');await settle();await tab('録音');
+ document.querySelector<HTMLButtonElement>('[data-trim-edit]')!.click();
  const end=document.querySelector<HTMLInputElement>('[data-trim-end]')!;end.value='0.50';end.dispatchEvent(new Event('change'));
- document.querySelector<HTMLButtonElement>('[data-trim-preview]')!.click();await settle();
- const audio=document.querySelector<HTMLAudioElement>('#player')!;audio.currentTime=0.7;audio.dispatchEvent(new Event('timeupdate'));
- expect(audio.currentTime).toBe(0.5);expect(audio.pause).toHaveBeenCalled();
- expect(api.invoke).toHaveBeenCalledWith('command',{action:'preview_take_trim',payload:{segment:'s1',take:'t1',start:0,end:0.5}});
+ document.querySelector<HTMLButtonElement>('[data-trim-preview=full]')!.click();await settle();
+ expect(api.invoke).toHaveBeenCalledWith('command',{action:'preview_take_edit',payload:{segment:'s1',take:'t1',start:0,end:0.5,cut_start:undefined,cut_end:undefined,mode:'full'}});
 });
 
 it('欠落警告があるテイクは確認前に採用しない',async()=>{
@@ -265,16 +271,19 @@ it('評価は未評価と10点刻み11段階で即時保存しメモを保持す
  expect(document.querySelector<HTMLTextAreaElement>('[data-take-memo]')!.value).toBe('残すメモ');
  field.value='';field.dispatchEvent(new Event('change'));await settle();expect(api.invoke).toHaveBeenCalledWith('command',{action:'take_score',payload:{segment:'s1',take:'t1',score:null}});
 });
-it('試聴とF3は再生・停止で表示を切り替え自然終了で戻る',async()=>{
+it('編集ポップアップは全体試聴と境界反復試聴を選べる',async()=>{
  const original=api.invoke.getMockImplementation()!;
- api.invoke.mockImplementation(async(c:string,a:any)=>a.action==='preview_take_trim'?{file:'clip.wav',hash:'clip'}:a.action==='audio'?'blob:test':original(c,a));
+ api.invoke.mockImplementation(async(c:string,a:any)=>a.action==='preview_take_edit'?{file:'clip.wav',hash:'clip'}:a.action==='audio'?'blob:test':original(c,a));
  let paused=true;vi.spyOn(HTMLMediaElement.prototype,'paused','get').mockImplementation(()=>paused);
  vi.spyOn(HTMLMediaElement.prototype,'play').mockImplementation(async function(this:HTMLMediaElement){paused=false;this.dispatchEvent(new Event('play'));});
  vi.spyOn(HTMLMediaElement.prototype,'pause').mockImplementation(function(this:HTMLMediaElement){paused=true;this.dispatchEvent(new Event('pause'));});
  await import('../../src/main');await settle();await tab('録音');
- const b=document.querySelector<HTMLButtonElement>('[data-trim-preview]')!;b.click();await settle();expect(b.textContent).toBe('停止(F3)');
- document.dispatchEvent(new KeyboardEvent('keydown',{key:'F3',bubbles:true}));await settle();expect(b.textContent).toBe('試聴(F3)');
- b.click();await settle();expect(b.textContent).toBe('停止(F3)');paused=true;document.querySelector('audio')!.dispatchEvent(new Event('ended'));expect(b.textContent).toBe('試聴(F3)');
+ document.querySelector<HTMLButtonElement>('[data-trim-edit]')!.click();
+ document.querySelector<HTMLButtonElement>('[data-trim-preview=full]')!.click();await settle();
+ expect(document.querySelector<HTMLAudioElement>('#player')!.loop).toBe(false);
+ paused=true;document.querySelector<HTMLButtonElement>('[data-trim-preview=boundaries]')!.click();await settle();
+ expect(document.querySelector<HTMLAudioElement>('#player')!.loop).toBe(true);
+ expect(api.invoke.mock.calls.filter(x=>x[1]?.action==='preview_take_edit')).toHaveLength(2);
 });
 
 it('品質確認は採用が既定でEnterで決定し過剰な文言を表示しない',async()=>{

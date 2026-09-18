@@ -1,51 +1,50 @@
 vi.mock("../../src/confirmAction",()=>({confirmAction:vi.fn(async()=>true)}));
-import { beforeEach, describe, expect, it, vi } from "vitest";
-import { bindTakeTrim, discardTakeTrim, isTakeTrimDirty, guardTakeTrimMove } from "../../src/takeTrim";
+import {beforeEach,describe,expect,it,vi} from "vitest";
+import {bindTakeTrim,discardTakeTrim,isTakeTrimDirty,guardTakeTrimMove} from "../../src/takeTrim";
 
 const take={id:"take-1",duration:2,file:"a.wav",hash:"a",trim_start:0,trim_end:2};
-const pointer=(type:string,clientX:number)=>Object.assign(new Event(type,{bubbles:true}),{clientX,pointerId:1}) as PointerEvent;
-beforeEach(()=>{take.duration=2;take.file="a.wav";take.hash="a";take.trim_start=0;take.trim_end=2;discardTakeTrim("take-1");document.body.innerHTML=`<article><div class="take-wave-wrap"><svg id="take-wave-take-1"></svg></div><div class="take-actions"><button data-action="select">採用</button><button data-action="delete_take">削除</button></div></article>`;});
-describe("テイク別トリム",()=>{
- it("ドラッグ中は採用を隠し、保存成功後だけ編集状態を解消する",async()=>{const rpc=vi.fn(async()=>undefined),notice=vi.fn();bindTakeTrim({segment:{id:"s",takes:[take]},rpc,play:vi.fn(),notice});const handle=document.querySelector<HTMLButtonElement>(".take-trim-handle.start")!;const wave=document.querySelector<HTMLElement>(".take-wave-wrap")!;vi.spyOn(wave,"getBoundingClientRect").mockReturnValue({left:0,width:100} as DOMRect);handle.onpointerdown!(pointer("pointerdown",0));wave.onpointermove!(pointer("pointermove",25));wave.onpointerup!(pointer("pointerup",25));expect(isTakeTrimDirty("take-1")).toBe(true);expect(document.querySelector<HTMLButtonElement>("[data-action=select]")!.hidden).toBe(true);document.querySelector<HTMLButtonElement>("[data-trim-save]")!.click();await Promise.resolve();await Promise.resolve();expect(rpc).toHaveBeenCalledWith("trim_take",{segment:"s",take:"take-1",start:.5,end:2});expect(isTakeTrimDirty("take-1")).toBe(false);});
- it("保存失敗時は編集中の範囲を保持する",async()=>{const rpc=vi.fn(async()=>{throw new Error("保存失敗")}),notice=vi.fn();bindTakeTrim({segment:{id:"s",takes:[take]},rpc,play:vi.fn(),notice});const handle=document.querySelector<HTMLButtonElement>(".take-trim-handle.start")!,wave=document.querySelector<HTMLElement>(".take-wave-wrap")!;vi.spyOn(wave,"getBoundingClientRect").mockReturnValue({left:0,width:100} as DOMRect);handle.onpointerdown!(pointer("pointerdown",0));wave.onpointermove!(pointer("pointermove",25));wave.onpointerup!(pointer("pointerup",25));document.querySelector<HTMLButtonElement>("[data-trim-save]")!.click();await Promise.resolve();await Promise.resolve();expect(isTakeTrimDirty("take-1")).toBe(true);expect(notice).toHaveBeenCalledWith("Error: 保存失敗",true);});
- it("開始と終了を 0.01 秒単位の数値入力で調整でき、最新テイクの試聴にだけ F3 を表示する",()=>{bindTakeTrim({segment:{id:"s",takes:[take]},rpc:vi.fn(),play:vi.fn(),notice:vi.fn()});const start=document.querySelector<HTMLInputElement>("[data-trim-start]")!,end=document.querySelector<HTMLInputElement>("[data-trim-end]")!;expect(start.step).toBe("0.01");expect(document.querySelector<HTMLButtonElement>("[data-trim-preview]")!.textContent).toBe("試聴(F3)");start.value="0.37";start.dispatchEvent(new Event("change"));end.value="1.41";end.dispatchEvent(new Event("change"));expect(start.value).toBe("0.37");expect(end.value).toBe("1.41");expect(isTakeTrimDirty(take.id)).toBe(true);});
- it("物理トリム結果を受け取ると全幅の新しいテイクとして範囲をリセットし、波形更新を依頼する",async()=>{const rpc=vi.fn(async()=>({id:"take-1",duration:1,file:"trimmed.wav",hash:"new",trim_start:0,trim_end:1})),onSaved=vi.fn();bindTakeTrim({segment:{id:"s",takes:[take]},rpc,play:vi.fn(),notice:vi.fn(),onSaved});const start=document.querySelector<HTMLInputElement>("[data-trim-start]")!;start.value="0.50";start.dispatchEvent(new Event("change"));document.querySelector<HTMLButtonElement>("[data-trim-save]")!.click();await Promise.resolve();await Promise.resolve();await Promise.resolve();await Promise.resolve();expect(take.duration).toBe(1);expect(take.hash).toBe("new");expect(start.value).toBe("0.00");expect(document.querySelector<HTMLInputElement>("[data-trim-end]")!.value).toBe("1.00");expect(isTakeTrimDirty(take.id)).toBe(false);expect(onSaved).toHaveBeenCalledWith(take);});
-});
+const pointer=(x:number)=>Object.assign(new Event("pointermove",{bubbles:true}),{clientX:x,pointerId:1}) as PointerEvent;
+const field=(name:string)=>document.querySelector<HTMLInputElement>(`[data-trim-${name}]`)!;
+function open(context:any){bindTakeTrim(context);document.querySelector<HTMLButtonElement>("[data-trim-edit]")!.click();}
+beforeEach(()=>{take.duration=2;take.file="a.wav";take.hash="a";take.trim_start=0;take.trim_end=2;discardTakeTrim(take.id);document.body.innerHTML=`<article><div class="take-wave-wrap"><svg id="take-wave-take-1"></svg></div><div class="take-actions"><button data-action="play">試聴</button><button data-action="select">採用</button><button data-action="delete_take">削除</button></div></article>`;});
 
-it('保存して移動は保存成功を待ち、失敗なら移動しない',async()=>{
- let finish!:(value:unknown)=>void;const rpc=vi.fn(()=>new Promise(resolve=>finish=resolve)),move=vi.fn();
- bindTakeTrim({segment:{id:'s',takes:[take]},rpc:rpc as any,play:vi.fn(),notice:vi.fn()});
- const wave=document.querySelector<HTMLElement>('.take-wave-wrap')!,handle=document.querySelector<HTMLButtonElement>('.take-trim-handle.start')!;
- vi.spyOn(wave,'getBoundingClientRect').mockReturnValue({left:0,width:100} as DOMRect);
- handle.onpointerdown!(pointer('pointerdown',0));wave.onpointermove!(pointer('pointermove',25));wave.onpointerup!(pointer('pointerup',25));
- const request=guardTakeTrimMove(move);document.querySelector<HTMLButtonElement>('[data-choice=save]')!.click();await vi.waitFor(()=>expect(rpc).toHaveBeenCalledOnce());expect(move).not.toHaveBeenCalled();
- finish(null);await request;expect(move).toHaveBeenCalledOnce();expect(isTakeTrimDirty(take.id)).toBe(false);
-});
-it('移動の取消は編集中の範囲を保持する',async()=>{
- bindTakeTrim({segment:{id:'s',takes:[take]},rpc:vi.fn(),play:vi.fn(),notice:vi.fn()});const wave=document.querySelector<HTMLElement>('.take-wave-wrap')!,handle=document.querySelector<HTMLButtonElement>('.take-trim-handle.end')!;
- vi.spyOn(wave,'getBoundingClientRect').mockReturnValue({left:0,width:100} as DOMRect);handle.onpointerdown!(pointer('pointerdown',100));wave.onpointermove!(pointer('pointermove',70));wave.onpointerup!(pointer('pointerup',70));
- const move=vi.fn(),request=guardTakeTrimMove(move);document.querySelector<HTMLButtonElement>('[data-choice=cancel]')!.click();expect(await request).toBe(false);expect(move).not.toHaveBeenCalled();expect(isTakeTrimDirty(take.id)).toBe(true);
-});
-
-
-it('数値入力直後に両端バーを更新する',()=>{
- bindTakeTrim({segment:{id:'s',takes:[take]},rpc:vi.fn(),play:vi.fn(),notice:vi.fn()});
- const start=document.querySelector<HTMLInputElement>('[data-trim-start]')!,end=document.querySelector<HTMLInputElement>('[data-trim-end]')!;
- start.focus();start.value='0.50';start.dispatchEvent(new Event('input'));end.value='1.50';end.dispatchEvent(new Event('input'));
- const selection=document.querySelector<HTMLElement>('.take-trim-selection')!;
- expect(selection.style.left).toBe('25%');expect(selection.style.width).toBe('50%');expect(isTakeTrimDirty(take.id)).toBe(true);
-});
-it('物理トリム後も数値入力で開始位置を再編集して保存できる',async()=>{
- const rpc=vi.fn(async()=>({id:'take-1',duration:1,file:'trimmed.wav',hash:'new',trim_start:0,trim_end:1}));bindTakeTrim({segment:{id:'s',takes:[take]},rpc,play:vi.fn(),notice:vi.fn()});
- const start=document.querySelector<HTMLInputElement>('[data-trim-start]')!;start.value='0.50';start.dispatchEvent(new Event('change'));document.querySelector<HTMLButtonElement>('[data-trim-save]')!.click();await Promise.resolve();await Promise.resolve();await Promise.resolve();await Promise.resolve();expect(isTakeTrimDirty(take.id)).toBe(false);
- start.value='0.25';start.dispatchEvent(new Event('change'));expect(isTakeTrimDirty(take.id)).toBe(true);document.querySelector<HTMLButtonElement>('[data-trim-save]')!.click();await Promise.resolve();await Promise.resolve();await Promise.resolve();await Promise.resolve();expect(rpc).toHaveBeenLastCalledWith('trim_take',{segment:'s',take:'take-1',start:.25,end:1});expect(isTakeTrimDirty(take.id)).toBe(false);
-});
-it('物理トリム後もドラッグで開始位置を再編集して保存できる',async()=>{
- const rpc=vi.fn(async()=>({id:'take-1',duration:1,file:'trimmed.wav',hash:'new',trim_start:0,trim_end:1}));bindTakeTrim({segment:{id:'s',takes:[take]},rpc,play:vi.fn(),notice:vi.fn()});const wave=document.querySelector<HTMLElement>('.take-wave-wrap')!;vi.spyOn(wave,'getBoundingClientRect').mockReturnValue({left:0,width:100} as DOMRect);const handle=document.querySelector<HTMLButtonElement>('.take-trim-handle.start')!;
- handle.onpointerdown!(pointer('pointerdown',0));wave.onpointermove!(pointer('pointermove',50));wave.onpointerup!(pointer('pointerup',50));document.querySelector<HTMLButtonElement>('[data-trim-save]')!.click();await Promise.resolve();await Promise.resolve();await Promise.resolve();await Promise.resolve();expect(isTakeTrimDirty(take.id)).toBe(false);
- handle.onpointerdown!(pointer('pointerdown',0));wave.onpointermove!(pointer('pointermove',25));wave.onpointerup!(pointer('pointerup',25));expect(isTakeTrimDirty(take.id)).toBe(true);document.querySelector<HTMLButtonElement>('[data-trim-save]')!.click();await Promise.resolve();await Promise.resolve();await Promise.resolve();await Promise.resolve();expect(rpc).toHaveBeenLastCalledWith('trim_take',{segment:'s',take:'take-1',start:.25,end:1});expect(isTakeTrimDirty(take.id)).toBe(false);
-});
-it('試聴中は停止表示で同じボタンが停止しプレビューを再生成しない',async()=>{
- const rpc=vi.fn(),stop=vi.fn();bindTakeTrim({segment:{id:'s',takes:[take]},rpc,play:vi.fn(),notice:vi.fn(),isPlaying:()=>true,stop});
- const b=document.querySelector<HTMLButtonElement>('[data-trim-preview]')!;expect(b.textContent).toBe('停止(F3)');b.click();await Promise.resolve();await Promise.resolve();expect(stop).toHaveBeenCalledOnce();expect(rpc).not.toHaveBeenCalled();
+describe("テイク編集モーダル",()=>{
+ it("テイク欄には常時編集入口だけを置き、前後入力欄を置かない",()=>{
+  bindTakeTrim({segment:{id:"s",takes:[take]},rpc:vi.fn(),play:vi.fn(),notice:vi.fn()});
+  expect(document.querySelector<HTMLButtonElement>("[data-trim-edit]")?.textContent).toBe("編集");
+  expect(document.querySelector(".take-actions [data-trim-save]")).toBeNull();
+  expect(document.querySelector(".take-wave-wrap [data-trim-start]")).toBeNull();
+ });
+ it("途中カットを含む現在の編集を全体試聴した後だけ保存し、保存後に範囲を初期化する",async()=>{
+  const rpc=vi.fn(async(action:string)=>action==="preview_take_edit"?{file:"preview.wav",hash:"preview"}:{id:"take-1",duration:1,file:"edited.wav",hash:"new",trim_start:0,trim_end:1});
+  const play=vi.fn(),onSaved=vi.fn(),notice=vi.fn();open({segment:{id:"s",takes:[take]},rpc,play,notice,onSaved});
+  field("start").value="0.20";field("start").dispatchEvent(new Event("change"));
+  const cut=field("cut-enabled");cut.click();
+  field("cut-start").value="0.70";field("cut-start").dispatchEvent(new Event("change"));
+  field("cut-end").value="1.10";field("cut-end").dispatchEvent(new Event("change"));
+  expect(isTakeTrimDirty(take.id)).toBe(true);
+  const save=document.querySelector<HTMLButtonElement>("[data-trim-save]")!;expect(save.disabled).toBe(true);
+  document.querySelector<HTMLButtonElement>('[data-trim-preview="full"]')!.click();await vi.waitFor(()=>expect(play).toHaveBeenCalledOnce());
+  expect(save.disabled).toBe(false);save.click();await vi.waitFor(()=>expect(onSaved).toHaveBeenCalledWith(take));
+  expect(rpc).toHaveBeenLastCalledWith("trim_take",{segment:"s",take:"take-1",start:.2,end:2,cut_start:.7,cut_end:1.1});
+  expect(take.duration).toBe(1);expect(isTakeTrimDirty(take.id)).toBe(false);expect(document.querySelector(".take-trim-editor")).toBeNull();
+ });
+ it("数値とマーカーの変更は試聴済み指紋を解除する",async()=>{
+  const rpc=vi.fn(async()=>({file:"preview.wav",hash:"preview"})),play=vi.fn();open({segment:{id:"s",takes:[take]},rpc,play,notice:vi.fn()});
+  field("start").value="0.25";field("start").dispatchEvent(new Event("change"));document.querySelector<HTMLButtonElement>('[data-trim-preview="full"]')!.click();await vi.waitFor(()=>expect(play).toHaveBeenCalledOnce());
+  const save=document.querySelector<HTMLButtonElement>("[data-trim-save]")!;expect(save.disabled).toBe(false);
+  const line=document.querySelector<HTMLElement>(".take-trim-timeline")!;vi.spyOn(line,"getBoundingClientRect").mockReturnValue({left:0,width:100} as DOMRect);
+  const marker=document.querySelector<HTMLButtonElement>('[data-trim-edge="start"]')!;marker.onpointerdown!(pointer(25));line.onpointermove!(pointer(35));line.onpointerup!(pointer(35));
+  expect(save.disabled).toBe(true);expect(document.querySelector("[data-trim-check]")?.textContent).toContain("もう一度試聴");
+ });
+ it("Escapeで閉じ、Tabはモーダル内のフォーカスを巡回する",()=>{
+  const opener=document.querySelector<HTMLButtonElement>("[data-action=play]")!;opener.focus();open({segment:{id:"s",takes:[take]},rpc:vi.fn(),play:vi.fn(),notice:vi.fn()});
+  const modal=document.querySelector<HTMLElement>(".take-trim-editor")!,first=document.activeElement;modal.dispatchEvent(new KeyboardEvent("keydown",{key:"Tab",bubbles:true,cancelable:true}));expect(document.activeElement).not.toBe(first);
+  modal.dispatchEvent(new KeyboardEvent("keydown",{key:"Escape",bubbles:true,cancelable:true}));expect(document.querySelector(".take-trim-editor")).toBeNull();expect(document.activeElement).toBe(opener);
+ });
+ it("未試聴の編集は移動前保存を拒否し、破棄なら移動する",async()=>{
+  open({segment:{id:"s",takes:[take]},rpc:vi.fn(),play:vi.fn(),notice:vi.fn()});field("start").value="0.25";field("start").dispatchEvent(new Event("change"));
+  document.querySelector<HTMLButtonElement>("[data-trim-close]")!.click();const move=vi.fn(),request=guardTakeTrimMove(move);document.querySelector<HTMLButtonElement>("[data-choice=save]")!.click();expect(await request).toBe(false);expect(move).not.toHaveBeenCalled();
+  const discard=guardTakeTrimMove(move);document.querySelector<HTMLButtonElement>("[data-choice=discard]")!.click();expect(await discard).toBe(true);expect(move).toHaveBeenCalledOnce();
+ });
 });

@@ -31,7 +31,7 @@ it('source mode keeps per-file drafts, approvals, ordering, and committed baseli
  expect([...document.querySelectorAll('.script-columns h3')].map(node=>node.firstChild?.textContent)).toEqual(['原稿を登録する','原稿を閲覧／編集する','差分を確認する','読み上げ対象を選択する']);
  const before=document.querySelector<HTMLElement>('.script-columns')!.style.gridTemplateColumns;
  document.querySelector<HTMLButtonElement>('[data-collapse-pane="0"]')!.click();
- expect(document.querySelector('.script-files.collapsed .script-source span')?.textContent).toBe('確認済み');
+ expect(document.querySelector('.script-files.collapsed .script-source span')?.textContent).toBe('差分確認済み');
  document.querySelector<HTMLButtonElement>('[data-collapse-pane="1"]')!.click();
  expect(document.querySelectorAll('.collapsed')).toHaveLength(2);
  document.querySelector<HTMLButtonElement>('[data-collapse-pane="0"]')!.click();

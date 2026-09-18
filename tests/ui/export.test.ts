@@ -48,6 +48,9 @@ beforeEach(async () => {
   vi.spyOn(HTMLMediaElement.prototype,"pause").mockImplementation(()=>{});
   document.body.innerHTML = "";
   rpc = vi.fn(async (action: string) => {
+    if (action === "duration_summary") {
+      return {audio_seconds:2.5,wait_seconds:{normal:.3,part:1.2,chapter:.8,section:.5,head:.1,tail:.3},wait_total_seconds:3.2,total_seconds:5.7,unselected_count:1};
+    }
     if (action === "preview_blocks") {
       return {
         files: [
@@ -209,6 +212,14 @@ it('無音時間は部・章・節・発話・先頭・末尾の順に表示す�
  await mount();expect([...document.querySelectorAll<HTMLElement>('[data-global-gap]')].map(e=>e.dataset.globalGap)).toEqual(['part','chapter','section','normal','head','tail']);expect([...document.querySelectorAll<HTMLElement>('[data-gap-mode]')].map(e=>e.dataset.gapMode)).toEqual(['part','chapter','section','normal','head','tail']);expect(document.querySelector('.export-defaults h3')?.textContent).toContain('挿入する無音時間');
 });
 
+it('編集中の出力設定で時間を即時に再集計して内訳と未採用件数を表示する',async()=>{
+ await mount();await settle();
+ expect(document.querySelector('.export-duration')?.textContent).toContain('出力時間の見込み 5.70 秒');
+ expect(document.querySelector('.export-duration')?.textContent).toContain('未採用発話 1 件');
+ const gap=document.querySelector<HTMLInputElement>('[data-global-gap=normal]')!;gap.value='0.9';gap.dispatchEvent(new Event('change'));await settle();
+ expect(rpc.mock.calls.filter(call=>call[0]==='duration_summary').at(-1)?.[1]).toMatchObject({global_gaps:{normal:.9}});
+});
+
 it('手動境界から自動へ変更する前に確認しキャンセルでは全境界を保持する',async()=>{
  const context=await mount();context.confirm=vi.fn(async()=>false);
  document.querySelector<HTMLButtonElement>('[data-unit=section]')!.click();
@@ -218,7 +229,7 @@ it('手動境界から自動へ変更する前に確認しキャンセルでは�
  expect(document.querySelector('[data-unit=custom]')?.getAttribute('aria-pressed')).toBe('true');
  expect(document.querySelector('[data-boundary=h2]')?.textContent).toBe('✂');
  expect(document.querySelector('[data-boundary=h3]')?.textContent).toBe('🔗');
- expect(rpc).not.toHaveBeenCalled();
+ expect(rpc.mock.calls.filter(call=>call[0]!=="duration_summary")).toHaveLength(0);
 });
 
 it('確認待ちに自動分割を適用せず承認後に適用しCtrl+Zで手動境界を復元する',async()=>{
