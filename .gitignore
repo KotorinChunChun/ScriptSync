@@ -23,3 +23,4 @@ Thumbs.db
 *.suo
 
 /dev/test-videos/
+/dev/history/*/logs/
