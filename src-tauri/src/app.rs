@@ -580,7 +580,7 @@ impl App {
                         &mut store.project,
                         &string(&v, "segment")?,
                         &string(&v, "take")?,
-                        &string(&v, "target_source_id")?,
+                        &string(&v, "target_segment_id")?,
                     )?;
                 }
                 "take_note" => {

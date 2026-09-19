@@ -43,9 +43,20 @@ export function importedSource(existing:SourceDraft|undefined,file:{name:string;
 }
 export function sourceMapping(draft:SourceDraft,line:ScriptLine,active:SourceSegment[],archived:SourceSegment[]){
  const inSource=active.filter(s=>s.source_id===draft.source.id);
- const automatic=(row:ScriptLine)=>!row.force_new&&row.previous_line!=null?inSource.find(s=>s.source_line===row.previous_line&&(s.source_text??s.text)===String(row.text??row.raw??'')):undefined;
- const matched=automatic(line);
- const used=new Set(draft.lines.filter(row=>row!==line).flatMap(row=>[row.previous_id,automatic(row)?.id]).filter(Boolean));
+ // 同じ元行を複数の新行へ暗黙に割り当てない。明示対応を先に予約し、
+ // 残った行は元行番号・表示順の先頭から一度だけ自動対応する。
+ const rows=[...draft.lines].sort((a,b)=>(a.previous_line??Number.MAX_SAFE_INTEGER)-(b.previous_line??Number.MAX_SAFE_INTEGER)||a.line-b.line);
+ const explicit=new Set(rows.map(row=>row.previous_id).filter((id):id is string=>!!id));
+ const automaticByLine=new Map<number,SourceSegment>();
+ const automaticIds=new Set<string>();
+ for(const row of rows){
+  if(row.force_new||row.previous_line==null||row.previous_id)continue;
+  const candidate=inSource.find(s=>s.source_line===row.previous_line&&(s.source_text??s.text)===String(row.text??row.raw??''));
+  if(candidate&&!explicit.has(candidate.id)&&automaticIds.add(candidate.id))automaticByLine.set(row.line,candidate);
+ }
+ const matched=automaticByLine.get(line.line);
+ const used=new Set<string>([...explicit,...automaticIds]);
+ if(matched)used.delete(matched.id);
  const removed=new Set(changedRows(draft).filter(row=>row.kind==='removed').map(row=>row.oldLine));
  const candidates=[...inSource.filter(s=>s.source_line!=null&&removed.has(s.source_line)),...archived.filter(s=>s.source_id===draft.source.id)]
   .filter((s,i,all)=>!used.has(s.id)&&all.findIndex(other=>other.id===s.id)===i);

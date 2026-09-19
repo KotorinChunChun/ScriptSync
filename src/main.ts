@@ -690,18 +690,29 @@ function showTakeMoveModal(take:string){
  if(!segment?.takes.some(item=>item.id===take)){notice('移動するテイクが見つかりません',true);return;}
  if(!sources.length){notice('移動先にできる別原稿がありません',true);return;}
  document.querySelector('.take-move-modal')?.remove();
- root.insertAdjacentHTML('beforeend',`<div class="delete-modal take-move-modal" role="dialog" aria-modal="true" aria-labelledby="take-move-title"><section><h2 id="take-move-title">テイクを別原稿の新しい発話へ移動</h2><p>移動先の原稿を選択してください。末尾に新しい発話を作り、現在の確定台本とテイク情報を移します。移動先では未採用になります。</p><div class="take-move-sources">${sources.map((source:any)=>`<button data-move-source="${esc(source.id)}">${esc(source.name)}</button>`).join('')}</div><div class="toolbar"><button id="take-move-cancel">キャンセル</button></div></section></div>`);
+ root.insertAdjacentHTML('beforeend',`<div class="delete-modal take-move-modal" role="dialog" aria-modal="true" aria-labelledby="take-move-title"><section><h2 id="take-move-title">テイクを既存発話へ移動</h2><p id="take-move-help">移動先の原稿ファイルを選択してください。次に、その原稿内の既存の読み上げ対象を選びます。新しい発話は作成しません。</p><div class="take-move-sources">${sources.map((source:any)=>`<button data-move-source="${esc(source.id)}">${esc(source.name)}</button>`).join('')}</div><div class="take-move-targets" hidden></div><div class="toolbar"><button id="take-move-back" hidden>原稿ファイルを選び直す</button><button id="take-move-cancel">キャンセル</button></div></section></div>`);
  const modal=root.querySelector<HTMLElement>('.take-move-modal')!,siblings=[...root.children].filter(el=>el!==modal) as HTMLElement[];
  siblings.forEach(el=>el.inert=true);
  const close=()=>{siblings.forEach(el=>el.inert=false);modal.remove();};
- root.querySelector<HTMLButtonElement>('#take-move-cancel')!.onclick=close;
+ const sourceList=modal.querySelector<HTMLElement>('.take-move-sources')!,targetList=modal.querySelector<HTMLElement>('.take-move-targets')!,help=modal.querySelector<HTMLElement>('#take-move-help')!,back=modal.querySelector<HTMLButtonElement>('#take-move-back')!;
+ modal.querySelector<HTMLButtonElement>('#take-move-cancel')!.onclick=close;
+ const renderTargets=(sourceId:string)=>{
+  const targets=(state.project?.segments??[]).filter((row:any)=>row.source_id===sourceId&&!row.skip&&row.id!==segment?.id);
+  targetList.innerHTML=targets.length?targets.map((row:any)=>`<button class="take-move-target" data-move-target="${esc(row.id)}"><span>${String((state.project?.segments??[]).indexOf(row)+1).padStart(4,'0')}</span><span>${esc(row.text||'空の発話')}</span></button>`).join(''):'<p class="muted">この原稿に移動できる既存の読み上げ対象がありません。</p>';
+  sourceList.hidden=true;targetList.hidden=false;back.hidden=false;help.textContent='移動先の既存読み上げ対象を選択してください。テイクはこの発話へ追加されます。';
+  targetList.querySelector<HTMLButtonElement>('[data-move-target]')?.focus();
+  targetList.querySelectorAll<HTMLButtonElement>('[data-move-target]').forEach(button=>button.onclick=()=>void (async()=>{
+   try{
+    button.disabled=true;await flushSourceDraft();
+    const targetId=button.dataset.moveTarget!;
+    await rpc('take_move_to_source',{project_id:(state.project as any)?.id,base_generation:(state.project as any)?.generation,base_revision:(state.project as any)?.script_revision,segment:segment!.id,take,target_segment_id:targetId});
+    close();sourceRoot=undefined;await refresh(true);selected=targetId;render();notice('既存の読み上げ対象へテイクを移動しました。移動先では自動採用していません。');
+   }catch(error){button.disabled=false;notice(String(error),true);}
+  })());
+ };
+ back.onclick=()=>{sourceList.hidden=false;targetList.hidden=true;back.hidden=true;help.textContent='移動先の原稿ファイルを選択してください。次に、その原稿内の既存の読み上げ対象を選びます。新しい発話は作成しません。';sourceList.querySelector<HTMLButtonElement>('[data-move-source]')?.focus();};
  root.querySelectorAll<HTMLButtonElement>('[data-move-source]').forEach(button=>button.onclick=()=>void (async()=>{
-  try{
-   button.disabled=true;await flushSourceDraft();
-   const previous=new Set(state.project?.segments.map(row=>row.id));
-   await rpc('take_move_to_source',{project_id:(state.project as any)?.id,base_generation:(state.project as any)?.generation,base_revision:(state.project as any)?.script_revision,segment:segment.id,take,target_source_id:button.dataset.moveSource});
-   close();sourceRoot=undefined;await refresh(true);selected=state.project?.segments.find(row=>!previous.has(row.id))?.id??selected;render();notice('別原稿の末尾に新しい発話を作り、テイクを移動しました。');
-  }catch(error){button.disabled=false;notice(String(error),true);}
+  button.disabled=true;renderTargets(button.dataset.moveSource!);button.disabled=false;
  })());
  modal.onkeydown=event=>{if(event.key==='Escape'){event.preventDefault();close();}};
  modal.querySelector<HTMLButtonElement>('[data-move-source]')?.focus();

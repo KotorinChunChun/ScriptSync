@@ -18,6 +18,13 @@ it('対応候補は未使用の削除行と過去アーカイブだけで、新�
  updateParsedLines(draft,lines(draft.text));
  expect(sourcePayload(draft).lines[1]).toMatchObject({previous_line:null,force_new:true,keep:false});
 });
+it('同じ元行を複数の新行へ自動対応せず、後続行を新規扱いにする',()=>{
+ const draft=makeDraft({id:'a',name:'台本.md',confirmed_text:'甲',draft_text:'甲\n甲',lines:lines('甲'),draft_lines:[{line:0,text:'甲',raw:'甲',enabled:true,previous_line:0},{line:1,text:'甲',raw:'甲',enabled:true,previous_line:0}]});
+ const active=[{id:'same',source_id:'a',source_line:0,text:'甲'}];
+ expect(sourceMapping(draft,draft.lines[0],active,[]).matched?.id).toBe('same');
+ expect(sourceMapping(draft,draft.lines[1],active,[]).matched).toBeUndefined();
+ expect(sourceMapping(draft,draft.lines[1],active,[]).selected).toBe('');
+});
 it('F2の名前入力、同名取り込みの差分、削除予定は確定本文を保持して下書き保存する',async()=>{
  vi.resetModules();vi.useFakeTimers();document.body.innerHTML='<div id="app"></div>';
  Object.defineProperty(window,'__TAURI_INTERNALS__',{value:{},configurable:true});
