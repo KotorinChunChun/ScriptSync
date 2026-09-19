@@ -11,6 +11,7 @@ mod project_location;
 mod project_open;
 mod project_rename;
 mod take_trim;
+mod take_join;
 mod ui_session;
 use tauri::{Manager,Emitter};
 

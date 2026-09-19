@@ -454,6 +454,14 @@ impl App {
             a.media.insert(token.clone(), path);
             return Ok(json!(format!("http://scriptsync-audio.localhost/{token}")));
         }
+        if action == "preview_take_join" {
+            return crate::take_join::preview(store, &v);
+        }
+        if action == "join_takes" {
+            let result = crate::take_join::save(store, &v)?;
+            a.message = "前後のテイクを結合し、新しい未採用テイクを追加しました".into();
+            return Ok(result);
+        }
         if action == "preview_take_trim" {
             let sid = string(&v, "segment")?;
             let tid = string(&v, "take")?;
