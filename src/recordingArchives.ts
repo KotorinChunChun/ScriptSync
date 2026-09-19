@@ -1,73 +1,13 @@
-import {escapeHtml as esc} from "./html";
-import './popupDialog';
-type ArchiveSegment={id:string;text:string;kana?:string;source_id?:string;takes:{id:string;file:string;hash:string;status:string}[]};
-type ArchiveSource={id:string;name:string;confirmed_text:string;draft_text?:string};
-type ArchiveProject={id?:string;generation?:number;archived_segments?:ArchiveSegment[];script_sources?:ArchiveSource[];archived_sources?:ArchiveSource[];deletion_records?:{segment_id?:string;source_id?:string;status:string}[]};
-type Context={project:ArchiveProject;getProject?:()=>ArchiveProject;rpc:(action:string,payload:unknown)=>Promise<unknown>;play:(file:string,hash:string)=>Promise<void>;stop?:()=>void;refresh:()=>Promise<void>;notice:(text:string,error?:boolean)=>void};
-function trap(event:KeyboardEvent,element:HTMLElement){
- if(event.key!=='Tab')return;
- const buttons=[...element.querySelectorAll<HTMLElement>('button:not(:disabled),[tabindex="0"]')];
- const index=buttons.indexOf(document.activeElement as HTMLElement);
- if(!buttons.length)return;
- if(event.shiftKey&&index<=0){event.preventDefault();buttons.at(-1)!.focus();}
- else if(!event.shiftKey&&index===buttons.length-1){event.preventDefault();buttons[0].focus();}
-}
-async function confirmArchive(label:string):Promise<boolean>{
- return new Promise(resolve=>{
-  const overlay=document.createElement('div');overlay.className='delete-modal';overlay.setAttribute('role','dialog');overlay.setAttribute('aria-modal','true');overlay.setAttribute('aria-label','完全消去の確認');
-  overlay.innerHTML=`<section><h2>アーカイブから完全消去しますか？</h2><p>${esc(label)}</p><p>本プロジェクト内の原稿・読み・履歴と専用音声を消去します。元ファイルは残します。他の発話も使う音声は保持します。</p><div class="toolbar"><button data-cancel>キャンセル</button><button data-confirm class="danger">完全消去</button></div></section>`;
-  const previous=document.activeElement as HTMLElement|null;
-  const siblings=[...document.body.children] as HTMLElement[];const states=siblings.map(n=>n.inert);
-  siblings.forEach(n=>n.inert=true);document.body.append(overlay);
-  const close=(value:boolean)=>{overlay.remove();siblings.forEach((n,i)=>n.inert=states[i]);previous?.focus();resolve(value);};
-  overlay.querySelector<HTMLButtonElement>('[data-cancel]')!.onclick=()=>close(false);
-  overlay.querySelector<HTMLButtonElement>('[data-confirm]')!.onclick=()=>close(true);
-  overlay.onkeydown=event=>{if(event.key==='Escape'){event.preventDefault();close(false);}trap(event,overlay);};
-  overlay.querySelector<HTMLButtonElement>('[data-cancel]')!.focus();
- });
-}
+import {escapeHtml as esc} from './html';
+import {confirmAction} from './confirmAction';
+type Take={id:string;file:string;hash:string;status:string};type Segment={id:string;text:string;source_text?:string;recording_draft?:string|null;source_id?:string;source_line?:number|null;kana?:string;takes:Take[]};type Source={id:string;name:string;confirmed_text:string;draft_text?:string};type Project={id?:string;generation?:number;segments?:Segment[];archived_segments?:Segment[];script_sources?:Source[];archived_sources?:Source[]};type Context={project:Project;getProject?:()=>Project;rpc:(action:string,payload:unknown)=>Promise<unknown>;play:(file:string,hash:string)=>Promise<void>;stop?:()=>void;refresh:()=>Promise<void>;notice:(text:string,error?:boolean)=>void};
+
+/** 現役・削除済みを同じ表で確認し、音声を保持したまま所属原稿と修正原稿を復旧できる管理画面。 */
 export function openArchiveManager(context:Context){
- if(document.getElementById('archive-manager'))return;
- const overlay=document.createElement('div');overlay.id='archive-manager';overlay.className='archive-manager';overlay.setAttribute('role','dialog');overlay.setAttribute('aria-modal','true');overlay.setAttribute('aria-label','アーカイブ管理');
- const previous=document.activeElement as HTMLElement|null;
- const siblings=[...document.body.children] as HTMLElement[];const states=siblings.map(n=>n.inert);
- siblings.forEach(n=>n.inert=true);document.body.append(overlay);
- let running=false,message='';
- const close=()=>{if(running)return;context.stop?.();overlay.remove();siblings.forEach((n,i)=>n.inert=states[i]);previous?.focus();};
- const draw=()=>{
-  const p=context.getProject?.()??context.project,rows=p.archived_segments??[],sources=p.archived_sources??[];
-  const allSources=[...(p.script_sources??[]),...sources];
-  const groups=[...new Set([...sources.map(s=>s.id),...rows.map(s=>s.source_id??'')])];
-  const pending=(p.deletion_records??[]).filter(r=>r.status==='pending');
-  overlay.innerHTML=`<section class="archive-dialog"><div class="section-head"><h2>アーカイブ管理</h2><button data-close>閉じる</button></div><p>現在の読み上げ対象につながっていない原稿・行です。完全消去すると元に戻せません。</p><p role="status">${esc(message)}</p><div class="archive-content">${groups.map(sourceId=>{
-   const source=allSources.find(s=>s.id===sourceId),deleted=sources.some(s=>s.id===sourceId);
-   return `<section class="archive-group"><div class="section-head"><h3>${esc(source?.name??'以前の原稿')}${deleted?'（削除済み）':''}</h3>${deleted?`<button class="danger" data-purge-source="${esc(sourceId)}">原稿全体を完全消去</button>`:''}</div>${deleted&&source?`<pre>${esc(source.draft_text??source.confirmed_text)}</pre>`:''}${rows.filter(s=>(s.source_id??'')===sourceId).map(s=>`<article><p>${esc(s.text||'空の発話')}</p>${s.kana?`<p class="muted">読み：${esc(s.kana)}</p>`:''}<div class="toolbar">${s.takes.filter(t=>t.status==='ready').map((t,i)=>`<button data-archive-play="${esc(t.id)}">テイク ${i+1} を試聴</button>`).join('')}<button class="danger" data-purge-segment="${esc(s.id)}">この行を完全消去</button></div></article>`).join('')}</section>`;
-  }).join('')||'<p>アーカイブはありません。</p>'}${pending.map(r=>`<p>完全消去が未完了です。<button data-retry-id="${esc(r.source_id??r.segment_id??'')}" data-retry-source="${!!r.source_id}">消去を再実行</button></p>`).join('')}</div><button data-stop>試聴を停止</button></section>`;
-  overlay.querySelector<HTMLButtonElement>('[data-close]')!.onclick=close;
-  overlay.querySelector<HTMLButtonElement>('[data-stop]')!.onclick=()=>context.stop?.();
-  overlay.querySelectorAll<HTMLButtonElement>('[data-archive-play]').forEach(button=>button.onclick=()=>{const take=rows.flatMap(s=>s.takes).find(t=>t.id===button.dataset.archivePlay);if(take)void context.play(take.file,take.hash).catch(error=>{message=String(error);draw();});});
-  const purge=async(id:string,isSource:boolean,retry=false)=>{
-   if(running)return;
-   const label=isSource?allSources.find(s=>s.id===id)?.name:rows.find(s=>s.id===id)?.text;
-   if(!retry&&!await confirmArchive(label??'消去未完了のデータ'))return;
-   running=true;overlay.querySelectorAll<HTMLButtonElement>('button').forEach(button=>button.disabled=true);
-   try{
-    context.stop?.();
-    const result=await context.rpc('archive_purge',{project_id:p.id,base_generation:p.generation,...(isSource?{source_id:id}:{segment:id}),confirmed:true}) as {shared_files?:number}|null;
-    message=`完全消去しました。${result?.shared_files?`共有音声等 ${result.shared_files}件は保持しました。`:''}`;
-   }catch(error){message=String(error);}
-   finally{try{await context.refresh();}catch(error){message+=' '+String(error);}running=false;draw();overlay.querySelector<HTMLButtonElement>('[data-close]')?.focus();}
-  };
-  overlay.querySelectorAll<HTMLButtonElement>('[data-purge-source]').forEach(b=>b.onclick=()=>void purge(b.dataset.purgeSource!,true));
-  overlay.querySelectorAll<HTMLButtonElement>('[data-purge-segment]').forEach(b=>b.onclick=()=>void purge(b.dataset.purgeSegment!,false));
-  overlay.querySelectorAll<HTMLButtonElement>('[data-retry-id]').forEach(b=>b.onclick=()=>void purge(b.dataset.retryId!,b.dataset.retrySource==='true',true));
- };
- overlay.onkeydown=event=>{if(event.key==='Escape'){event.preventDefault();close();}trap(event,overlay);};
- draw();overlay.querySelector<HTMLButtonElement>('[data-close]')!.focus();
+ if(document.getElementById('archive-manager'))return;const overlay=document.createElement('div');overlay.id='archive-manager';overlay.className='archive-manager';overlay.setAttribute('role','dialog');overlay.setAttribute('aria-modal','true');overlay.setAttribute('aria-label','アーカイブ管理');const previous=document.activeElement as HTMLElement|null,siblings=[...document.body.children] as HTMLElement[],states=siblings.map(node=>node.inert);siblings.forEach(node=>node.inert=true);document.body.append(overlay);let saving=false,message='';const close=()=>{if(saving)return;context.stop?.();overlay.remove();siblings.forEach((node,index)=>node.inert=states[index]);previous?.focus();};
+ const draw=()=>{const project=context.getProject?.()??context.project,sources=[...(project.script_sources??[]),...(project.archived_sources??[])],active=project.segments??[],archived=project.archived_segments??[],rows=[...active.map(row=>({row,status:'利用中'})),...archived.map(row=>({row,status:'削除済み'}))];const sourceOptions=(id?:string)=>`<option value="">割り当て原稿を選択</option>${sources.map(source=>`<option value="${esc(source.id)}" ${source.id===id?'selected':''}>${esc(source.name)}${(project.archived_sources??[]).some(item=>item.id===source.id)?'（削除済み）':''}</option>`).join('')}`;
+  overlay.innerHTML=`<section class="archive-dialog archive-override"><header><h2>アーカイブ管理</h2></header><p>すべての読み上げ対象を確認できます。ここでの保存は、音声・テイクを消さずに割り当て原稿、原稿本文、修正原稿を強制的に書き換えます。</p><p role="status">${esc(message)}</p><div class="archive-content">${rows.map(({row,status})=>`<article class="archive-row" data-archive-id="${esc(row.id)}"><h3>${esc(status)} ${esc(row.text||'空の発話')}</h3><label>割り当て原稿<select data-archive-source>${sourceOptions(row.source_id)}</select></label><label>原稿本文<textarea data-archive-source-text rows="2">${esc(row.source_text??row.text)}</textarea></label><label>修正原稿<textarea data-archive-draft rows="2">${esc(row.recording_draft??'')}</textarea></label><p class="muted">行 ${row.source_line==null?'未対応':row.source_line+1} ／ 読み：${esc(row.kana??'未設定')} ／ テイク ${row.takes.length}件</p><div class="toolbar">${row.takes.filter(take=>take.status==='ready').map((take,index)=>`<button data-archive-play="${esc(take.id)}">テイク ${index+1} を試聴</button>`).join('')}</div></article>`).join('')||'<p>読み上げ対象はありません。</p>'}</div><footer class="popup-actions"><button data-close>閉じる</button><button data-save class="primary">対応付けを強制保存</button></footer></section>`;
+  overlay.querySelector<HTMLButtonElement>('[data-close]')!.onclick=close;overlay.querySelectorAll<HTMLButtonElement>('[data-archive-play]').forEach(button=>button.onclick=()=>{const take=rows.flatMap(item=>item.row.takes).find(item=>item.id===button.dataset.archivePlay);if(take)void context.play(take.file,take.hash).catch(error=>{message=String(error);draw();});});overlay.querySelector<HTMLButtonElement>('[data-save]')!.onclick=()=>void (async()=>{if(saving)return;if(!await confirmAction('すべての入力済み対応を強制保存します。テイクは削除しませんが、表示上の原稿対応と修正原稿が変わります。保存しますか？'))return;const changes=[...overlay.querySelectorAll<HTMLElement>('[data-archive-id]')].map(item=>({id:item.dataset.archiveId!,source_id:item.querySelector<HTMLSelectElement>('[data-archive-source]')!.value,source_text:item.querySelector<HTMLTextAreaElement>('[data-archive-source-text]')!.value,text:item.querySelector<HTMLTextAreaElement>('[data-archive-source-text]')!.value,recording_draft:item.querySelector<HTMLTextAreaElement>('[data-archive-draft]')!.value||null}));if(changes.some(change=>!change.source_id)){message='すべての読み上げ対象に割り当て原稿を選択してください。';draw();return;}saving=true;overlay.querySelectorAll<HTMLButtonElement>('button').forEach(button=>button.disabled=true);try{await context.rpc('archive_override',{project_id:project.id,base_generation:project.generation,confirmed:true,rows:changes});await context.refresh();message='対応付けを強制保存しました。';saving=false;draw();}catch(error){saving=false;message=String(error);draw();}})();};
+ overlay.addEventListener('click',event=>{if(event.target===overlay)close();});overlay.onkeydown=event=>{if(event.key==='Escape'){event.preventDefault();close();}};draw();overlay.querySelector<HTMLButtonElement>('[data-close]')!.focus();
 }
-export function bindRecordingArchives(context:Context){
- document.getElementById('recording-archives')?.remove();
- const button=document.createElement('button');button.id='recording-archives';button.textContent='アーカイブ管理';
- button.onclick=()=>openArchiveManager(context);
- document.getElementById('stage-extras')?.append(button);
-}
+export function bindRecordingArchives(context:Context){document.getElementById('recording-archives')?.remove();const button=document.createElement('button');button.id='recording-archives';button.textContent='アーカイブ管理';button.onclick=()=>openArchiveManager(context);document.getElementById('stage-extras')?.append(button);}

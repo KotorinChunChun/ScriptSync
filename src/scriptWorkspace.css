@@ -27,6 +27,9 @@
 .script-lines .source-list{max-height:none;margin-top:4px}
 .script-bottom{border-top:1px solid #ccd8d0;padding-top:10px;font-size:12px}
 .script-bottom .toolbar{flex-shrink:0}
+/* 台本確定・出力操作を、アーカイブ管理の右隣へ集約する。 */
+.script-workspace{position:relative}.script-heading{padding-right:520px}.script-heading>[data-action="script_archives"]{position:absolute;right:390px;top:0}.script-bottom{position:absolute;right:0;top:0;border:0;padding:0;margin:0;display:flex;align-items:center;gap:8px}.script-bottom #script-review-status{position:absolute;right:0;top:44px;min-width:320px;text-align:right;font-size:12px}.script-workspace>.script-columns{margin-top:12px}
+@media(max-width:1000px){.script-heading{padding-right:0}.script-heading>[data-action="script_archives"],.script-bottom{position:static}.script-bottom #script-review-status{position:static;min-width:0;text-align:left}}
 .navigation-layout:has(.script-workspace) #stage-extras{display:none}
 @media(max-width:1000px){.script-heading,.script-bottom{flex-wrap:wrap}.script-files,.script-editor,.script-review,.script-targets{padding:6px}.diff-decisions{flex-direction:column}}
 

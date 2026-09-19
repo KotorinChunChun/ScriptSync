@@ -445,6 +445,11 @@ impl App {
             let target=v["segment"].as_str().ok_or("消去対象が必要です")?;
             return crate::archive::purge_active_segment(store,target,v["confirmed"].as_bool().unwrap_or(false));
         }
+        if action == "archive_override" {
+            if v["project_id"].as_str().is_some_and(|id|id!=store.project.id) {return Err("プロジェクトが変更されています".into());}
+            if v["base_generation"].as_u64().is_some_and(|generation|generation!=store.project.generation) {return Err("プロジェクトが更新されています。再読込してください".into());}
+            return crate::archive::override_mappings(store,&v);
+        }
         if action == "audio" {
             let file = string(&v, "file")?;
             let hash = string(&v, "hash")?;

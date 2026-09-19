@@ -113,6 +113,31 @@ pub fn purge(store:&mut Store,target:&str,confirmed:bool)->Result<()>{
 pub fn purge_target(store:&mut Store,target:&str,is_source:bool,confirmed:bool)->Result<Value>{
     purge_target_inner(store,target,is_source,confirmed,false)
 }
+
+/// 管理画面で確認した発話の所属と修正原稿を、音声や履歴を消さずに明示的に上書きする。
+pub fn override_mappings(store:&mut Store,value:&Value)->Result<Value>{
+    if value["confirmed"].as_bool()!=Some(true){return Err("強制書き換えの確認が必要です".into());}
+    let rows=value["rows"].as_array().ok_or("書き換え対象が必要です")?;
+    let source_ids:HashSet<String>=store.project.script_sources.iter().chain(&store.project.archived_sources).map(|s|s.id.clone()).collect();
+    let before=store.project.clone();
+    let result=(||->Result<()> {
+        for row in rows {
+            let id=row["id"].as_str().ok_or("発話IDが不正です")?;
+            let source_id=row["source_id"].as_str().ok_or("割り当て原稿を選択してください")?;
+            if !source_ids.contains(source_id){return Err("割り当て原稿が見つかりません。再読込してください".into());}
+            let segment=store.project.segments.iter_mut().chain(store.project.archived_segments.iter_mut()).find(|s|s.id==id).ok_or("発話が見つかりません。再読込してください")?;
+            segment.source_id=source_id.to_owned();
+            segment.source_text=row["source_text"].as_str().unwrap_or(&segment.source_text).to_owned();
+            segment.text=row["text"].as_str().unwrap_or(&segment.text).to_owned();
+            segment.recording_draft=match row.get("recording_draft") {Some(Value::String(text))=>Some(text.to_owned()),Some(Value::Null)|None=>None,_=>return Err("修正原稿が不正です".into())};
+            segment.needs_review=true;segment.confirmed=false;
+        }
+        store.project.script_revision=store.project.script_revision.saturating_add(1);
+        store.save()
+    })();
+    if let Err(error)=result{store.project=before;return Err(error);}
+    Ok(json!({"generation":store.project.generation,"script_revision":store.project.script_revision}))
+}
 /// 現在の発話を台本・履歴・専用音声ごと完全消去する。
 ///
 /// 通常のアーカイブ消去は誤操作防止のため現役発話を拒否するが、録音画面の
