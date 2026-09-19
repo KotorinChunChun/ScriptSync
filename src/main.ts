@@ -734,17 +734,19 @@ function showPurgeCurrentSegmentModal(segmentId:string){
  confirm.focus();
 }
 function showTakeMoveModal(take:string){
- const segment=current(),sources=((state.project as any)?.script_sources??[]).filter((source:any)=>source.id!==segment?.source_id&&!deletedSourceIds.has(source.id));
+ const segment=current(),sources=((state.project as any)?.script_sources??[]).filter((source:any)=>!deletedSourceIds.has(source.id));
  if(!segment?.takes.some(item=>item.id===take)){notice('移動するテイクが見つかりません',true);return;}
- if(!sources.length){notice('移動先にできる別原稿がありません',true);return;}
+ if(!sources.length){notice('移動先にできる原稿がありません',true);return;}
  document.querySelector('.take-move-modal')?.remove();
- root.insertAdjacentHTML('beforeend',`<div class="delete-modal take-move-modal" role="dialog" aria-modal="true" aria-labelledby="take-move-title"><section><h2 id="take-move-title">テイクを既存発話へ移動</h2><p id="take-move-help">移動先の原稿ファイルを選択してください。次に、その原稿内の既存の読み上げ対象を選びます。新しい発話は作成しません。</p><div class="take-move-sources">${sources.map((source:any)=>`<button data-move-source="${esc(source.id)}">${esc(source.name)}</button>`).join('')}</div><div class="take-move-targets" hidden></div><div class="toolbar"><button id="take-move-back" hidden>原稿ファイルを選び直す</button><button id="take-move-cancel">キャンセル</button></div></section></div>`);
+ root.insertAdjacentHTML('beforeend',`<div class="delete-modal take-move-modal" role="dialog" aria-modal="true" aria-labelledby="take-move-title"><section><h2 id="take-move-title">テイクを既存発話へ移動</h2><p id="take-move-help">移動先の原稿ファイルを選択してください。次に、その原稿内の既存の読み上げ対象を選びます。新しい発話は作成しません。</p><div class="take-move-sources">${sources.map((source:any)=>`<button data-move-source="${esc(source.id)}">${esc(source.name)}</button>`).join('')}</div><div class="take-move-selected-source" id="take-move-selected-source" hidden><span>選択中の原稿</span><strong></strong></div><div class="take-move-targets" hidden></div><div class="toolbar"><button id="take-move-back" hidden>原稿ファイルを選び直す</button><button id="take-move-cancel">キャンセル</button></div></section></div>`);
  const modal=root.querySelector<HTMLElement>('.take-move-modal')!,siblings=[...root.children].filter(el=>el!==modal) as HTMLElement[];
  siblings.forEach(el=>el.inert=true);
  const close=()=>{siblings.forEach(el=>el.inert=false);modal.remove();};
- const sourceList=modal.querySelector<HTMLElement>('.take-move-sources')!,targetList=modal.querySelector<HTMLElement>('.take-move-targets')!,help=modal.querySelector<HTMLElement>('#take-move-help')!,back=modal.querySelector<HTMLButtonElement>('#take-move-back')!;
+ const sourceList=modal.querySelector<HTMLElement>('.take-move-sources')!,selectedSource=modal.querySelector<HTMLElement>('#take-move-selected-source')!,selectedSourceName=selectedSource.querySelector('strong')!,targetList=modal.querySelector<HTMLElement>('.take-move-targets')!,help=modal.querySelector<HTMLElement>('#take-move-help')!,back=modal.querySelector<HTMLButtonElement>('#take-move-back')!;
  modal.querySelector<HTMLButtonElement>('#take-move-cancel')!.onclick=close;
  const renderTargets=(sourceId:string)=>{
+  const source=sources.find((item:any)=>item.id===sourceId);
+  selectedSourceName.textContent=source?.name??'選択した原稿';selectedSource.hidden=false;
   const targets=(state.project?.segments??[]).filter((row:any)=>row.source_id===sourceId&&!row.skip&&row.id!==segment?.id);
   targetList.innerHTML=targets.length?targets.map((row:any)=>`<button class="take-move-target" data-move-target="${esc(row.id)}"><span>${String((state.project?.segments??[]).indexOf(row)+1).padStart(4,'0')}</span><span>${esc(row.text||'空の発話')}</span></button>`).join(''):'<p class="muted">この原稿に移動できる既存の読み上げ対象がありません。</p>';
   sourceList.hidden=true;targetList.hidden=false;back.hidden=false;help.textContent='移動先の既存読み上げ対象を選択してください。テイクはこの発話へ追加されます。';
@@ -758,7 +760,7 @@ function showTakeMoveModal(take:string){
    }catch(error){button.disabled=false;notice(String(error),true);}
   })());
  };
- back.onclick=()=>{sourceList.hidden=false;targetList.hidden=true;back.hidden=true;help.textContent='移動先の原稿ファイルを選択してください。次に、その原稿内の既存の読み上げ対象を選びます。新しい発話は作成しません。';sourceList.querySelector<HTMLButtonElement>('[data-move-source]')?.focus();};
+ back.onclick=()=>{sourceList.hidden=false;selectedSource.hidden=true;targetList.hidden=true;back.hidden=true;help.textContent='移動先の原稿ファイルを選択してください。次に、その原稿内の既存の読み上げ対象を選びます。新しい発話は作成しません。';sourceList.querySelector<HTMLButtonElement>('[data-move-source]')?.focus();};
  root.querySelectorAll<HTMLButtonElement>('[data-move-source]').forEach(button=>button.onclick=()=>void (async()=>{
   button.disabled=true;renderTargets(button.dataset.moveSource!);button.disabled=false;
  })());

@@ -66,7 +66,6 @@ pub fn move_take_to_source(
     if source_index == target_index { return Err("移動元と同じ発話は選べません".into()); }
     if staged.segments[target_index].skip { return Err("読み上げ対象外の発話へは移動できません".into()); }
     if staged.pending_source_deletions.iter().any(|source_id| source_id == &staged.segments[target_index].source_id) { return Err("削除予定の台本ファイルへはテイクを移動できません".into()); }
-    if staged.segments[source_index].source_id == staged.segments[target_index].source_id { return Err("移動先には別の台本ファイルの発話を選んでください".into()); }
     if staged.segments[target_index].takes.iter().any(|take| take.id == take_id) { return Err("移動先に同じテイクがあります".into()); }
     let (take, note, moved_transcriptions) = {
         let source = &mut staged.segments[source_index];
@@ -857,6 +856,15 @@ mod tests {
         let request=json!({"base_revision":7,"sources":p.script_sources.iter().map(|source|json!({"id":source.id,"name":source.name,"kind":source.kind,"text":source.confirmed_text,"lines":source.draft_lines,"approved_text":source.confirmed_text})).collect::<Vec<_>>()});
         commit(&mut p,&request).unwrap();
         assert!(p.segments.iter().any(|segment|segment.id==destination_id),"次回の台本確定でも既存の移動先発話を保持する");
+    }
+
+    #[test]
+    fn moving_take_to_another_utterance_in_same_source_is_allowed() {
+        let mut p=Project::new("同一原稿内移動".into());let script=source("same.md","一行目\n二行目");let source_id=script.id.clone();p.script_sources=vec![script];
+        let mut from=Segment::new("一行目".into());from.source_id=source_id.clone();from.source_line=Some(0);let from_id=from.id.clone();let take=take("takes/same/audio.wav");let take_id=take.id.clone();from.takes.push(take);
+        let mut target=Segment::new("二行目".into());target.source_id=source_id;target.source_line=Some(1);let target_id=target.id.clone();p.segments=vec![from,target];
+        move_take_to_source(&mut p,&from_id,&take_id,&target_id).unwrap();
+        assert!(p.segments[0].takes.is_empty());assert_eq!(p.segments[1].takes[0].id,take_id);
     }
 
 }
