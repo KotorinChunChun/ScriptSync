@@ -4,6 +4,8 @@
   "version": "0.0.6",
   "type": "module",
   "scripts": {
+    "presentation:dev": "node tools/presentation/server.mjs",
+    "test:presentation": "node --test tools/presentation/presentation.test.mjs",
     "dev": "vite",
     "build": "tsc && vite build",
     "preview": "vite preview",

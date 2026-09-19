@@ -4,6 +4,7 @@ $ErrorActionPreference = 'Stop'
 $request = [Console]::In.ReadToEnd() | ConvertFrom-Json
 $app = $null
 $deck = $null
+$initialSecurity = $null
 try {
     if ($request.action -notin @('open', 'goto')) { throw '未対応の操作です' }
     $deckPath = [System.IO.Path]::GetFullPath([string]$request.path)
@@ -11,6 +12,7 @@ try {
     $app = New-Object -ComObject PowerPoint.Application
     $app.Visible = -1
     # マクロ無効。元ファイルは読み取り専用で開き、保存しない。
+    $initialSecurity = $app.AutomationSecurity
     $app.AutomationSecurity = 3
     foreach ($candidate in $app.Presentations) {
         if ($candidate.FullName -ieq $deckPath) { $deck = $candidate; break }
@@ -41,5 +43,8 @@ try {
 } finally {
     # 利用者のプレゼンテーションを閉じない。
     if ($null -ne $deck) { [void][Runtime.InteropServices.Marshal]::ReleaseComObject($deck) }
-    if ($null -ne $app) { [void][Runtime.InteropServices.Marshal]::ReleaseComObject($app) }
+    if ($null -ne $app) {
+        if ($null -ne $initialSecurity) { $app.AutomationSecurity = $initialSecurity }
+        [void][Runtime.InteropServices.Marshal]::ReleaseComObject($app)
+    }
 }

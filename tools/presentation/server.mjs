@@ -65,8 +65,9 @@ export async function startServer({port=4317,host='127.0.0.1',ppt=powerpoint,obs
         json({ok:true});return;
       }
       ensure(!busy,'前の操作が完了するまでお待ちください');busy=true;ownsMutation=true;
-      if(path==='/api/demo'){map=demo();plan=makePlan(map);media=null;reset();record('デモを読み込みました');}
+      if(path==='/api/demo'){ensure(status!=='playing','停止してからデモを読み込んでください');map=demo();plan=makePlan(map);media=null;reset();record('デモを読み込みました');}
       else if(path==='/api/load') {
+        ensure(status!=='playing','停止してから音声出力を読み込んでください');
         ensure(typeof request.path==='string'&&basename(request.path)==='block-map.json','block-map.jsonの絶対パスを指定してください');
         const mapPath=await realpath(request.path),dir=dirname(mapPath),info=await stat(mapPath);ensure(info.size<=2*1024*1024,'マップが大きすぎます');
         const next=validateMap(JSON.parse(await readFile(mapPath,'utf8'))),files=[];

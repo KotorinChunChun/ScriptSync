@@ -55,6 +55,8 @@ UI変更は開発起動中に反映されます。録音中のコード更新は
 
 ## 資料と開発の入口
 
+- [プレゼン連携試作](docs/PRESENTATION_PROTOTYPE.md)：`npm run presentation:dev` で起動。音声出力とPowerPoint・OBSの対応付け、再生、テンプレートPPTX生成、ローカルAPIを試せます。配布版への組込み前の独立した試作です。
+
 - [プロジェクトビジョン](docs/PROJECT_VISION.md)
 - [ドキュメント目録](docs/README.md)
 - [現行アーキテクチャ](docs/architecture.md)
