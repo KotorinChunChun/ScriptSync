@@ -138,7 +138,7 @@ function renderTakeCard(segment:Segment,t:Take,i:number){
 }
 function segmentView(s:Segment){
  if(tab!=="recording")return segmentViewLegacy(s);
- const base=`<div class="section-head"><div class="utterance-heading"><h2>発話 ${state.project!.segments.indexOf(s)+1}</h2>${button("previous_segment","← 前へ<br><small>（PageUp）</small>",activeSegments().indexOf(s)===0?"disabled":"")}${button("next_segment","次へ →<br><small>（PageDown）</small>",activeSegments().indexOf(s)===activeSegments().length-1?"disabled":"")}</div><div class="recording-heading-actions">${recordingDurationHtml()}${button("unselect_take","採用取り消し",s.selected?'':'disabled')}</div></div>`;
+ const base=`<div class="section-head"><div class="utterance-heading"><h2>発話 ${state.project!.segments.indexOf(s)+1}</h2>${button("previous_segment","← 前へ<br><small>（PageUp）</small>",activeSegments().indexOf(s)===0?"disabled":"")}${button("next_segment","次へ →<br><small>（PageDown）</small>",activeSegments().indexOf(s)===activeSegments().length-1?"disabled":"")}</div><div class="recording-heading-actions">${recordingDurationHtml()}${button("unselect_take","採用取り消し",s.selected?'':'disabled')}${button("purge_current_segment","この発話を完全消去",'class="danger"')}</div></div>`;
  const recording=state.busy&&state.job==="recording";
  return base+`<div class="recording-workspace"><section class="recording-script"><section class="panel record-controls"><h3>録音</h3>${state.recording_error?`<p class="recording-error" role="alert">${esc(state.recording_error)}</p>`:""}<div class="toolbar">${recording?button("cancel_record","取り消し(F1)",continuousRecording?"disabled":""):button("record","● 録音開始(F1)",`class="primary" ${continuousRecording?"disabled":""}`)}${button("stop",state.stop_scheduled?"延長収録中…":"■ 停止して保存(F2)",recording&&!continuousRecording&&!state.stop_scheduled?"":"disabled")}<label class="stop-extension">延長：<input id="stop-extension" type="number" min="0" max="60" step="0.1" value="${stopExtension}" aria-label="停止後の延長秒数"> 秒</label><label class="input-level-label">入力レベル <meter id="input-level" min="0" max="100" value="0"></meter><span id="input-level-value">0%</span></label></div><div class="live-recording"><svg id="recording-wave" viewBox="0 0 600 44" preserveAspectRatio="none" role="img" aria-label="録音中の入力波形"></svg><output id="recording-elapsed" aria-label="録音経過時間">0.0 秒</output></div></section><section class="panel recording-original"><div class="section-head"><h3>台本</h3><div class="toolbar">${button("font_minus","−",`aria-label="台本文字を小さく" ${scriptFontSize<=16?"disabled":""}`)}${button("font_plus","＋",`aria-label="台本文字を大きく" ${scriptFontSize>=40?"disabled":""}`)}${button("improve_text","AIで文章改善",improvingText||aiReview?"disabled":"")}${button("edit_script","編集",recordingEditors.has(recordingEditorKey())?"disabled":"")}</div></div>${recordingEditors.has(recordingEditorKey())?`<label class="script-pane" ${aiReview?'hidden':''}>修正案（未確定）<textarea id="text" class="script-input" rows="3" aria-label="台本の修正案">${esc(s.recording_draft??s.text)}</textarea></label>`:""}${aiReview?aiReviewHtml(aiReview):""}<label class="script-pane">確定台本（読み取り専用）<textarea class="script-input" rows="3" readonly aria-label="確定台本">${esc(s.text)}</textarea></label></section></section><section class="panel take-column"><div class="section-head"><h3>テイク ${s.takes.length} 件</h3></div><div class="takes">${s.takes.map((take,index)=>renderTakeCard(s,take,index)).join("")||`<p class="muted">まだ録音がありません。</p>`}</div></section></div>`;
 }
@@ -206,6 +206,7 @@ function bind(){const extension=document.getElementById("stop-extension") as HTM
  case"compare":player().pause();await act(action,sid);break;
  case"select":await adoptTake(b.dataset.id!);break;
  case"delete_take":showDeleteModal(b.dataset.id!);break;
+ case"purge_current_segment":showPurgeCurrentSegmentModal(s?.id??selected);break;
  case"latest_play":{const take=current()?.takes.filter(t=>t.status==='ready').at(-1);if(take)await playSavedTake(take);break;}
  case"latest_adopt":{const take=current()?.takes.filter(t=>t.status==='ready').at(-1);if(take)await adoptTake(take.id);break;}
  case"play":if(b.dataset.take&&stopTakePlayback(b.dataset.take))break;if(b.dataset.take)focusTake=b.dataset.take;await play(b.dataset.file!,b.dataset.hash!,b.dataset.take);break;
@@ -230,6 +231,30 @@ function bind(){const extension=document.getElementById("stop-extension") as HTM
  case"export":try{notice("結合しています…");const r=await rpc<{file:string;hash:string;clipped_samples:number}>(action);notice(`保存しました：${r.file}${r.clipped_samples?" ／ 音量超過あり":""}`);await play(r.file,r.hash);}catch(e){notice(String(e),true)}break;
  }});
 }
+async function navigateTabRequest(next:Stage){
+ let feedbackError="";
+ const moved=await guardTakeTrimMove(async()=>{try{
+  await draftSave;await saveScriptDraft();
+  if(next==='script'){try{await applyRecordingFeedback();}catch(error){feedbackError=String(error);}}
+ }catch(error){notice(String(error),true);return;}
+ const before=tab as Stage,scroll=root.querySelector<HTMLElement>("[data-navigation-scroll]");
+ if(scroll)saveScroll(before,scroll.scrollTop);
+ if(next!=="recording")await endContinuous();
+ tab=next;
+ if(["recording","reading","evaluation"].includes(next)&&current()&&!matchesSegment(next,current()!))setFilter(next,"all");
+ render();
+ });
+ if(!moved)return;
+ if(feedbackError)notice(feedbackError,true);
+}
+root.addEventListener('click',event=>{
+ const target=event.target;
+ if(!(target instanceof Element))return;
+ const button=target.closest<HTMLButtonElement>('[data-tab]');
+ if(!button)return;
+ event.preventDefault();event.stopImmediatePropagation();
+ void navigateTabRequest(button.dataset.tab as Stage);
+},true);
 function updateMeter(){updateRecordingWave();const db=20*Math.log10(Math.max(state.peak,0.00001));const level=Math.round(Math.max(0,Math.min(100,(db+60)/60*100)));const m=document.getElementById("meter");if(m)m.textContent=state.busy?`${state.job==="recording"?`${(state.elapsed/1000).toFixed(1)} 秒 ／ Peak ${db.toFixed(0)} dB`:"処理中"}`:tab==="script"?"確定まで未保存":"自動保存";const bar=document.getElementById("input-level")as HTMLMeterElement|null;if(bar)bar.value=state.job==="recording"?level:0;const label=document.getElementById("input-level-value");if(label)label.textContent=`${state.job==="recording"?level:0}%`;}
 async function saveScriptDraft(){
  const s=current(),input=document.getElementById('text') as HTMLTextAreaElement|null;
@@ -683,6 +708,29 @@ function showDeleteModal(take:string){
  const cancel=document.getElementById('delete-cancel') as HTMLButtonElement,confirm=document.getElementById('delete-confirm') as HTMLButtonElement;
  cancel.onclick=close;confirm.onclick=()=>{const id=deleteRequest;close();void act('delete_take',{segment:selected,take:id});};
  modal.onkeydown=e=>{if(e.key==='Delete'||e.key==='Enter'){e.preventDefault();e.stopPropagation();if(!e.repeat)confirm.click();return;}if(e.key==='Escape'){e.preventDefault();e.stopPropagation();close();}if(e.key==='Tab'){e.preventDefault();(document.activeElement===cancel?confirm:cancel).focus();}};
+ confirm.focus();
+}
+function showPurgeCurrentSegmentModal(segmentId:string){
+ const segment=state.project?.segments.find(row=>row.id===segmentId);
+ if(!segment||state.busy||busy)return;
+ document.querySelector('.delete-modal')?.remove();
+ root.insertAdjacentHTML('beforeend',`<div class="delete-modal" role="dialog" aria-modal="true" aria-labelledby="purge-current-title"><section><h2 id="purge-current-title">この発話を完全消去しますか？</h2><p>${esc(segment.text||'空の発話')}</p><p>この発話、録音、文字起こし、比較結果、保存履歴から完全に消去します。元に戻せません。</p><div class="toolbar"><button id="purge-current-cancel">キャンセル</button><button id="purge-current-confirm" class="danger">完全消去</button></div></section></div>`);
+ const modal=root.querySelector<HTMLElement>('.delete-modal')!,siblings=[...root.children].filter(el=>el!==modal) as HTMLElement[];
+ siblings.forEach(el=>el.inert=true);
+ const close=()=>{siblings.forEach(el=>el.inert=false);modal.remove();};
+ const cancel=modal.querySelector<HTMLButtonElement>('#purge-current-cancel')!,confirm=modal.querySelector<HTMLButtonElement>('#purge-current-confirm')!;
+ cancel.onclick=close;
+ confirm.onclick=()=>{close();void (async()=>{
+  try{
+   await draftSave.catch(()=>{});
+   const index=state.project?.segments.findIndex(row=>row.id===segmentId)??-1;
+   await rpc('archive_purge_active',{project_id:(state.project as any)?.id,base_generation:(state.project as any)?.generation,segment:segmentId,confirmed:true});
+   segment.takes.forEach(take=>discardTakeTrim(take.id));
+   recordingEditors.delete(`${state.root}:${segmentId}`);drafts.delete(`${segmentId}:recording`);focusTake='';await refresh(true);
+   const list=activeSegments();selected=list[Math.min(Math.max(index,0),Math.max(0,list.length-1))]?.id??list[0]?.id??'';render();notice('現在の発話と録音データを完全消去しました。');
+  }catch(error){notice(String(error),true);}
+ })();};
+ modal.onkeydown=event=>{if(event.key==='Escape'){event.preventDefault();event.stopPropagation();close();}if(event.key==='Enter'){event.preventDefault();event.stopPropagation();confirm.click();}if(event.key==='Tab'){event.preventDefault();(document.activeElement===cancel?confirm:cancel).focus();}};
  confirm.focus();
 }
 function showTakeMoveModal(take:string){

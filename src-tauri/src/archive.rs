@@ -111,6 +111,16 @@ pub fn purge(store:&mut Store,target:&str,confirmed:bool)->Result<()>{
     purge_target(store,target,false,confirmed).map(|_|())
 }
 pub fn purge_target(store:&mut Store,target:&str,is_source:bool,confirmed:bool)->Result<Value>{
+    purge_target_inner(store,target,is_source,confirmed,false)
+}
+/// 現在の発話を台本・履歴・専用音声ごと完全消去する。
+///
+/// 通常のアーカイブ消去は誤操作防止のため現役発話を拒否するが、録音画面の
+/// 明示的な確認操作からだけこの経路を使う。
+pub fn purge_active_segment(store:&mut Store,target:&str,confirmed:bool)->Result<Value>{
+    purge_target_inner(store,target,false,confirmed,true)
+}
+fn purge_target_inner(store:&mut Store,target:&str,is_source:bool,confirmed:bool,allow_active:bool)->Result<Value>{
     if !confirmed{return Err("完全消去の確認が必要です".into());}
     uuid::Uuid::parse_str(target).map_err(|_|"消去対象IDが不正です")?;
     let key=if is_source{"source_id"}else{"segment_id"};
@@ -120,8 +130,9 @@ pub fn purge_target(store:&mut Store,target:&str,is_source:bool,confirmed:bool)-
         if store.project.script_sources.iter().any(|s|s.id==target)||store.project.segments.iter().any(|s|s.source_id==target){return Err("使用中の原稿は完全消去できません".into());}
         if prior.is_none()&&!store.project.archived_sources.iter().any(|s|s.id==target){return Err("削除済み原稿がありません".into());}
     }else{
-        if store.project.segments.iter().any(|s|s.id==target){return Err("現役の発話は完全消去できません".into());}
-        if prior.is_none()&&!store.project.archived_segments.iter().any(|s|s.id==target){return Err("廃棄済み発話がありません".into());}
+        let active=store.project.segments.iter().any(|s|s.id==target);
+        if active&&!allow_active{return Err("現役の発話は完全消去できません".into());}
+        if prior.is_none()&&!active&&!store.project.archived_segments.iter().any(|s|s.id==target){return Err("廃棄済み発話がありません".into());}
     }
     let dir=safe(&store.root,"revisions")?;
     let mut snapshots=Vec::new();
@@ -138,10 +149,10 @@ pub fn purge_target(store:&mut Store,target:&str,is_source:bool,confirmed:bool)-
             ids.extend(p.segments.iter().chain(&p.archived_segments).filter(|s|s.source_id==target).map(|s|s.id.clone()));
         }
     }
-    if store.project.segments.iter().any(|s|ids.contains(&s.id)){
+    if store.project.segments.iter().any(|s|ids.contains(&s.id)&&(!allow_active||s.id!=target)){
         return Err("別の原稿へ対応付け済みの発話が含まれるため完全消去できません".into());
     }
-    if store.project.script_sources.iter().flat_map(|s|&s.draft_lines).any(|row|row["previous_id"].as_str().is_some_and(|id|ids.contains(id))){
+    if !allow_active&&store.project.script_sources.iter().flat_map(|s|&s.draft_lines).any(|row|row["previous_id"].as_str().is_some_and(|id|ids.contains(id))){
         return Err("下書きで対応付け中です。対応を解除または台本確定してから消去してください".into());
     }
     let mut owned=HashSet::new();let mut shared=HashSet::new();let mut row_set=HashSet::new();
@@ -214,6 +225,16 @@ mod tests{
         let mut old=Segment::new("消す本文".into());let target=old.id.clone();old.takes.push(Take{script_text:String::new(),trim_start:0.,trim_end:1.,id:id(),file:file.into(),hash:hash_bytes(b"only"),status:"ready".into(),duration:1.,peak:0.,warning:String::new(),created:0,endpoint:String::new()});
         let run=id();let result=format!("asr/{run}/result.json");let stderr=format!("asr/{run}/stderr.txt");write_new(&safe(&root,&result).unwrap(),b"{}").unwrap();write_new(&safe(&root,&stderr).unwrap(),b"error").unwrap();old.transcriptions.push(json!({"id":run}));store.project.archived_segments.push(old);store.save().unwrap();
         purge(&mut store,&target,true).unwrap();assert!(!safe(&root,file).unwrap().exists());assert!(!safe(&root,&result).unwrap().exists());assert!(!safe(&root,&stderr).unwrap().exists());purge(&mut store,&target,true).unwrap();
+    }
+    #[test]
+    fn active_segment_purge_removes_current_recording_and_audio(){
+        let root=std::env::temp_dir().join(id());let mut store=Store::open(root.clone(),true).unwrap();
+        let file="takes/active/audio.wav";write_new(&safe(&root,file).unwrap(),b"active").unwrap();
+        let mut segment=Segment::new("誤って生成された第n部".into());let target=segment.id.clone();segment.takes.push(Take{script_text:segment.text.clone(),trim_start:0.,trim_end:1.,id:id(),file:file.into(),hash:hash_bytes(b"active"),status:"ready".into(),duration:1.,peak:0.,warning:String::new(),created:0,endpoint:String::new()});store.project.segments.push(segment);store.save().unwrap();
+        assert!(purge(&mut store,&target,true).is_err());
+        purge_active_segment(&mut store,&target,true).unwrap();
+        assert!(store.project.segments.iter().all(|s|s.id!=target));assert!(!safe(&root,file).unwrap().exists());
+        drop(store);let reopened=Store::open(root,false).unwrap();assert!(reopened.project.segments.iter().all(|s|s.id!=target));
     }
     #[test]
     fn pending_journal_retries_without_requiring_the_archived_segment(){

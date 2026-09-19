@@ -58,6 +58,7 @@ it("台本工程の左ペインはフィルターと元Markdown構成を表示�
  it("テイク削除は中央確認を表示する",async()=>{await import("../../src/main");await settle();await tab("録音");action("削除");expect(document.querySelector("[role=dialog]")).toBeTruthy();});
  it("削除確認のキャンセルはRPCを呼ばない",async()=>{await import("../../src/main");await settle();await tab("録音");action("削除");document.querySelector<HTMLButtonElement>("#delete-cancel")?.click();expect(api.invoke.mock.calls.some(x=>x[1]?.action==="delete_take")).toBe(false);});
  it("削除確認の確定だけが削除RPCを呼ぶ",async()=>{await import("../../src/main");await settle();await tab("録音");action("削除");document.querySelector<HTMLButtonElement>("#delete-confirm")?.click();await settle();expect(api.invoke.mock.calls.some(x=>x[1]?.action==="delete_take")).toBe(true);});
+ it("現在の発話を完全消去する確認とRPCを表示する",async()=>{await import("../../src/main");await settle();await tab("録音");action("この発話を完全消去");expect(document.querySelector("#purge-current-confirm")).toBeTruthy();expect(document.querySelector(".delete-modal")?.textContent).toContain("元に戻せません");document.querySelector<HTMLButtonElement>("#purge-current-confirm")!.click();await settle();expect(api.invoke.mock.calls.some(x=>x[1]?.action==="archive_purge_active"&&x[1]?.payload.segment==="s1"&&x[1]?.payload.confirmed===true)).toBe(true);});
  it("テイクメモはblurで保存する",async()=>{await import("../../src/main");await settle();await tab("録音");const memo=document.querySelector<HTMLTextAreaElement>("[data-take-memo]")!;memo.value="語尾";memo.dispatchEvent(new FocusEvent("blur"));await settle();expect(api.invoke.mock.calls.some(x=>x[1]?.action==="take_note")).toBe(true);});
  it("採用後は次の発話へ進む",async()=>{snapshot.project.segments.push({...structuredClone(snapshot.project.segments[0]),id:"s2",text:"次の原稿",takes:[],selected:null});await import("../../src/main");await settle();await tab("録音");action("採用");await settle();expect(document.querySelector("#text, .recording-original textarea[readonly]")?.textContent??document.querySelector<HTMLInputElement>("#text, .recording-original textarea[readonly]")?.value).toContain("次の原稿");});
  it("読み確認工程に正解読み欄がある",async()=>{await import("../../src/main");await settle();await tab("読み確認");expect(document.querySelector("#kana")).toBeTruthy();});
@@ -374,6 +375,16 @@ it('PageDownとPageUpは入力欄からも前後へ移動する',async()=>{
  expect(document.querySelector<HTMLTextAreaElement>('#text, .recording-original textarea[readonly]')?.value).toBe('次の発話');
  document.querySelector('#text, .recording-original textarea[readonly]')!.dispatchEvent(new KeyboardEvent('keydown',{key:'PageUp',bubbles:true}));await settle();
  expect(document.querySelector<HTMLTextAreaElement>('#text, .recording-original textarea[readonly]')?.value).toBe('市場へ行きます。');
+});
+
+it('録音側の修正原稿エラーがあっても台本工程へ戻れる',async()=>{
+ const original=snapshot.project.segments[0];original.source_id='file';original.source_line=0;original.recording_draft='録音側の修正';
+ snapshot.project.id='project';snapshot.project.script_revision=1;
+ const parse=(text:string)=>text.split('\n').map((text,line)=>({line,text,raw:text,enabled:true,kind:0}));
+ snapshot.project.script_sources=[{id:'file',name:'01_SharePointでこんなアプリが作れる.md',confirmed_text:'元の台本',draft_text:'台本側で別編集',lines:parse('元の台本'),draft_lines:parse('台本側で別編集')}];
+ await import('../../src/main');await settle();await tab('録音');await tab('台本');
+ expect(document.querySelector('[data-tab=script]')?.getAttribute('aria-selected')).toBe('true');
+ expect(document.querySelector('#notice')?.textContent).toContain('修正元の行が台本でも編集されています');
 });
 
 it('録音中の編集を原稿差分へ戻し、再確定後の各工程から対象外行を除く',async()=>{
