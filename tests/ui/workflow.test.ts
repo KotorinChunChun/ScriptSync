@@ -376,6 +376,21 @@ it('PageDownとPageUpは入力欄からも前後へ移動する',async()=>{
  document.querySelector('#text, .recording-original textarea[readonly]')!.dispatchEvent(new KeyboardEvent('keydown',{key:'PageUp',bubbles:true}));await settle();
  expect(document.querySelector<HTMLTextAreaElement>('#text, .recording-original textarea[readonly]')?.value).toBe('市場へ行きます。');
 });
+it('台本切替後に古い編集欄のblurが起きても移動先へ保存しない',async()=>{
+ snapshot.project.segments.push({...structuredClone(snapshot.project.segments[0]),id:'s2',text:'次の発話',recording_draft:null});
+ const original=api.invoke.getMockImplementation()!;
+ api.invoke.mockImplementation(async(command:string,args:any)=>{
+  if(args.action==='recording_draft'){const segment=snapshot.project.segments.find((item:any)=>item.id===args.payload.segment);segment.recording_draft=args.payload.text;return null;}
+  return original(command,args);
+ });
+ await import('../../src/main');await settle();await tab('録音');
+ document.querySelector<HTMLButtonElement>('[data-action=edit_script]')!.click();await settle();
+ const previous=document.querySelector<HTMLTextAreaElement>('#text')!;
+ previous.value='発話1の編集';previous.dispatchEvent(new KeyboardEvent('keydown',{key:'PageDown',bubbles:true}));await settle();
+ api.invoke.mockClear();previous.value='遅れて保存される発話1の編集';previous.dispatchEvent(new FocusEvent('blur'));await settle();
+ expect(api.invoke).toHaveBeenCalledWith('command',{action:'recording_draft',payload:{segment:'s1',text:'遅れて保存される発話1の編集'}});
+ expect(api.invoke.mock.calls.some(call=>call[1]?.action==='recording_draft'&&call[1]?.payload.segment==='s2')).toBe(false);
+});
 
 it('録音側の修正原稿エラーがあっても台本工程へ戻れる',async()=>{
  const original=snapshot.project.segments[0];original.source_id='file';original.source_line=0;original.recording_draft='録音側の修正';
