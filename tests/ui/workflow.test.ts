@@ -190,8 +190,9 @@ it('未保存トリミングをF4で採用せず、移動前に保存を選択�
  });
  await import('../../src/main');await settle();await tab('録音');document.querySelector<HTMLButtonElement>('#continuous-start')!.click();await settle();
  document.querySelector<HTMLButtonElement>('[data-trim-edit]')!.click();
+ document.querySelector<HTMLButtonElement>('[data-trim-edit-mode=on]')!.click();
  const start=document.querySelector<HTMLInputElement>('[data-trim-start]')!;start.value='.25';start.dispatchEvent(new Event('input'));start.dispatchEvent(new Event('change'));
- document.querySelector<HTMLButtonElement>('[data-trim-preview=after]')!.click();await settle();
+ document.querySelector<HTMLButtonElement>('[data-trim-play]')!.click();await settle();
  document.querySelector<HTMLButtonElement>('[data-trim-cancel]')!.click();
  const handler=api.listen.mock.calls.find(x=>x[0]==='scriptsync-hotkey')![1];handler({payload:'F4'});await settle();expect(api.invoke.mock.calls.some(x=>x[1]?.action==='select')).toBe(false);
  await tab('結合・出力');expect(document.querySelector('.take-trim-modal')).toBeTruthy();document.querySelector<HTMLButtonElement>('[data-choice=save]')!.click();await settle();
@@ -248,8 +249,9 @@ it('編集ポップアップの試聴は指定範囲を加工プレビューへ�
  vi.spyOn(HTMLMediaElement.prototype,'play').mockResolvedValue();
  await import('../../src/main');await settle();await tab('録音');
  document.querySelector<HTMLButtonElement>('[data-trim-edit]')!.click();
+ document.querySelector<HTMLButtonElement>('[data-trim-edit-mode=on]')!.click();
  const end=document.querySelector<HTMLInputElement>('[data-trim-end]')!;end.value='0.50';end.dispatchEvent(new Event('change'));
- document.querySelector<HTMLButtonElement>('[data-trim-preview=after]')!.click();await settle();
+ document.querySelector<HTMLButtonElement>('[data-trim-play]')!.click();await settle();
  expect(api.invoke).toHaveBeenCalledWith('command',{action:'preview_take_edit',payload:{segment:'s1',take:'t1',start:0,end:0.5,cut_start:undefined,cut_end:undefined,mode:'full'}});
 });
 
@@ -272,7 +274,7 @@ it('評価は未評価と10点刻み11段階で即時保存しメモを保持す
  expect(document.querySelector<HTMLTextAreaElement>('[data-take-memo]')!.value).toBe('残すメモ');
  field.value='';field.dispatchEvent(new Event('change'));await settle();expect(api.invoke).toHaveBeenCalledWith('command',{action:'take_score',payload:{segment:'s1',take:'t1',score:null}});
 });
-it('編集ポップアップは編集前・編集後視聴と反復を選べる',async()=>{
+it('編集ポップアップは編集ありで加工再生し、同じボタンで一時停止できる',async()=>{
  const original=api.invoke.getMockImplementation()!;
  api.invoke.mockImplementation(async(c:string,a:any)=>a.action==='preview_take_edit'?{file:'clip.wav',hash:'clip'}:a.action==='audio'?'blob:test':original(c,a));
  let paused=true;vi.spyOn(HTMLMediaElement.prototype,'paused','get').mockImplementation(()=>paused);
@@ -280,10 +282,10 @@ it('編集ポップアップは編集前・編集後視聴と反復を選べる'
  vi.spyOn(HTMLMediaElement.prototype,'pause').mockImplementation(function(this:HTMLMediaElement){paused=true;this.dispatchEvent(new Event('pause'));});
  await import('../../src/main');await settle();await tab('録音');
  document.querySelector<HTMLButtonElement>('[data-trim-edit]')!.click();
- document.querySelector<HTMLButtonElement>('[data-trim-preview=before]')!.click();await settle();
- expect(document.querySelector<HTMLAudioElement>('#player')!.loop).toBe(false);
- paused=true;document.querySelector<HTMLInputElement>('[data-trim-loop]')!.click();document.querySelector<HTMLButtonElement>('[data-trim-preview=after]')!.click();await settle();
- expect(document.querySelector<HTMLAudioElement>('#player')!.loop).toBe(true);
+ document.querySelector<HTMLButtonElement>('[data-trim-edit-mode=on]')!.click();
+ const play=document.querySelector<HTMLButtonElement>('[data-trim-play]')!;play.click();await settle();
+ expect(play.textContent).toBe('一時停止');
+ play.click();await settle();expect(play.textContent).toBe('再生');
  expect(api.invoke.mock.calls.filter(x=>x[1]?.action==='preview_take_edit')).toHaveLength(1);
 });
 

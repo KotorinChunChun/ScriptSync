@@ -10,7 +10,7 @@ import {feedbackSource} from "./recordingFeedback";
 import type { Take, Segment, Snapshot } from "./models";
 import { escapeHtml as esc } from "./html";
 import {waveAmplitude} from "./waveScale";
-import {bindTakeTrim,isTakeTrimDirty,discardTakeTrim,guardTakeTrimMove} from "./takeTrim";
+import {bindTakeTrim,isTakeTrimDirty,discardTakeTrim,guardTakeTrimMove,updateTakeTrimPlayback} from "./takeTrim";
 import {bindTakeJoin} from "./takeJoin";
 import "./takeJoin.css";
 import {reviewRows,resolveReview,type Decision} from "./scriptReview";
@@ -87,7 +87,7 @@ function syncTakePlayback(){
  root.querySelectorAll<HTMLButtonElement>('[data-trim-preview]').forEach(b=>{const suffix=b.dataset.shortcut??"";b.textContent=(playingTake===b.dataset.trimPreview&&!player()?.paused?"停止":"試聴")+suffix;});
 }
 function stopTakePlayback(take:string){if(playingTake===take&&!player()?.paused){player().pause();syncTakePlayback();return true;}return false;}
-function updateTakeProgress(){if(!playingTake)return;const audio=player(),head=document.getElementById(`take-playhead-${playingTake}`);const duration=current()?.takes.find(t=>t.id===playingTake)?.duration||audio?.duration||0;if(head&&audio)head.style.left=`${duration?Math.min(100,((audio.currentTime||0)+playingOffset)/duration*100):0}%`;}
+function updateTakeProgress(){if(!playingTake)return;const audio=player(),head=document.getElementById(`take-playhead-${playingTake}`);const duration=current()?.takes.find(t=>t.id===playingTake)?.duration||audio?.duration||0;if(head&&audio)head.style.left=`${duration?Math.min(100,((audio.currentTime||0)+playingOffset)/duration*100):0}%`;updateTakeTrimPlayback(playingTake);}
 async function play(file:string,hash:string,take="",offset=0,limit?:number,loop=false){try{player().pause();player().ontimeupdate=null;player().loop=loop;playingTake=take;playingOffset=offset;notice("音声を読み込んでいます…");playingUrl=await rpc<string>("audio",{file,hash});player().src=playingUrl;player().ontimeupdate=()=>{if(limit!==undefined&&player().currentTime>=limit){if(loop){player().currentTime=offset;}else{player().pause();player().currentTime=limit;}}updateTakeProgress();};player().onended=()=>{updateTakeProgress();syncTakePlayback();};await player().play();updateTakeProgress();syncTakePlayback();notice(loop?"反復試聴中":"再生中");}catch(e){notice(String(e),true);}}
 const statusName=(s:string)=>({ready:"録音済み",recording:"録音中",failed:"失敗",interrupted:"中断",cancelled:"取消",pending:"待機",running:"生成中",succeeded:"生成済み"}[s]??esc(s));
 function recordingAsr(segment:Segment,take:Take){
@@ -444,7 +444,7 @@ function render(){
  if(tab==="reading"||tab==="evaluation")batchView(tab);
  if(tab==="recording"){testGuide();renderRecordingAsrCards(s);bindContinuousControls();bindRecordingResize();}
  fitWorkspace();bind();bindProjectName();bindSourceScriptTab();bindBatch();updateMeter();void loadTakeWaves();
- if(tab==="recording"&&s)bindTakeTrim({segment:s,rpc:async<T>(action:string,payload?:unknown)=>{const result=await rpc<T>(action,payload);if(action!=="trim_take")return result;const latest=await rpc<Snapshot>("state");return latest.project?.segments.find(x=>x.id===s.id)?.takes.find(x=>x.id===(payload as {take:string}).take) as T;},play,isPlaying:take=>playingTake===take&&!player()?.paused,seek:(seconds:number)=>{const audio=player();if(audio)audio.currentTime=Math.max(0,seconds);},stop:()=>{const audio=player();if(audio){audio.pause();audio.currentTime=0;}syncTakePlayback();},notice,onSaved:async()=>{const audio=player();if(audio){audio.pause();audio.currentTime=0;}await refresh(true);}});
+ if(tab==="recording"&&s)bindTakeTrim({segment:s,rpc:async<T>(action:string,payload?:unknown)=>{const result=await rpc<T>(action,payload);if(action!=="trim_take")return result;const latest=await rpc<Snapshot>("state");return latest.project?.segments.find(x=>x.id===s.id)?.takes.find(x=>x.id===(payload as {take:string}).take) as T;},play,isPlaying:take=>playingTake===take&&!player()?.paused,isCurrent:take=>playingTake===take,playbackPosition:()=>player()?.currentTime??0,pause:()=>{player()?.pause();syncTakePlayback();},resume:async()=>{await player()?.play();syncTakePlayback();},seek:(seconds:number)=>{const audio=player();if(audio)audio.currentTime=Math.max(0,seconds);},stop:()=>{const audio=player();if(audio){audio.pause();audio.currentTime=0;}syncTakePlayback();},notice,onSaved:async()=>{const audio=player();if(audio){audio.pause();audio.currentTime=0;}await refresh(true);}});
  if(player()){player().onplay=syncTakePlayback;player().onpause=syncTakePlayback;player().onended=()=>{updateTakeProgress();syncTakePlayback();};}syncTakePlayback();
  if(tab==='recording')arrangeTakeControls();
  if(tab==='recording'&&s)bindTakeJoin({projectId:(p as typeof p & {id:string}).id,segment:s,disabled:busy||state.busy||continuousRecording,rpc,play:async(file,hash)=>{await play(file,hash);},stop:()=>{player()?.pause();},prepare:async()=>{if(busy||state.busy||continuousRecording)return false;if(!await guardTakeTrimMove(()=>{}))return false;await saveScriptDraft();player()?.pause();return true;},onSaved:async()=>{await refresh(true);},notice});
