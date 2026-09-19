@@ -12,3 +12,10 @@ it('不可逆操作は確認を待ち、取消と実行を区別する',async()=
 it('実行へ初期フォーカスを置きEnterで確定、Escapeで取消する',async()=>{
  HTMLDialogElement.prototype.showModal=vi.fn();const accepted=confirmAction('保存しますか？');expect(document.activeElement).toBe(document.querySelector('[data-confirm]'));document.querySelector('dialog')!.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true}));expect(await accepted).toBe(true);const cancelled=confirmAction('保存しますか？');document.querySelector('dialog')!.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true}));expect(await cancelled).toBe(false);
 });
+
+it('背景クリックはキャンセルとして扱う',async()=>{
+ HTMLDialogElement.prototype.showModal=vi.fn();
+ const pending=confirmAction('保存しますか？');
+ document.querySelector('dialog')!.dispatchEvent(new MouseEvent('click',{bubbles:true}));
+ expect(await pending).toBe(false);
+});

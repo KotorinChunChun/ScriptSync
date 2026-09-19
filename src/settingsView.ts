@@ -4,6 +4,7 @@ import './settingsView.css';
 import {showTransientError} from './transientError';
 import {appInfo} from './appInfo';
 import {confirmAction} from './confirmAction';
+import {bindBackdropCancel} from './popupDialog';
 
 export type MachineSettings = {
   capture_endpoint:string; render_endpoint:string; asr_provider:string; asr_model:string; codex_path:string;
@@ -28,6 +29,7 @@ export async function openSettings(context:Context) {
   let poll:ReturnType<typeof setTimeout>|undefined;
   let savedSettings:MachineSettings|undefined;
   const close=()=>{if(saving)return;clearTimeout(poll);overlay.remove();settingsDirty=()=>false;settingsSave=undefined;siblings.forEach((el,i)=>el.inert=inert[i]);previous?.focus();};
+  bindBackdropCancel(overlay,close);
   const options=(rows:Device[],selected:string)=>`<option value="">Windowsの既定のデバイス</option>${selected&&!rows.some(row=>row.endpoint_id===selected)?`<option value="${esc(selected)}" selected>選択したデバイスが見つかりません</option>`:''}${rows.map(row=>`<option value="${esc(row.endpoint_id)}" ${row.endpoint_id===selected?'selected':''}>${esc(row.friendly_name)}${row.is_default?'（現在の既定）':''}</option>`).join('')}`;
   const read=():MachineSettings=>{const next={...snapshot!.settings};for(const key of Object.keys(next) as (keyof MachineSettings)[]){const input=overlay.querySelector<HTMLInputElement|HTMLSelectElement|HTMLTextAreaElement>(`[name="${key}"]`);if(input&&key!=='word_replacements')next[key]=input.value;}next.word_replacements=[...overlay.querySelectorAll<HTMLElement>('[data-word-row]')].map(row=>({from:row.querySelector<HTMLInputElement>('[data-word-from]')!.value,to:row.querySelector<HTMLInputElement>('[data-word-to]')!.value}));return next;};
   const notify=(text:string)=>{message=text;const target=overlay.querySelector('[data-message]');if(target)target.textContent=text;};
@@ -37,7 +39,7 @@ export async function openSettings(context:Context) {
   settingsDirty=()=>overlay.isConnected&&!!savedSettings&&JSON.stringify(read())!==JSON.stringify(savedSettings);
   settingsSave=async()=>{if(!await save())throw Error(message||'設定を保存できませんでした');};
   const draw=()=>{
-    if(!snapshot){overlay.innerHTML='<section class="settings-dialog"><h2>設定</h2><p>設定を読み込んでいます…</p><button data-close>閉じる</button></section>';overlay.querySelector<HTMLButtonElement>('[data-close]')!.onclick=close;return;}
+    if(!snapshot){overlay.innerHTML='<section class="settings-dialog"><h2>設定</h2><p>設定を読み込んでいます…</p><footer class="popup-actions"><button data-close>閉じる</button></footer></section>';overlay.querySelector<HTMLButtonElement>('[data-close]')!.onclick=close;return;}
     const s=snapshot.settings,qr=qrcode(0,'M');qr.addData(snapshot.web_url);qr.make();
     overlay.innerHTML=`<section class="settings-dialog"><header><h2>設定</h2></header><p data-message role="status">${esc(message||snapshot.load_error||'このPCに保存します。プロジェクトの保存状態には影響しません。')}</p><div class="settings-scroll"><fieldset class="settings-app-info"><legend>アプリ情報</legend><p>${esc(appInfo.name)}</p><p>バージョン：<span data-app-version>${esc(appInfo.version)}</span></p><p>更新日：<time datetime="${appInfo.updatedAt}">${appInfo.updatedAt}</time></p></fieldset>
       <fieldset><legend>音声デバイス</legend><label>録音デバイス<select name="capture_endpoint">${options(devices.capture,s.capture_endpoint)}</select></label><label>再生デバイス<select name="render_endpoint">${options(devices.render,s.render_endpoint)}</select></label><p>「既定」はWindowsで変更したデバイスに追従します。選択した機器がない場合は、選び直してください。録音・認識中は設定を変更できません。</p><button data-refresh-devices>デバイス一覧を更新</button></fieldset>
@@ -45,7 +47,7 @@ export async function openSettings(context:Context) {
       <fieldset><legend>単語の静的変換辞書</legend><p>AIへ送信する前に置換します。英数字は単語単位、日本語は一致部分を置換します。長い置換元を優先し、置換結果をさらに置換しません。</p><div data-word-list class="settings-word-list">${(s.word_replacements??[]).map(row=>`<div data-word-row class="settings-word-row"><label>置換元<input data-word-from value="${esc(row.from)}"></label><label>置換先<input data-word-to value="${esc(row.to)}"></label><button data-word-remove>削除</button></div>`).join('')}</div><button data-word-add>単語を追加</button></fieldset>
       <fieldset><legend>ScriptSyncWeb</legend><div class="settings-web"><div><p class="settings-url">${esc(snapshot.web_url)}</p><button data-link="web">ScriptSyncWebを開く</button><p>スマートフォンでは右のQRコードから開けます。</p></div><div class="settings-qr" aria-label="ScriptSyncWebのQRコード">${qr.createSvgTag({cellSize:4,margin:4,scalable:true})}</div></div></fieldset>
 
-      </div><footer><button data-save class="primary button-large">設定を保存</button><button data-cancel class="button-large">閉じる</button></footer></section>`;
+      </div><footer class="popup-actions"><button data-cancel class="button-large">閉じる</button><button data-save class="primary button-large">設定を保存</button></footer></section>`;
     overlay.querySelector<HTMLButtonElement>('[data-word-add]')!.onclick=()=>{snapshot!.settings=read();snapshot!.settings.word_replacements!.push({from:'',to:''});draw();overlay.querySelectorAll<HTMLInputElement>('[data-word-from]').item(snapshot!.settings.word_replacements!.length-1)?.focus();};
     overlay.querySelectorAll<HTMLButtonElement>('[data-word-remove]').forEach(button=>button.onclick=()=>button.closest('[data-word-row]')!.remove());
     overlay.querySelector<HTMLButtonElement>('[data-cancel]')!.onclick=close;

@@ -1,4 +1,5 @@
 import {confirmAction} from "./confirmAction";
+import {bindBackdropCancel} from "./popupDialog";
 export type TrimTake={id:string;duration:number;file:string;hash:string;trim_start?:number;trim_end?:number};
 export type TakeTrimContext={segment:{id:string;takes:TrimTake[]};rpc:<T>(action:string,payload?:unknown)=>Promise<T>;play:(file:string,hash:string,takeId?:string,start?:number,duration?:number,loop?:boolean)=>Promise<void>;isPlaying?:(takeId:string)=>boolean;isCurrent?:(takeId:string)=>boolean;playbackPosition?:()=>number;pause?:()=>void;resume?:()=>Promise<void>|void;seek?:(seconds:number)=>void;stop?:()=>void;notice:(message:string,error?:boolean)=>void;onSaved?:(take:TrimTake)=>Promise<void>|void;};
 type Range={start:number;end:number;cutStart?:number;cutEnd?:number};type Entry={context:TakeTrimContext;take:TrimTake};type Playback={mode:"original"|"edited";range:Range};

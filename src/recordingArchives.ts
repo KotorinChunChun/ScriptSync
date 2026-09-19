@@ -1,4 +1,5 @@
 import {escapeHtml as esc} from "./html";
+import './popupDialog';
 type ArchiveSegment={id:string;text:string;kana?:string;source_id?:string;takes:{id:string;file:string;hash:string;status:string}[]};
 type ArchiveSource={id:string;name:string;confirmed_text:string;draft_text?:string};
 type ArchiveProject={id?:string;generation?:number;archived_segments?:ArchiveSegment[];script_sources?:ArchiveSource[];archived_sources?:ArchiveSource[];deletion_records?:{segment_id?:string;source_id?:string;status:string}[]};

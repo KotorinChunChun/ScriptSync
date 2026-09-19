@@ -32,6 +32,7 @@ import "./exportView.css";
 import "./navigation.css";
 import "./buttonSizes.css";
 import {confirmAction} from "./confirmAction";
+import './popupDialog';
 import {createCloseGuard} from './closeGuard';
 import {filterFor, matchesSegment, optionsFor, recordingNavigationRows, renderSegmentTree, renderSourceTree, renderStageBar, resetNavigation, saveScroll, scrollFor, setCollapsed, setFilter, type Stage} from "./navigation";
 const followNavigation=createNavigationFollower();

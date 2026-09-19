@@ -1,12 +1,14 @@
 import {escapeHtml} from './html';
+import {bindBackdropCancel} from './popupDialog';
 export type CloseChoice='save'|'discard'|'cancel';
 export function askUnsavedClose(message='未保存の変更があります。保存して閉じますか？'):Promise<CloseChoice>{
  return new Promise(resolve=>{
   const dialog=document.createElement('dialog');dialog.className='action-confirm';
-  dialog.innerHTML=`<p>${escapeHtml(message)}</p><div class="toolbar"><button data-choice="cancel">キャンセル</button><button data-choice="discard">保存せず閉じる</button><button class="primary" data-choice="save">保存して閉じる</button></div>`;
+  dialog.innerHTML=`<p>${escapeHtml(message)}</p><div class="toolbar popup-actions"><button data-choice="cancel">キャンセル</button><button data-choice="discard">保存せず閉じる</button><button class="primary" data-choice="save">保存して閉じる</button></div>`;
   const finish=(choice:CloseChoice)=>{dialog.remove();resolve(choice);};
   dialog.querySelectorAll<HTMLButtonElement>('[data-choice]').forEach(button=>button.onclick=()=>finish(button.dataset.choice as CloseChoice));
   dialog.oncancel=event=>{event.preventDefault();finish('cancel');};
+  bindBackdropCancel(dialog,()=>finish('cancel'));
   document.body.append(dialog);dialog.showModal();dialog.querySelector<HTMLButtonElement>('[data-choice=cancel]')!.focus();
  });
 }

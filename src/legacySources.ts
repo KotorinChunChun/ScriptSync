@@ -1,4 +1,5 @@
 import { escapeHtml as escape } from "./html";
+import './popupDialog';
 type Line={line:number;text:string;enabled:boolean};
 type Source={id:string;name:string;confirmed_text:string;draft_text:string};
 type Segment={id:string;source_id:string;source_text:string;text:string};
