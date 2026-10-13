@@ -155,7 +155,7 @@ pub fn check_installation(app: &App) -> Result<Value> {
         let result=(|| {
             let root=runtime_path(&root)?;
             let mut command=Command::new(root.join("python/python.exe"));
-            command.args(["-I","-c","import sys; from pathlib import Path; root=Path(sys.argv[1]); sys.path.insert(0,str(root/'python'/'Lib'/'site-packages')); import pykakasi; from faster_whisper import WhisperModel; WhisperModel(sys.argv[2],device='cpu',compute_type='int8',download_root=str(root/'models'),local_files_only=True); print('ready')"]).arg(&root).arg(&model);
+            command.args(["-I","-c","import sys; from pathlib import Path; root=Path(sys.argv[1]); sys.path.insert(0,str(root/'python'/'Lib'/'site-packages')); import pykakasi; from faster_whisper import WhisperModel; WhisperModel(sys.argv[2],device='cpu',compute_type='int8',download_root=str(Path('C:/AI/Models/Speech/Whisper/ScriptSync')),local_files_only=True); print('ready')"]).arg(&root).arg(&model);
             run_logged(command,&root,"installation-check",Duration::from_secs(180))?;
             std::fs::write(root.join(format!("ready-{model}.json")),b"{\"verified\":true}").map_err(|e|e.to_string())
         })();

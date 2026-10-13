@@ -23,7 +23,7 @@ class AdapterTest(unittest.TestCase):
             code = "import sys\nfrom pathlib import Path\n__file__ = sys.argv.pop(1)\nsys.path.insert(0, str(Path(__file__).parent / 'python' / 'Lib' / 'site-packages'))\n" + stub + source
             result = subprocess.run([sys.executable, '-I', '-c', code, str(missing), '--prepare', '--model', 'small'], capture_output=True, text=True, check=True)
             lines = result.stdout.splitlines()
-            self.assertEqual(json.loads(lines[0])['download_root'], str(Path(root) / 'models'))
+            self.assertEqual(json.loads(lines[0])['download_root'], str(Path('C:/AI/Models/Speech/Whisper/ScriptSync')))
             self.assertEqual(json.loads(lines[1]), {'prepared':'small'})
             self.assertFalse(missing.exists())
     def test_local_result_retains_raw_japanese(self):

@@ -8,7 +8,7 @@ from pathlib import Path
 def recognize(args):
     from faster_whisper import WhisperModel
     model = WhisperModel(args.model, device='cpu', compute_type='int8',
-                         download_root=str(Path(__file__).parent / 'models'),
+                         download_root=str(Path('C:/AI/Models/Speech/Whisper/ScriptSync')),
                          local_files_only=not args.prepare)
     if args.prepare:
         return {'prepared': args.model}
