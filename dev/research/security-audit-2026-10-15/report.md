@@ -21,3 +21,11 @@ npm audit --json: critical 2 / high 1 / moderate 1 / low 0、計4パッケージ
 
 ## 実装・検証状況
 まず本レポートを差分・参照検査してコミット。続いてsource-map-jsをnpm update --ignore-scriptsで更新し、npm test / npm run build / 再auditで検証予定。実施結果はこの文書と現行作業の dev/history/v0.0.7/v0.0.7-imp.md に追記。ネイティブ録音・GUI・外部サービス接続は対象外。Git履歴・一般パスワードまで漏洩がない保証はない。
+
+## 2026-10-15 改善実装結果
+
+- [x] source-map-js 1.2.1→1.2.2をlockで更新。npm update source-map-js --ignore-scriptsを使用。npmが落とした他platformのlibc属性を元に戻し、対象依存以外の意味差分を残していない。
+- [x] npm test: 33ファイル・225件成功。npm run build成功、npm run check:staticは30項目成功。
+- [x] 再npm audit: high 1→0、critical 2 / moderate 1は残存。npm audit --omit=devは0。
+- [ ] tinypool 1.xの最新は1.1.1で修正がなく、Vitest major更新に関わるため保留。vitest.config.ts:2はjsdomで、browser modeは使用していない。
+- [x] 文書・lock差分検査。ネイティブGUI/録音/実機の再試験・公開はしていない。
