@@ -1,0 +1,17 @@
+/** 公開した2つのURLを、隔離したブラウザーと合成マイクで確認する。 */
+import {chromium} from 'playwright';import fs from 'node:fs/promises';import path from 'node:path';import assert from 'node:assert/strict';
+const out=path.resolve('dev/history/v0.0.8/logs','public-'+new Date().toISOString().replaceAll(':','-'));await fs.mkdir(out,{recursive:true});
+const browser=await chromium.launch({channel:'msedge',headless:true,args:['--use-fake-device-for-media-stream','--use-fake-ui-for-media-stream','--autoplay-policy=no-user-gesture-required']}),results=[];
+try{
+ for(const lite of [true,false]){
+  const context=await browser.newContext({viewport:{width:1280,height:900},permissions:['microphone'],acceptDownloads:true}),page=await context.newPage(),errors=[];page.on('pageerror',e=>errors.push(e.message));
+  const url=`https://excel-chunchun.sakura.ne.jp/test/${lite?'scriptsyncweb':'scriptsync'}/`,response=await page.goto(url);assert.equal(response.status(),200);assert.ok(response.headers()['content-security-policy']);
+  if(lite){
+   await page.locator('#sampleProject').click();await page.waitForFunction(()=>document.querySelectorAll('.card').length===5);await page.locator('#recordingFormat').selectOption('wav');const card=page.locator('.card').first();await card.getByRole('button',{name:'録音',exact:true}).click();await page.waitForFunction(()=>document.querySelector('#recordState').textContent.includes('録音中'));await page.waitForTimeout(700);await card.getByRole('button',{name:'録音を停止'}).click();await page.waitForFunction(()=>document.querySelector('#recordState').textContent==='');await page.locator('audio').first().waitFor({state:'attached'});await page.reload();await page.locator('audio').first().waitFor({state:'attached'});
+  }else{
+   await page.locator('[data-action=new]').click();await page.locator('[data-action=script_empty]').click();await page.locator('#markdown-source').fill('公開確認の前半です。\n公開確認の後半です。');await page.locator('#markdown-source').dispatchEvent('input');await page.waitForTimeout(800);await page.locator('[data-action=script_approve_all]').click();await page.waitForTimeout(550);await page.locator('[data-action=script_commit]').click();await page.waitForTimeout(500);await page.locator('[data-tab=recording]').click();await page.locator('[data-action=record]').first().click();await page.waitForTimeout(1100);await page.locator('[data-action=stop]').first().click();await page.locator('[data-trim-edit]').first().waitFor();const downloaded=page.waitForEvent('download');await page.locator('#web-backup').click();await (await downloaded).saveAs(path.join(out,'public-backup.zip'));await page.reload();await page.locator('[data-tab=recording]').click();await page.locator('[data-trim-edit]').first().waitFor();
+  }
+  await page.screenshot({path:path.join(out,lite?'lite-desktop.png':'full-desktop.png')});await page.setViewportSize({width:390,height:844});await page.screenshot({path:path.join(out,lite?'lite-mobile.png':'full-mobile.png')});
+  const size=await page.evaluate(()=>({width:innerWidth,scroll:document.documentElement.scrollWidth}));assert.ok(size.scroll<=size.width+1,JSON.stringify(size));assert.deepEqual(errors,[]);results.push({url,status:200,recording:true,reloadPreserved:true,mobile:size,errors});await context.close();process.stdout.write('公開画面の録音・再読込・390px確認: '+url+'\n');
+ }
+}catch(error){results.push({error:error.stack});process.exitCode=1;}finally{await browser.close();await fs.writeFile(path.join(out,'result.json'),JSON.stringify(results,null,2));process.stdout.write(out+'\n');}
