@@ -1,33 +1,43 @@
-# KotorinToysへの収録
+# KotorinToysの管理連携
 
 2026-10-24。ScriptSync（読みあわせ）の開発正本は `C:\develop\KotorinToys\tools\ScriptSync`。独立Gitと [ScriptSyncリポジトリ](https://github.com/KotorinChunChun/ScriptSync) を維持し、親は採用コミットをgitlinkで記録する。
 
-## 現在の対応範囲
+## 対応する操作
 
-KotorinToysのローカル一覧と配信用一覧のソースに、[tool.json](../tool.json) の定義を登録する。使い方・GitHubへの導線を用意する。ローカル変更だけでは公開済み本体の一覧は変わらない。
+本体の開発一覧から、管理用EXEの起動・画面表示・状態確認・正常停止に対応する。[tool.json](../tool.json) が4能力を宣言する。通常起動はメイン画面を表示し、本体の `--startup --launch-origin host_manual` 起動は非表示で待機する。起動済みの場合、本体は既存PIDを維持して画面を表示し、最小化状態も復元する。本体を終了しても子は動作を続ける。
 
-本体管理用の状態取得・画面表示・正常停止・無表示起動の通信口は未実装。`capabilities` は空配列であり、本体からの起動・停止と自動起動を利用できない。配布状態 `unpublished` はKotorinToys対応インストーラーとして未公開という意味であり、単体の署名付きMSIX公開状態とは別である。MSIXを汎用Inno導入へ渡さない。
+停止時は画面側とバックエンドの両方を照合する。録音・保存・文字起こし・一括処理・連続録音モード・原稿や設定の未保存入力・確認／編集ダイアログが残っている場合は拒否する。作業を完了してから再試行する。強制終了や未保存内容の自動破棄へ切り替えない。停止受理後は新しい操作を遮断し、試聴とホットキーを終了して画面状態を保存する。
 
-`appId: KotorinToys.ScriptSync` は本体一覧の登録識別子。既存MSIXの `jp.kotorinchunchun.scriptsync`、Publisher、Application Id、保存先を変更するものではない。既存の `.scriptsync` と対応する `.scriptsync.data/` は一組で保持する。ソース移動で個人の原稿・録音・アプリ設定を移行しない。
-
-## 単体で利用する
-
-配布版は [配布ページ](https://excel-chunchun.sakura.ne.jp/download/ScriptSync/) の署名付きMSIXを使用する。操作は [利用者ガイド](USERS_GUIDE.md)、キーの有効条件は [キー定義](../dev/SHORTCUT_KEYS.md) を参照する。
-
-開発起動は移動先で行う。
+## ビルドと確認
 
 ```powershell
 cd C:\develop\KotorinToys\tools\ScriptSync
-npm run tauri dev
+pwsh -File dev/scripts/build-debug-ScriptSync-kotorintoys.ps1
 ```
 
-ビルド・前提環境は [開発者ガイド](DEVELOPERS_GUIDE.md)、パッケージ作成は [MSIX手順](MSIX.md) に従う。`tool.json` の実行先は既存ビルドの `src-tauri/target/release/scriptsync.exe`。配置済みの古いEXEを、今回ビルド・検証したものとは扱わない。
-
-## 本体の開発一覧で確認する
+スクリプトは画面を内包したDebug EXEを `target/kotorintoys/scriptsync.exe` に配置する。Viteサーバーは不要。Rust／Node.js等の前提は [開発者ガイド](DEVELOPERS_GUIDE.md) を参照する。
 
 ```powershell
 cd C:\develop\KotorinToys
 pwsh -File dev/scripts/start.ps1 -LocalCatalog
 ```
 
-一覧の「すべて」または「未導入」でScriptSyncを選ぶ。起動中の本体がある場合はその画面が再利用されるため、一覧モードを切り替えるには先に本体を終了する。管理操作の無効状態と使い方への導線を確認する。
+「すべて」「未導入」からScriptSyncを選択して起動する。起動中の本体がある場合はその画面が再利用されるため、一覧モードの切替時は先に本体を終了する。ローカル変更だけでは公開済み本体の一覧・実行物は更新されない。
+
+単体開発は `npm run tauri dev`。一般の操作は [利用者ガイド](USERS_GUIDE.md)、キーは [キー定義](../dev/SHORTCUT_KEYS.md)、単体配布は [MSIX手順](MSIX.md) を参照する。
+
+## 通信と保護
+
+管理契約2のUTF-8・1行JSONを使用する。窓口は `\\.\pipe\KotorinToys.<現在のWindows利用者SID>.script-sync`。現在利用者だけのACLとローカル接続、同じ対話セッション、表示・停止の対象PIDを検証する。応答はPID・4部版・準備状態・起動経路・能力・結果と要求IDを返し、原稿や録音パスを含めない。`status` の文字列要求にも対応する。
+
+要求は8,192バイト、要求IDは128バイト、通信と画面確認は接続後2秒まで。遅延した表示・停止は実行せず、停止応答を返せなかった場合は受理を撤回する。未対応操作は `unsupported`、誤PIDと作業中は `refused`。本体は停止受理とプロセス終了を別に確認する。
+
+`--settings-dir <絶対パス>` では設定・ASR領域・画面状態・WebViewデータを専用領域へ分離できる。本体の実接続試験はこの指定を使い、通常の設定・個人原稿・録音を使用しない。通常起動の保存先は維持する。
+
+## 配布と既存データ
+
+今回は開発EXEの管理連携。`distributionStatus: unpublished` はKotorinToys対応インストーラーとして未公開という意味で、単体の署名付きMSIX公開状態とは別。既存MSIXの `jp.kotorinchunchun.scriptsync`、Publisher、Application Id、保存形式を維持する。汎用Inno製品には変換せず、本体からのインストール・更新・削除とMSIX専用導入管理は未対応。
+
+自動起動予約は追加しない。`silent-start` は本体が非表示で起動できる能力であり、正式導入やOS予約の条件を省略するものではない。既存の `.scriptsync` と `.scriptsync.data/` は一組で保持し、今回の連携で移行しない。
+
+実装と検証は [管理連携記録](../dev/history/v0.0.6/kotorintoys-management-imp.md) を参照する。

@@ -11,6 +11,8 @@ use std::sync::{
 
 #[derive(Default)]
 pub struct Inner {
+    pub management_operations: usize,
+    pub management_stopping: bool,
     pub cue_playback: crate::native_playback::NativePlayback,
     pub recording_error: Option<String>,
     pub native_playback: crate::native_playback::NativePlayback,

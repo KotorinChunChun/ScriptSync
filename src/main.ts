@@ -34,6 +34,7 @@ import "./buttonSizes.css";
 import {confirmAction} from "./confirmAction";
 import './popupDialog';
 import {createCloseGuard} from './closeGuard';
+import {installManagement} from './management';
 import {filterFor, matchesSegment, optionsFor, recordingNavigationRows, renderSegmentTree, renderSourceTree, renderStageBar, resetNavigation, saveScroll, scrollFor, setCollapsed, setFilter, type Stage} from "./navigation";
 const followNavigation=createNavigationFollower();
 let aiReview:AiReview|null=null;
@@ -64,6 +65,8 @@ const pendingProjectWrites=new Set<Promise<unknown>>();
 async function rpc<T=unknown>(action:string,payload:unknown={}):Promise<T>{if(!desktop)throw new Error("閲覧プレビューです。保存・録音はデスクトップアプリで操作してください。");const pending=invoke<T>("command",{action,payload});const writing=["recording_draft","script_draft","take_note","take_score","project_rename","settings_save","save_project","export_settings"].includes(action);if(writing)pendingProjectWrites.add(pending);let result:T;try{result=await pending;}finally{pendingProjectWrites.delete(pending);}if(action==="audio"&&typeof result==="string"){const v=payload as {file:string;hash:string};registerNativeAudio(result,v.file,v.hash);}return result;}
 function notice(message:string,error=false){const el=document.getElementById("notice");if(el){el.textContent=message;el.classList.toggle("error",error);}}
 let draftSave:Promise<void>=Promise.resolve();
+let managementInstalled:Promise<void>=Promise.resolve();
+let managedClosing=false;
 async function act(action:string,payload:unknown={}){
  if(action!=="stop"&&action!=="cancel_record")await draftSave;
  if(["new","open"].includes(action)&&!await guardTakeTrimMove(()=>{}))return false;
@@ -811,7 +814,7 @@ async function continuousKey(key:string,local=false){
 }
 async function initializeUi(){
  try{const result=await rpc<{recovering?:boolean}>('ui_attach');if(result?.recovering)tab='recording';await loadDevices();await refresh(true);}
- catch(e){notice(String(e),true);}finally{uiReady=true;}
+ catch(e){notice(String(e),true);}finally{uiReady=true;if(desktop){await managementInstalled;await invoke('management_ui_ready',{}).catch(error=>notice(String(error),true));}}
 }if(desktop){void listen<string>('scriptsync-hotkey',event=>{void continuousKey(event.payload);}).catch(e=>notice(String(e),true));}render();if(desktop){void initializeUi();setInterval(()=>{if(uiReady)void refresh();},700);setInterval(()=>{if(uiReady&&state.busy&&state.job==='recording')void refresh();},100);setInterval(()=>{if(uiReady)void rpc<{interrupted?:boolean}>('ui_heartbeat').then(async result=>{if(result?.interrupted){uiReady=false;await endContinuous();await initializeUi();}}).catch(()=>{});},1000);window.addEventListener('pagehide',()=>{void rpc('ui_detach').catch(()=>{});});}else{notice('画面プレビューです。録音・保存はデスクトップアプリで使用できます。');}
 
 function testGuide(){
@@ -955,6 +958,11 @@ async function requestExit(application:boolean){
 }
 async function requestProjectClose(){await requestExit(false);}
 if(desktop)void listen('app-close-requested',()=>void requestExit(true)).catch(error=>notice(String(error),true));
+if(desktop)managementInstalled=installManagement({listen,invoke,
+ blocked:()=>!uiReady||exitInProgress||busy||state.busy||continuousRecording||startingRecording||improvingText||approvingAi||!!aiReview||pendingProjectWrites.size>0||hasUnsavedProject()||!!state.project?.segments.some(segment=>segment.takes.some(take=>isTakeTrimDirty(take.id))),
+ freeze:closing=>{managedClosing=closing;root.inert=closing;}
+});
+document.addEventListener('keydown',event=>{if(managedClosing){event.preventDefault();event.stopImmediatePropagation();}},true);
 
 async function approveAiReview(){
  const review=aiReview;if(!review||approvingAi)return;

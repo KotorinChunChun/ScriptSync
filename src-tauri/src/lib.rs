@@ -13,6 +13,8 @@ mod project_rename;
 mod take_trim;
 mod take_join;
 mod ui_session;
+mod management;
+mod startup;
 use tauri::{Manager,Emitter};
 
 mod alignment;
@@ -82,6 +84,7 @@ async fn command(
     payload: serde_json::Value,
 ) -> std::result::Result<serde_json::Value, String> {
     let app = state.inner().clone();
+    let _operation = management::begin_operation(&app)?;
     let title_app = app.clone();
     let title_action = action.clone();
     // 音声デバイス列挙はMTAを使うため、STAが必要な選択画面にプールのスレッドを再利用しない。
@@ -122,6 +125,13 @@ fn health_check() -> &'static str {
 pub fn run() {
     let app = app::App::default();
     let args: Vec<String> = std::env::args().collect();
+    let options = startup::Options::parse(&args).expect("起動引数が不正です");
+    let mut context = tauri::generate_context!();
+    if let Some(directory) = &options.settings_dir {
+        let webview = directory.join("webview2");
+        std::fs::create_dir_all(&webview).expect("検証用WebView領域を作成できません");
+        context.config_mut().app.windows[0].data_directory = Some(webview);
+    }
     if let Some(path) = project_open::startup_path(&args) {
         {
             let path = std::path::PathBuf::from(path);
@@ -148,6 +158,7 @@ pub fn run() {
     tauri::Builder::default()
         .on_page_load(|webview, payload| {
             if payload.event() == tauri::webview::PageLoadEvent::Started {
+                if let Some(management) = webview.try_state::<management::Management>() { management.ui_lost(); }
                 ui_session::lost(&webview.state::<app::App>());
             }
         })
@@ -156,11 +167,10 @@ pub fn run() {
             move |_, request| media::response(&app, request)
         })
         .manage(app)
+        .manage(options)
         .setup(move |application| {
             hotkeys::install(application.handle().clone());
-            let config = application
-                .path()
-                .app_config_dir()?
+            let config = startup::config_dir(application.handle())?
                 .join("読みあわせ/project-location.json");
             application
                 .state::<app::App>()
@@ -168,7 +178,7 @@ pub fn run() {
                 .lock()
                 .unwrap()
                 .project_location = project_location::ProjectLocation::load(config);
-            application.state::<app::App>().0.lock().unwrap().machine_settings = machine_settings::MachineSettings::load(application.path().app_config_dir()?.join("machine-settings.json"), application.path().app_local_data_dir()?.join("asr"));
+            application.state::<app::App>().0.lock().unwrap().machine_settings = machine_settings::MachineSettings::load(startup::config_dir(application.handle())?.join("machine-settings.json"), startup::data_dir(application.handle())?.join("asr"));
             let window = application
                 .get_webview_window("main")
                 .ok_or_else(|| std::io::Error::other("メインウィンドウが見つかりません"))?;
@@ -181,15 +191,18 @@ pub fn run() {
                     let _ = saved_window.emit("app-close-requested", ());
                 }
             });
-            window.show()?;
+            application.manage(management::Management::start(application.handle().clone())?);
+            if !application.state::<startup::Options>().hidden { window.show()?; }
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
             health_check,
             close_application,
             command,
-            hotkeys::continuous_hotkeys
+            hotkeys::continuous_hotkeys,
+            management::management_ui_ready,
+            management::management_stop_reply
         ])
-        .run(tauri::generate_context!())
+        .run(context)
         .expect("Tauriアプリケーションの起動に失敗しました");
 }

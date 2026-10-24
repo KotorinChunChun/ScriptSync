@@ -25,10 +25,7 @@ struct MonitorBounds {
 }
 
 fn state_path(app: &AppHandle) -> Result<PathBuf, String> {
-    let directory = app
-        .path()
-        .app_config_dir()
-        .map_err(|e| e.to_string())?
+    let directory = crate::startup::config_dir(app)?
         .join("読みあわせ");
     fs::create_dir_all(&directory).map_err(|e| e.to_string())?;
     Ok(directory.join(STATE_FILE))

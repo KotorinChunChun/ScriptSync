@@ -18,6 +18,8 @@ npm run tauri dev
 
 UIはViteのホットリロードで反映されます。録音は停止・保存してから更新してください。Rust変更時は再ビルドされます。`npm run dev`だけではブラウザー表示用で、ネイティブ録音やファイル操作の動作確認にはなりません。
 
+KotorinToysから操作する開発版は `pwsh -File dev/scripts/build-debug-ScriptSync-kotorintoys.ps1` で作成します。画面を内包した `target/kotorintoys/scriptsync.exe` を本体が管理します。非表示起動と正常停止、専用設定の試験方法は [管理連携ガイド](kotorintoys-integration.md) を参照してください。
+
 ```powershell
 npm run tauri build -- --no-bundle
 ```
