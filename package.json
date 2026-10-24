@@ -27,14 +27,22 @@
     "check:rust-advisories": "node dev/scripts/check-rust-advisories.mjs",
     "tauri": "tauri",
     "release:msix": "pwsh -NoProfile -File dev/scripts/build-msix.ps1",
-    "release:plan": "pwsh -NoProfile -File dev/scripts/publish-ScriptSync.ps1 -Mode Plan"
+    "release:plan": "pwsh -NoProfile -File dev/scripts/publish-ScriptSync.ps1 -Mode Plan",
+    "services:start": "node tools/services/server.mjs",
+    "test:services": "node --test tools/services/server.test.mjs",
+    "build:web": "tsc && vite build --mode web --base=/test/scriptsync/ --outDir dist-web",
+    "test:web": "vitest run src/web"
   },
   "dependencies": {
+    "@huggingface/transformers": "4.3.1",
     "@tauri-apps/api": "^2.0.0",
-    "qrcode-generator": "^2.0.4"
+    "fflate": "0.8.3",
+    "qrcode-generator": "^2.0.4",
+    "ws": "8.22.0"
   },
   "devDependencies": {
     "@tauri-apps/cli": "^2.0.0",
+    "fake-indexeddb": "6.2.4",
     "jsdom": "^26.1.0",
     "playwright": "^1.64.1",
     "typescript": "^5.7.0",

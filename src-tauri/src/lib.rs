@@ -1,4 +1,5 @@
 mod machine_settings;
+mod services;
 mod text_improvement;
 mod native_playback;
 mod cloud_upload;

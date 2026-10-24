@@ -41,7 +41,7 @@ pub fn dispatch(app: &App, action: &str, payload: &Value) -> Option<Result<Value
             }
             a.busy = true;
             a.job = "text-improve".into();
-            a.message = "Codex CLIで文章を改善しています".into();
+            a.message = "接続サーバーで文章を改善しています".into();
             preview_settings.unwrap_or_else(|| a.machine_settings.settings.clone())
         };
         let confirmed = if testing { "今日は良い天気です。明日の会議は午前10時からです。" } else { payload["confirmed_text"].as_str().unwrap_or(text) };
@@ -187,20 +187,8 @@ fn cli_command(settings: &Settings, root: &Path, output: &Path) -> Result<Comman
 fn improve(settings: &Settings, confirmed: &str, text: &str) -> Result<String> {
     validate_text(text)?;
     if confirmed.len()>120_000 || confirmed.contains('\0') { return Err("確定台本が長すぎるか不正です".into()); }
-    let root = TemporaryDirectory(
-        std::env::temp_dir().join(format!("scriptsync-text-{}", crate::domain::id())),
-    );
-    std::fs::create_dir(&root.0).map_err(|e| e.to_string())?;
-    let output = root.0.join("result.txt");
-    let mut command = cli_command(settings, &root.0, &output)?;
-    // 本文は構造化して入力データとして区別し、シェル引数へ連結しない。
     let prompt = improvement_prompt(settings, confirmed, text);
-    let input = root.0.join("input.txt");
-    std::fs::write(&input, prompt).map_err(|e| e.to_string())?;
-    command.stdin(Stdio::from(
-        std::fs::File::open(&input).map_err(|e| e.to_string())?,
-    ));
-    run_command(command, &output, Duration::from_secs(300))
+    crate::services::improve(settings,&prompt)
 }
 
 fn run_command(mut command: Command, output: &Path, timeout: Duration) -> Result<String> {
@@ -338,7 +326,7 @@ mod tests {
         settings.codex_path = "scriptsync-missing-preview.exe".into();
         settings.codex_model = "gpt-5.6-terra".into();
         let result = dispatch(&app, "text_improve_test", &json!({"settings":settings})).unwrap();
-        assert!(result.unwrap_err().contains("起動できません"));
+        assert!(result.is_err(),"接続トークン未設定または未起動サーバーを成功扱いしない");
         let state = app.0.lock().unwrap();
         assert_eq!(state.machine_settings.settings, Settings::default());
         assert!(!state.busy);

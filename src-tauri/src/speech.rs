@@ -6,78 +6,22 @@ use crate::{
 };
 use serde_json::{Value, json};
 use std::{
-    fs::OpenOptions,
     path::Path,
-    process::{Command, Stdio},
     sync::{
         Arc,
         atomic::{AtomicBool, Ordering},
     },
-    time::{Duration, Instant},
 };
-const EXE: &str = "C:/develop/TextToSpeechCLI/TextToSpeechCLI.exe";
-// 設定はCLI側の既定を利用し、必要な場合だけ環境変数で指定する。
-pub fn cli(args: &[String], folder: &Path, stop: &AtomicBool) -> Result<Value> {
-    std::fs::create_dir_all(folder).map_err(|e| e.to_string())?;
-    let stdout = OpenOptions::new()
-        .write(true)
-        .create_new(true)
-        .open(folder.join("stdout.json"))
-        .map_err(|e| e.to_string())?;
-    let stderr = OpenOptions::new()
-        .write(true)
-        .create_new(true)
-        .open(folder.join("stderr.txt"))
-        .map_err(|e| e.to_string())?;
-    let mut command = Command::new(EXE);
-    command
-        .args(args)
-        .env("TTSCLI_LOG_DIR", folder.join("ai_logs"))
-        .stdout(Stdio::from(stdout))
-        .stderr(Stdio::from(stderr));
-    if let Some(settings) =
-        std::env::var_os("SCRIPTSYNC_TTS_SETTINGS").filter(|value| !value.is_empty())
-    {
-        command.arg("--settings").arg(settings);
-    }
-    #[cfg(windows)]
-    {
-        use std::os::windows::process::CommandExt;
-        command.creation_flags(0x08000000);
-    }
-    let mut child = command.spawn().map_err(|e| format!("CLI起動失敗: {e}"))?;
-    let started = Instant::now();
-    loop {
-        if stop.load(Ordering::Acquire) || started.elapsed() > Duration::from_secs(300) {
-            #[cfg(windows)]
-            {
-                let mut kill = Command::new("taskkill.exe");
-                use std::os::windows::process::CommandExt;
-                let _ = kill
-                    .args(["/PID", &child.id().to_string(), "/T", "/F"])
-                    .creation_flags(0x08000000)
-                    .output();
-            }
-            let _ = child.kill();
-            let _ = child.wait();
-            return Err("キャンセルまたは5分のタイムアウト。部分成果物を保持しました".into());
-        }
-        if let Some(status) = child.try_wait().map_err(|e| e.to_string())? {
-            if !status.success() {
-                let message =
-                    std::fs::read_to_string(folder.join("stderr.txt")).unwrap_or_default();
-                return Err(format!(
-                    "CLI終了コード {:?}: {}",
-                    status.code(),
-                    message.chars().take(2000).collect::<String>()
-                ));
-            }
-            break;
-        }
-        std::thread::sleep(Duration::from_millis(100));
-    }
-    serde_json::from_slice(&std::fs::read(folder.join("stdout.json")).map_err(|e| e.to_string())?)
-        .map_err(|e| format!("CLI結果JSONが不正です: {e}"))
+// CLI互換の内部引数をHTTPサービスへ変換する。外部プログラムは起動しない。
+fn service(settings:&crate::machine_settings::Settings,args:&[String],_folder:&Path,stop:&AtomicBool)->Result<Value>{
+ if stop.load(Ordering::Acquire){return Err("キャンセルしました".into())}
+ let arg=|name:&str|args.iter().position(|x|x==name).and_then(|n|args.get(n+1)).ok_or_else(||format!("引数がありません：{name}"));
+ if args.first().is_some_and(|x|x=="propose") { let text=std::fs::read_to_string(arg("--text-file")?).map_err(|e|e.to_string())?;return Ok(json!({"format":"ttscli.speech-plan","version":1,"text":text,"voice":null,"proposal":{"reading":text,"tone_parameters":{"speed":1}}})); }
+ let plan:Value=serde_json::from_slice(&std::fs::read(arg("--plan")?).map_err(|e|e.to_string())?).map_err(|e|e.to_string())?;
+ let bytes=crate::services::request(settings,"/v1/audio/speech",Some(json!({"model":settings.tts_model,"voice":settings.tts_voice,"input":plan["proposal"]["reading"].as_str().or(plan["text"].as_str()).ok_or("合成本文がありません")?,"speed":1})))?;
+ if stop.load(Ordering::Acquire){return Err("キャンセルしました".into())}
+ let output=arg("--output")?;write_new(Path::new(output),&bytes)?;audio::inspect(Path::new(output))?;
+ Ok(json!({"actual":{"voice_name":settings.tts_voice,"voice_version":"server-unverified","model":settings.tts_model},"warning":"サーバーの実話者・版は別途確認が必要です"}))
 }
 pub fn execution_plan(original: &Value, text: &str, reading: &str) -> Result<Value> {
     if text.chars().count() > 500 || reading.chars().count() > 500 || reading.trim().is_empty() {
@@ -234,7 +178,7 @@ impl App {
         a.stop = Some(stop.clone());
         a.busy = true;
         a.job = "synthesis".into();
-        a.message = "Codexで共通の声条件を準備しています".into();
+        a.message = "音声合成サーバーへ接続しています".into();
         let app = self.clone();
         let result_id = rid.clone();
         std::thread::spawn(move || {
@@ -289,6 +233,7 @@ fn run_comparison(
     stop: &AtomicBool,
     seed: Option<Value>,
 ) -> Result<()> {
+    let settings=app.0.lock().map_err(|e|e.to_string())?.machine_settings.settings.clone();
     let folder = safe(root, &format!("runs/{rid}"))?;
     std::fs::create_dir_all(&folder).map_err(|e| e.to_string())?;
     let input = folder.join("input.txt");
@@ -297,7 +242,7 @@ fn run_comparison(
     let proposal = if let Some(plan) = seed {
         plan
     } else {
-        cli(
+        service(&settings,
             &[
                 "propose".into(),
                 "--text-file".into(),
@@ -345,7 +290,7 @@ fn run_comparison(
             a.message = format!("比較音声 {} を生成中", variant.label);
         }
         let wav = attempt.join("audio.wav");
-        let result = cli(
+        let result = service(&settings,
             &[
                 "synthesize".into(),
                 "--plan".into(),

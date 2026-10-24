@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::path::PathBuf;
 
-pub const WEB_URL: &str = "https://dev-k.sakura.ne.jp/tools/scriptsyncweb/";
+pub const WEB_URL: &str = "https://excel-chunchun.sakura.ne.jp/test/scriptsync/";
 const LEGACY_CODEX_PROMPT: &str = "以下は日本語の発言を音声認識した結果です。発言内容、意味、語順、口調をできるだけ保持し、明らかな誤字・脱字・誤変換と、読みやすさに必要な句読点だけを修正してください。要約、意訳、文体の統一、情報の追加、省略はしないでください。固有名詞・数値・専門用語や、不確かな箇所は推測で変更しないでください。修正後の本文だけを出力してください。";
 const PREVIOUS_CODEX_PROMPT: &str = "確定台本を参考に、読み上げ時に言い回しを調整した修正案を校正してください。修正案の発言内容・意味・口調を尊重し、明らかな誤字脱字や不自然な表記を最小限修正してください。確定台本への機械的な差し戻し、要約、情報の追加・省略は行わないでください。固有名詞・数値・不確かな箇所は推測で変更せず、修正後の本文だけを出力してください。";
 pub const DEFAULT_CODEX_PROMPT: &str = "確定台本を参考に、読み上げ時に言い回しを調整した修正案を校正してください。修正案の発言内容・意味・口調を尊重し、明らかな誤字脱字や不自然な表記を最小限修正してください。確定台本で英字表記の単語は、カタカナ表記で近い音の単語の部分のみを直してください。確定台本への機械的な差し戻し、要約、情報の追加・省略は行わないでください。固有名詞・数値・不確かな箇所は推測で変更せず、修正後の本文だけを出力してください。";
@@ -20,6 +20,10 @@ pub struct Settings {
     pub codex_path: String,
     pub codex_prompt: String,
     pub codex_model: String,
+    pub service_url: String,
+    pub ai_provider: String,
+    pub tts_model: String,
+    pub tts_voice: String,
     pub word_replacements: Vec<WordReplacement>,
 }
 impl Default for Settings {
@@ -32,12 +36,19 @@ impl Default for Settings {
             codex_path: String::new(),
             codex_prompt: DEFAULT_CODEX_PROMPT.into(),
             codex_model: "gpt-5.6-luna".into(),
+            service_url: "http://localhost:4318".into(),
+            ai_provider: "codex".into(),
+            tts_model: "default".into(),
+            tts_voice: "default".into(),
             word_replacements: Vec::new(),
         }
     }
 }
 impl Settings {
     pub fn validate(&self) -> Result<()> {
+        crate::services::validate_url(&self.service_url)?;
+        if !matches!(self.ai_provider.as_str(),"codex"|"openai"|"chat-completions") { return Err("AI接続方式が不正です".into()); }
+        for value in [&self.codex_model,&self.tts_model,&self.tts_voice] { if value.trim().is_empty()||value.len()>200||value.chars().any(char::is_control) {return Err("モデル・音声名が不正です".into());} }
         if !matches!(self.asr_provider.as_str(), "local" | "codex") {
             return Err("文字起こし方式が不正です".into());
         }
@@ -49,12 +60,6 @@ impl Settings {
         }
         if self.codex_path.contains(['\n', '\r', '\0']) {
             return Err("Codexのパスが不正です".into());
-        }
-        if !matches!(
-            self.codex_model.as_str(),
-            "gpt-5.6-luna" | "gpt-5.6-terra" | "gpt-5.6-sol" | "gpt-6-astra"
-        ) {
-            return Err("Codexモデルが不正です".into());
         }
         for text in [&self.capture_endpoint, &self.render_endpoint] {
             if text.len() > 2048 || text.contains(['\0', '\r', '\n']) {
