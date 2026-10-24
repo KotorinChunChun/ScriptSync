@@ -55,6 +55,6 @@ wasapiの [RUSTSEC-2026-0332](https://rustsec.org/advisories/RUSTSEC-2026-0332.h
 - MSIX SHA-256：`86F20BF6FDEA0419B621DFED673E5B9D84025D0C889DA2F6F00EB118FEE93C22`
 - 内包EXE SHA-256：`711755365BBFF3B040759E8D6735189431C21C0E80B277344F4424C79A071A01`
 - ビルド元：`50124df634742cc2a1789d62d69055b78ddf7f2a`
-- build-infoのdirtyはtrue。TauriがCargo.tomlの改行状態を触ったためで、ビルド後のgit hash-objectはHEADのblobと一致し、差分・ステージ差分が空であることを確認した。build-infoの記録は書き換えていない。
+- build-infoのdirtyはtrue。TauriによるCargo.toml再書込み後にGitが変更扱いとしていたが、ビルド後のgit hash-objectはHEADのblobと一致し、差分・ステージ差分が空であることを確認した。build-infoの記録は書き換えていない。
 
 成果物は専用worktreeの `release/msix-v0.0.6/20261024-0.0.6.4/` に保持。GitHub Release作成・push・配布サイト更新・インストール・本体の採用版変更は未実施。署名成功と、ソース公開・第三者ライセンス対応の完了を混同しない。
