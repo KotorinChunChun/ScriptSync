@@ -10,6 +10,7 @@ use std::{
     time::Duration,
 };
 
+#[cfg(feature = "mp3-encode")]
 use mp3lame_encoder::{Bitrate, Builder, FlushNoGap, InterleavedPcm, Quality};
 use oxiaudio_core::{AudioBuffer as OxiAudioBuffer, ChannelLayout, SampleFormat};
 use oxiaudio_encode::FlacStreamingEncoder;
@@ -52,6 +53,10 @@ impl RecorderSink {
         format: RecordingFormat,
         ring: AudioRingBuffer,
     ) -> Result<Self> {
+        #[cfg(not(feature = "mp3-encode"))]
+        if matches!(format, RecordingFormat::Mp3) {
+            return Err(BackendError::InvalidOperation("MP3 encoding requires the mp3-encode feature".into()));
+        }
         let path = path.as_ref().to_path_buf();
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent)?;
@@ -196,6 +201,12 @@ fn write_flac(path: PathBuf, ring: AudioRingBuffer, stop: Arc<AtomicBool>) -> Re
     Ok(())
 }
 
+#[cfg(not(feature = "mp3-encode"))]
+fn write_mp3(_path: PathBuf, _ring: AudioRingBuffer, _stop: Arc<AtomicBool>) -> Result<()> {
+    Err(BackendError::InvalidOperation("MP3 encoding requires the mp3-encode feature".into()))
+}
+
+#[cfg(feature = "mp3-encode")]
 fn write_mp3(path: PathBuf, ring: AudioRingBuffer, stop: Arc<AtomicBool>) -> Result<()> {
     let mut encoder = Builder::new()
         .ok_or_else(|| BackendError::Audio("MP3 encoder allocation failed".into()))?

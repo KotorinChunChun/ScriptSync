@@ -2,11 +2,13 @@
 
 `dev/sample/microphone-recorder-source-v0.4.6/src/src-tauri/` から2026-09-08にコピー。
 元パッケージのSHA256SUMS.txtとTHIRD-PARTY-NOTICES.txtを参照する。
-公開ライセンスの新規付与は行わない。
+元の受領時は公開ライセンスを新規付与しなかった。2026-10-24に権利者本人から「自分の著作物で、同じライセンスで公開できる」と回答を得たため、本体と同じMITライセンスで公開準備を行う。権利者はKotorinChunChun。ルートの[LICENSE](../../LICENSE)を適用し、依存ライブラリーには各上流の条件を維持する。
 
 ScriptSyncでの変更：WAV新規作成を排他的にし、writer失敗時の音声削除を取り除いた。
 停止後のcapture欠落数と残りデータ転送時の欠落数を合算する。
 台帳と製品UIはScriptSync側で管理し、見本CLIは診断用として保持する。
+
+MP3エンコードは `mp3-encode` featureとして保持し、録音crate単体では従来どおり既定で有効。ScriptSyncはWAV/FLAC出力のためdefault-featuresを無効にし、LGPLのMP3エンコーダーを配布EXEへ組み込まない。MP3を有効にした派生バイナリーを配布する場合は、LGPLの表示・ソース・再リンク条件等を別途満たすこと。
 
 ## 2026-09-09時点の追加変更
 

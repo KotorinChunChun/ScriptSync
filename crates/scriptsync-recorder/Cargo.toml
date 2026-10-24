@@ -3,6 +3,11 @@ name = "microphone-recorder-example"
 version = "0.4.6"
 edition = "2021"
 rust-version = "1.85"
+license = "MIT"
+
+[features]
+default = ["mp3-encode"]
+mp3-encode = ["dep:mp3lame-encoder"]
 
 [lib]
 name = "audio_mixer_backend"
@@ -16,7 +21,7 @@ path = "src/bin/microphone_recorder.rs"
 chrono = { version = "0.4", features = ["serde"] }
 crossbeam-queue = "0.3"
 hound = "3.5"
-mp3lame-encoder = "0.2.5"
+mp3lame-encoder = { version = "0.2.5", optional = true }
 oxiaudio-core = "0.2.1"
 oxiaudio-decode = "0.2.1"
 oxiaudio-encode = "0.2.1"

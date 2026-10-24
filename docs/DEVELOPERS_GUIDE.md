@@ -28,6 +28,8 @@ npm run tauri build -- --no-bundle
 
 ## 通常の検証
 
+一括検証は `npm run verify`、実WebView2・IPC・CSPまでの自動検証は `npm run verify:native`。実出力デバイスを使う無音の検証は `npm run verify:native -- -AudioDevice`。詳細は[自動検証ガイド](automated-testing.md)を参照してください。OS画面操作やComputer Useは必要ありません。
+
 変更前に `git status --short` を確認し、既存変更を保持します。関係する試験から実施し、結果と未確認事項を実装計画へ記録します。
 
 ```powershell

@@ -91,6 +91,9 @@ pub fn encode_audio_file(
             encode_flac_with_config(&buf, &mut file, &cfg)
                 .map_err(|e| BackendError::Audio(format!("FLAC encode: {e}")))
         }
+        #[cfg(not(feature = "mp3-encode"))]
+        RecordingFormat::Mp3 => Err(BackendError::InvalidOperation("MP3 encoding requires the mp3-encode feature".into())),
+        #[cfg(feature = "mp3-encode")]
         RecordingFormat::Mp3 => {
             use mp3lame_encoder::{Bitrate, Builder, FlushNoGap, InterleavedPcm, Quality};
             use std::io::Write;
@@ -119,5 +122,17 @@ pub fn encode_audio_file(
             file.write_all(&encoded)?;
             Ok(())
         }
+    }
+}
+
+#[cfg(all(test, not(feature = "mp3-encode")))]
+mod feature_tests {
+    use super::*;
+    #[test]
+    fn disabled_mp3_encoder_rejects_output_without_creating_a_file() {
+        let path = std::env::temp_dir().join(format!("scriptsync-disabled-mp3-{}.mp3", uuid::Uuid::new_v4()));
+        let result = encode_audio_file(&path, crate::audio::graph::RecordingFormat::Mp3, &[0.0; 100]);
+        assert!(result.is_err());
+        assert!(!path.exists());
     }
 }

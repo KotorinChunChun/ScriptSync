@@ -2,6 +2,8 @@
 
 Markdownやテキストを発話ごとに録音し、良いテイクを選んでFLAC/WAVへ結合出力するWindows向けアプリです。読みの確認、局所補正、合成音声との比較採点も必要に応じて利用できます。
 
+本体と作者作成の録音基盤は[MITライセンス](LICENSE)です。第三者のライブラリー・素材には元の条件を適用します。[第三者の表示と対応ソース](THIRD-PARTY-NOTICES.md)、[公開前の確認手順](docs/source-publication.md)を参照してください。
+
 開発ソースは `C:\develop\KotorinToys\tools\ScriptSync` に配置し、KotorinToysの収録ツールとして独立Gitで管理します。[収録と対応範囲](docs/kotorintoys-integration.md)を参照してください。
 
 ## ダウンロードと対応環境
@@ -52,6 +54,8 @@ npm run tauri dev
 ```
 
 UI変更は開発起動中に反映されます。録音中のコード更新は避け、停止・保存してから更新してください。`npm run dev` だけのブラウザー表示では録音や保存はできません。
+
+自動検証は `npm run verify`、実WebView2まで含める場合は `npm run verify:native`。Computer Useを使わない検証の範囲・無音の実機再生試験・結果の保存先は[自動検証ガイド](docs/automated-testing.md)を参照してください。
 
 通常の録音・結合に音声合成CLIやASRは不要です。文字起こし環境、Codex CLI、外部のTextToSpeech CLIを使う開発・検証は[開発者ガイド](docs/DEVELOPERS_GUIDE.md)を参照してください。文書中の「TextToSpeech CLI」は、テキストを音声に変換する外部CLIソフトウェアの抽象名です。
 

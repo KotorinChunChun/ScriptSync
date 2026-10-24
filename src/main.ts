@@ -2,7 +2,7 @@ import {aiReviewHtml,improvementDiff,type AiReview} from './aiReview';
 import './aiReview.css';
 import {createNavigationFollower} from './navigationFollow';
 import {showTransientError} from './transientError';
-import {installNativeAudio,registerNativeAudio} from "./nativeAudio";
+import {installNativeAudio,registerNativeAudio,stopNativeAudio} from "./nativeAudio";
 import {openCloudUpload} from "./cloudUploadView";
 import {chooseExchange,mapExchange,type ExchangePreview} from "./exchangeView";
 import {openSettings,hasUnsavedSettings,saveOpenSettings} from "./settingsView";
@@ -448,7 +448,7 @@ function render(){
  if(tab==="reading"||tab==="evaluation")batchView(tab);
  if(tab==="recording"){testGuide();renderRecordingAsrCards(s);bindContinuousControls();bindRecordingResize();}
  fitWorkspace();bind();bindProjectName();bindSourceScriptTab();bindBatch();updateMeter();void loadTakeWaves();
- if(tab==="recording"&&s)bindTakeTrim({segment:s,rpc:async<T>(action:string,payload?:unknown)=>{const result=await rpc<T>(action,payload);if(action!=="trim_take")return result;const latest=await rpc<Snapshot>("state");return latest.project?.segments.find(x=>x.id===s.id)?.takes.find(x=>x.id===(payload as {take:string}).take) as T;},play,isPlaying:take=>playingTake===take&&!player()?.paused,isCurrent:take=>playingTake===take,playbackPosition:()=>player()?.currentTime??0,pause:()=>{player()?.pause();syncTakePlayback();},resume:async()=>{await player()?.play();syncTakePlayback();},seek:(seconds:number)=>{const audio=player();if(audio)audio.currentTime=Math.max(0,seconds);},stop:()=>{const audio=player();if(audio){audio.pause();audio.currentTime=0;}syncTakePlayback();},notice,onSaved:async()=>{const audio=player();if(audio){audio.pause();audio.currentTime=0;}await refresh(true);}});
+ if(tab==="recording"&&s)bindTakeTrim({segment:s,rpc:async<T>(action:string,payload?:unknown)=>{const result=await rpc<T>(action,payload);if(action!=="trim_take")return result;const latest=await rpc<Snapshot>("state");return latest.project?.segments.find(x=>x.id===s.id)?.takes.find(x=>x.id===(payload as {take:string}).take) as T;},play,isPlaying:take=>playingTake===take&&!player()?.paused,isCurrent:take=>playingTake===take,playbackPosition:()=>player()?.currentTime??0,pause:()=>{player()?.pause();syncTakePlayback();},resume:async()=>{await player()?.play();syncTakePlayback();},seek:(seconds:number)=>{const audio=player();if(audio)audio.currentTime=Math.max(0,seconds);},stop:async()=>{const audio=player();if(audio)await stopNativeAudio(audio);syncTakePlayback();},notice,onSaved:async()=>{const audio=player();if(audio){audio.pause();audio.currentTime=0;}await refresh(true);}});
  if(player()){player().onplay=syncTakePlayback;player().onpause=syncTakePlayback;player().onended=()=>{updateTakeProgress();syncTakePlayback();};}syncTakePlayback();
  if(tab==='recording')arrangeTakeControls();
  if(tab==='recording'&&s)bindTakeJoin({projectId:(p as typeof p & {id:string}).id,segment:s,disabled:busy||state.busy||continuousRecording,rpc,play:async(file,hash)=>{await play(file,hash);},stop:()=>{player()?.pause();},prepare:async()=>{if(busy||state.busy||continuousRecording)return false;if(!await guardTakeTrimMove(()=>{}))return false;await saveScriptDraft();player()?.pause();return true;},onSaved:async()=>{await refresh(true);},notice});
