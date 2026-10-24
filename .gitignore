@@ -48,3 +48,5 @@ id_ed25519
 *.db
 **/.venv/
 **/venv/
+
+/dist-web/

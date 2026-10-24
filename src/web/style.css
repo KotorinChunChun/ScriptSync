@@ -1,0 +1,36 @@
+/* Web版だけへ適用。各ペインをスクロールできる状態で狭い画面へ収める。 */
+html,body{touch-action:manipulation}
+#app>header{gap:10px;flex-wrap:wrap}
+#app>header .statusbar{padding:0;gap:8px;flex-wrap:wrap}
+#web-backup{white-space:normal}
+@media(max-width:760px){
+ #app>header{display:flex!important;padding:8px 10px;min-height:0;align-items:center;flex-wrap:wrap!important}
+ #project-name-button{flex:1 1 100%;font-size:16px;max-width:100%;white-space:normal}
+ #app>header .statusbar{display:flex!important;flex:1 1 100%;width:100%;font-size:12px;gap:5px;flex-direction:row!important}
+ #notice{flex:1 1 100%;max-height:2.5em}
+ #app>header button{font-size:13px;padding:6px 9px;min-width:0}
+ .stage-bar,.flow-tabs{display:flex;overflow-x:auto!important;flex-wrap:nowrap;max-width:100%;min-width:0}
+ .stage-bar button,.flow-tabs button{flex:0 0 120px;min-width:120px}
+ .navigation-layout{grid-template-columns:minmax(0,1fr)!important}
+ .navigation-aside{max-height:100px;overflow:auto}
+ .navigation-layout:not(.no-sidebar){grid-template-rows:auto minmax(0,1fr)}
+ .navigation-layout>main{padding:8px!important}
+ .script-columns.script-four-columns{display:flex!important;flex-direction:column;overflow:auto;min-height:0;gap:8px}
+ .script-columns>section{flex:none;min-width:0;width:100%;max-height:none;min-height:150px;overflow:visible}
+ .script-columns>.script-editor{min-height:230px}
+ .script-columns .script-pane-content,.script-source-list{max-height:200px;overflow:auto}
+ .script-columns textarea{min-height:180px;font-size:16px}
+ .script-separator,.script-pane-separator{display:none!important}
+ .script-heading,.script-bottom{flex-wrap:wrap;gap:5px}
+ .script-heading{align-items:flex-start}
+ .recording-workspace{display:flex!important;flex-direction:column;overflow:auto;gap:10px}
+ .recording-script,.take-column{flex:none!important;width:100%;min-height:0;overflow:visible!important;max-height:none!important}
+ .recording-workspace .recording-script textarea{min-height:160px}
+ .recording-main{overflow:auto!important}
+ .comparison{grid-template-columns:minmax(0,1fr)!important}
+ footer{padding:5px 8px!important}footer audio{max-width:calc(100vw - 70px)}
+ input,textarea,select{font-size:16px!important;max-width:100%}
+ .settings-dialog{max-width:100%;width:calc(100vw - 16px)}
+ .settings-scroll{overflow:auto}.settings-dialog fieldset{min-width:0}
+ .utterance-heading{flex-wrap:wrap}
+}

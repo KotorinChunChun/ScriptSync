@@ -231,6 +231,38 @@
           "sha256": "3a850fa5f08101db6f40676c2786e10bd2cd5fff7b12ffdf1e0c434d4e49d90c"
         }
       ]
+    },
+    "npm-onnxruntime-web-1.31.0-dev.20260914-8d85527a0": {
+      "npmVersion": "1.31.0-dev.20260914-8d85527a0",
+      "revision": "8d85527a010e294a26b274749f74294b2a32cec5",
+      "files": [
+        {
+          "file": "microsoft+onnxruntime-8d85527a010e294a26b274749f74294b2a32cec5/LICENSE",
+          "url": "https://raw.githubusercontent.com/microsoft/onnxruntime/8d85527a010e294a26b274749f74294b2a32cec5/LICENSE",
+          "sha256": "2f07c72751aed99790b8a4869cf2311df85a860b22ded05fa22803587a48922c"
+        },
+        {
+          "file": "microsoft+onnxruntime-8d85527a010e294a26b274749f74294b2a32cec5/ThirdPartyNotices.txt",
+          "url": "https://raw.githubusercontent.com/microsoft/onnxruntime/8d85527a010e294a26b274749f74294b2a32cec5/ThirdPartyNotices.txt",
+          "sha256": "143764b952fdb1a7c69ce653bfba74a7744d6a8a573bfb73e235fba356c83de3"
+        }
+      ]
+    },
+    "npm-onnxruntime-common-1.31.0-dev.20260911-2a43ec07e": {
+      "npmVersion": "1.31.0-dev.20260911-2a43ec07e",
+      "revision": "2a43ec07e",
+      "files": [
+        {
+          "file": "microsoft+onnxruntime-2a43ec07e/LICENSE",
+          "url": "https://raw.githubusercontent.com/microsoft/onnxruntime/2a43ec07e/LICENSE",
+          "sha256": "2f07c72751aed99790b8a4869cf2311df85a860b22ded05fa22803587a48922c"
+        },
+        {
+          "file": "microsoft+onnxruntime-2a43ec07e/ThirdPartyNotices.txt",
+          "url": "https://raw.githubusercontent.com/microsoft/onnxruntime/2a43ec07e/ThirdPartyNotices.txt",
+          "sha256": "143764b952fdb1a7c69ce653bfba74a7744d6a8a573bfb73e235fba356c83de3"
+        }
+      ]
     }
   }
 }

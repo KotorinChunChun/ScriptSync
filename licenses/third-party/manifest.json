@@ -233,10 +233,42 @@
           "sha256": "3a850fa5f08101db6f40676c2786e10bd2cd5fff7b12ffdf1e0c434d4e49d90c"
         }
       ]
+    },
+    "npm-onnxruntime-web-1.31.0-dev.20260914-8d85527a0": {
+      "npmVersion": "1.31.0-dev.20260914-8d85527a0",
+      "revision": "8d85527a010e294a26b274749f74294b2a32cec5",
+      "files": [
+        {
+          "file": "microsoft+onnxruntime-8d85527a010e294a26b274749f74294b2a32cec5/LICENSE",
+          "url": "https://raw.githubusercontent.com/microsoft/onnxruntime/8d85527a010e294a26b274749f74294b2a32cec5/LICENSE",
+          "sha256": "2f07c72751aed99790b8a4869cf2311df85a860b22ded05fa22803587a48922c"
+        },
+        {
+          "file": "microsoft+onnxruntime-8d85527a010e294a26b274749f74294b2a32cec5/ThirdPartyNotices.txt",
+          "url": "https://raw.githubusercontent.com/microsoft/onnxruntime/8d85527a010e294a26b274749f74294b2a32cec5/ThirdPartyNotices.txt",
+          "sha256": "143764b952fdb1a7c69ce653bfba74a7744d6a8a573bfb73e235fba356c83de3"
+        }
+      ]
+    },
+    "npm-onnxruntime-common-1.31.0-dev.20260911-2a43ec07e": {
+      "npmVersion": "1.31.0-dev.20260911-2a43ec07e",
+      "revision": "2a43ec07e",
+      "files": [
+        {
+          "file": "microsoft+onnxruntime-2a43ec07e/LICENSE",
+          "url": "https://raw.githubusercontent.com/microsoft/onnxruntime/2a43ec07e/LICENSE",
+          "sha256": "2f07c72751aed99790b8a4869cf2311df85a860b22ded05fa22803587a48922c"
+        },
+        {
+          "file": "microsoft+onnxruntime-2a43ec07e/ThirdPartyNotices.txt",
+          "url": "https://raw.githubusercontent.com/microsoft/onnxruntime/2a43ec07e/ThirdPartyNotices.txt",
+          "sha256": "143764b952fdb1a7c69ce653bfba74a7744d6a8a573bfb73e235fba356c83de3"
+        }
+      ]
     }
   },
   "cargoLockSha256": "4a38304818a6a893366525e84120360b6d4a1a9b2de086218262ed7da62f53cb",
-  "npmLockSha256": "0666c9e518a1df981172e69b089debc7ab95b9fdb6cafb03ce2322e1ac73d42b",
+  "npmLockSha256": "4c63cefe84f05b0506b111fb02d87a2454df96844138e74d2765b6255ee4ca10",
   "rust": [
     {
       "name": "adler2",
@@ -5199,6 +5231,138 @@
   ],
   "npm": [
     {
+      "name": "@huggingface/jinja",
+      "version": "0.5.10",
+      "license": "MIT",
+      "selectedLicense": "MIT",
+      "source": "https://registry.npmjs.org/@huggingface/jinja/-/jinja-0.5.10.tgz",
+      "integrity": "sha512-SgS1D1bglQ94ceD4ZCL6eayUDy9uV1xuyk61OjgSxU5GJh7upqZCKII0JoTYMc6wWsg3JUgaPRX0ElQzXPk3Cw==",
+      "texts": [
+        "texts/npm-@huggingface+jinja-0.5.10/LICENSE"
+      ]
+    },
+    {
+      "name": "@huggingface/tokenizers",
+      "version": "0.2.0",
+      "license": "Apache-2.0",
+      "selectedLicense": "Apache-2.0",
+      "source": "https://registry.npmjs.org/@huggingface/tokenizers/-/tokenizers-0.2.0.tgz",
+      "integrity": "sha512-LidMHe1FpcSYH4vcSjXooda34pC0M8m1gmDOv7SQi6Iv+ib1zX7J3sHBCC9/3FPCkn2k1b55FneVqMRxrr99pg==",
+      "texts": [
+        "texts/npm-@huggingface+tokenizers-0.2.0/LICENSE"
+      ]
+    },
+    {
+      "name": "@huggingface/transformers",
+      "version": "4.3.1",
+      "license": "Apache-2.0",
+      "selectedLicense": "Apache-2.0",
+      "source": "https://registry.npmjs.org/@huggingface/transformers/-/transformers-4.3.1.tgz",
+      "integrity": "sha512-5+voSeUCFK6PCKlY15dPhNOKq3/zOTxDN7oC+Wy9dFb1QZ0TSQomZRRy7URRK8YRuUoE9fGMQTTPC5d/pWBJhA==",
+      "texts": [
+        "texts/npm-@huggingface+transformers-4.3.1/LICENSE"
+      ]
+    },
+    {
+      "name": "@protobufjs/aspromise",
+      "version": "1.1.2",
+      "license": "BSD-3-Clause",
+      "selectedLicense": "BSD-3-Clause",
+      "source": "https://registry.npmjs.org/@protobufjs/aspromise/-/aspromise-1.1.2.tgz",
+      "integrity": "sha512-j+gKExEuLmKwvz3OgROXtrJ2UG2x8Ch2YZUxahh+s1F2HZ+wAceUNLkvy6zKCPVRkU++ZWQrdxsUeQXmcg4uoQ==",
+      "texts": [
+        "texts/npm-@protobufjs+aspromise-1.1.2/LICENSE"
+      ]
+    },
+    {
+      "name": "@protobufjs/base64",
+      "version": "1.1.2",
+      "license": "BSD-3-Clause",
+      "selectedLicense": "BSD-3-Clause",
+      "source": "https://registry.npmjs.org/@protobufjs/base64/-/base64-1.1.2.tgz",
+      "integrity": "sha512-AZkcAA5vnN/v4PDqKyMR5lx7hZttPDgClv83E//FMNhR2TMcLUhfRUBHCmSl0oi9zMgDDqRUJkSxO3wm85+XLg==",
+      "texts": [
+        "texts/npm-@protobufjs+base64-1.1.2/LICENSE"
+      ]
+    },
+    {
+      "name": "@protobufjs/codegen",
+      "version": "2.0.5",
+      "license": "BSD-3-Clause",
+      "selectedLicense": "BSD-3-Clause",
+      "source": "https://registry.npmjs.org/@protobufjs/codegen/-/codegen-2.0.5.tgz",
+      "integrity": "sha512-zgXFLzW3Ap33e6d0Wlj4MGIm6Ce8O89n/apUaGNB/jx+hw+ruWEp7EwGUshdLKVRCxZW12fp9r40E1mQrf/34g==",
+      "texts": [
+        "texts/npm-@protobufjs+codegen-2.0.5/LICENSE"
+      ]
+    },
+    {
+      "name": "@protobufjs/eventemitter",
+      "version": "1.1.1",
+      "license": "BSD-3-Clause",
+      "selectedLicense": "BSD-3-Clause",
+      "source": "https://registry.npmjs.org/@protobufjs/eventemitter/-/eventemitter-1.1.1.tgz",
+      "integrity": "sha512-vW1GmwMZNnL+gMRaovlh9yZX74kc+TTU3FObkkurpMaRtBfLP3ldjS9KQWlwZgraRE0+dheEEoAxdzcJQ8eXZg==",
+      "texts": [
+        "texts/npm-@protobufjs+eventemitter-1.1.1/LICENSE"
+      ]
+    },
+    {
+      "name": "@protobufjs/fetch",
+      "version": "1.1.1",
+      "license": "BSD-3-Clause",
+      "selectedLicense": "BSD-3-Clause",
+      "source": "https://registry.npmjs.org/@protobufjs/fetch/-/fetch-1.1.1.tgz",
+      "integrity": "sha512-GpptLrs57adMSuHi3VNj0mAF8dwh36LMaYF6XyJ6JMWlVsc+t42tm1HSEDmOs3A8fC9yyeisgLhsTVQokOZ0zw==",
+      "texts": [
+        "texts/npm-@protobufjs+fetch-1.1.1/LICENSE"
+      ]
+    },
+    {
+      "name": "@protobufjs/float",
+      "version": "1.0.2",
+      "license": "BSD-3-Clause",
+      "selectedLicense": "BSD-3-Clause",
+      "source": "https://registry.npmjs.org/@protobufjs/float/-/float-1.0.2.tgz",
+      "integrity": "sha512-Ddb+kVXlXst9d+R9PfTIxh1EdNkgoRe5tOX6t01f1lYWOvJnSPDBlG241QLzcyPdoNTsblLUdujGSE4RzrTZGQ==",
+      "texts": [
+        "texts/npm-@protobufjs+float-1.0.2/LICENSE"
+      ]
+    },
+    {
+      "name": "@protobufjs/path",
+      "version": "1.1.2",
+      "license": "BSD-3-Clause",
+      "selectedLicense": "BSD-3-Clause",
+      "source": "https://registry.npmjs.org/@protobufjs/path/-/path-1.1.2.tgz",
+      "integrity": "sha512-6JOcJ5Tm08dOHAbdR3GrvP+yUUfkjG5ePsHYczMFLq3ZmMkAD98cDgcT2iA1lJ9NVwFd4tH/iSSoe44YWkltEA==",
+      "texts": [
+        "texts/npm-@protobufjs+path-1.1.2/LICENSE"
+      ]
+    },
+    {
+      "name": "@protobufjs/pool",
+      "version": "1.1.0",
+      "license": "BSD-3-Clause",
+      "selectedLicense": "BSD-3-Clause",
+      "source": "https://registry.npmjs.org/@protobufjs/pool/-/pool-1.1.0.tgz",
+      "integrity": "sha512-0kELaGSIDBKvcgS4zkjz1PeddatrjYcmMWOlAuAPwAeccUrPHdUqo/J6LiymHHEiJT5NrF1UVwxY14f+fy4WQw==",
+      "texts": [
+        "texts/npm-@protobufjs+pool-1.1.0/LICENSE"
+      ]
+    },
+    {
+      "name": "@protobufjs/utf8",
+      "version": "1.1.2",
+      "license": "BSD-3-Clause",
+      "selectedLicense": "BSD-3-Clause",
+      "source": "https://registry.npmjs.org/@protobufjs/utf8/-/utf8-1.1.2.tgz",
+      "integrity": "sha512-b1UQwcEZ4yCnMCD8DAL1VlbvBJE9/IX4FTIp7BG1xYpf29SLazLSrqUkj4w7Y5y7cCVP6E5tcqqcI0xemPkHug==",
+      "texts": [
+        "texts/npm-@protobufjs+utf8-1.1.2/LICENSE"
+      ]
+    },
+    {
       "name": "@tauri-apps/api",
       "version": "2.11.1",
       "license": "Apache-2.0 OR MIT",
@@ -5211,6 +5375,96 @@
       ]
     },
     {
+      "name": "@types/node",
+      "version": "26.6.5",
+      "license": "MIT",
+      "selectedLicense": "MIT",
+      "source": "https://registry.npmjs.org/@types/node/-/node-26.6.5.tgz",
+      "integrity": "sha512-uMzsv9stDdofIZBx4UGh4Z9ZgXnGC9seRDscilBcTHAeOFk67MZg/k9bWVfO+bk4qZmG+l52hRnLwUiH2LnJTg==",
+      "texts": [
+        "texts/npm-@types+node-26.6.5/LICENSE"
+      ]
+    },
+    {
+      "name": "@zip.js/zip.js",
+      "version": "2.24.0",
+      "license": "BSD-3-Clause",
+      "selectedLicense": "BSD-3-Clause",
+      "source": "https://registry.npmjs.org/@zip.js/zip.js/-/zip.js-2.24.0.tgz",
+      "integrity": "sha512-WlaVKzdqBK+RF3bdiXZWbdCnvGB6PdO4IHC1mn/2Yfl3bASgqUNegnU3+PNg61iecwoPfUi5BgLUPqBukXpyWw==",
+      "texts": [
+        "texts/npm-@zip.js+zip.js-2.24.0/LICENSE"
+      ]
+    },
+    {
+      "name": "fflate",
+      "version": "0.8.3",
+      "license": "MIT",
+      "selectedLicense": "MIT",
+      "source": "https://registry.npmjs.org/fflate/-/fflate-0.8.3.tgz",
+      "integrity": "sha512-tbZNuJrLwGUp3zshBtdy4W+ORxZuIh8a5ilyIEQDC5rY1f3U20JMry0Ll3WBzU58EZKsEuJFXhb5gwv8CsPvgA==",
+      "texts": [
+        "texts/npm-fflate-0.8.3/LICENSE"
+      ]
+    },
+    {
+      "name": "flatbuffers",
+      "version": "25.9.23",
+      "license": "Apache-2.0",
+      "selectedLicense": "Apache-2.0",
+      "source": "https://registry.npmjs.org/flatbuffers/-/flatbuffers-25.9.23.tgz",
+      "integrity": "sha512-MI1qs7Lo4Syw0EOzUl0xjs2lsoeqFku44KpngfIduHBYvzm8h2+7K8YMQh1JtVVVrUvhLpNwqVi4DERegUJhPQ==",
+      "texts": [
+        "texts/npm-flatbuffers-25.9.23/LICENSE"
+      ]
+    },
+    {
+      "name": "long",
+      "version": "5.3.2",
+      "license": "Apache-2.0",
+      "selectedLicense": "Apache-2.0",
+      "source": "https://registry.npmjs.org/long/-/long-5.3.2.tgz",
+      "integrity": "sha512-mNAgZ1GmyNhD7AuqnTG3/VQ26o760+ZYBPKjPvugO8+nLbYfX6TVpJPseBvopbdY+qpZ/lKUnmEc1LeZYS3QAA==",
+      "texts": [
+        "texts/npm-long-5.3.2/LICENSE"
+      ]
+    },
+    {
+      "name": "onnxruntime-common",
+      "version": "1.31.0-dev.20260911-2a43ec07e",
+      "license": "MIT",
+      "selectedLicense": "MIT",
+      "source": "https://registry.npmjs.org/onnxruntime-common/-/onnxruntime-common-1.31.0-dev.20260911-2a43ec07e.tgz",
+      "integrity": "sha512-gBuF6U32YErKIAt+yD7DeGBpjRxhJ1uJwako6ygjokSZULDU6Pd+KWComX8Tumk1hYVHRxjPj7mdMnD0ryAPOw==",
+      "texts": [
+        "texts/npm-onnxruntime-common-1.31.0-dev.20260911-2a43ec07e/LICENSE",
+        "texts/npm-onnxruntime-common-1.31.0-dev.20260911-2a43ec07e/ThirdPartyNotices.txt"
+      ]
+    },
+    {
+      "name": "onnxruntime-web",
+      "version": "1.31.0-dev.20260914-8d85527a0",
+      "license": "MIT",
+      "selectedLicense": "MIT",
+      "source": "https://registry.npmjs.org/onnxruntime-web/-/onnxruntime-web-1.31.0-dev.20260914-8d85527a0.tgz",
+      "integrity": "sha512-Iy7rtadoBgxS/LLvDr3QW38DB1PNXRnr0GJMcL0TAt7c9qjgVQl83UlGCVyeAnK2InpmW8Uc3PL8XIuqtDeF6g==",
+      "texts": [
+        "texts/npm-onnxruntime-web-1.31.0-dev.20260914-8d85527a0/LICENSE",
+        "texts/npm-onnxruntime-web-1.31.0-dev.20260914-8d85527a0/ThirdPartyNotices.txt"
+      ]
+    },
+    {
+      "name": "protobufjs",
+      "version": "7.6.6",
+      "license": "BSD-3-Clause",
+      "selectedLicense": "BSD-3-Clause",
+      "source": "https://registry.npmjs.org/protobufjs/-/protobufjs-7.6.6.tgz",
+      "integrity": "sha512-dYDWdjSl5RNb7SgPxGQcRU+GtvP7s2fpkrY0r432PcOIaZ0/rBcxEZnQN67iJhFuQiVw754JDoPruPCNdGsbjg==",
+      "texts": [
+        "texts/npm-protobufjs-7.6.6/LICENSE"
+      ]
+    },
+    {
       "name": "qrcode-generator",
       "version": "2.0.4",
       "license": "MIT",
@@ -5219,6 +5473,28 @@
       "integrity": "sha512-mZSiP6RnbHl4xL2Ap5HfkjLnmxfKcPWpWe/c+5XxCuetEenqmNFf1FH/ftXPCtFG5/TDobjsjz6sSNL0Sr8Z9g==",
       "texts": [
         "texts/npm-qrcode-generator-2.0.4/LICENSE"
+      ]
+    },
+    {
+      "name": "undici-types",
+      "version": "8.9.0",
+      "license": "MIT",
+      "selectedLicense": "MIT",
+      "source": "https://registry.npmjs.org/undici-types/-/undici-types-8.9.0.tgz",
+      "integrity": "sha512-KTDyRTYX8sWmKXAikPHHSyc63CRPETMctyjKFupcC6OBLXT3xsN0e9aF7m+mIXutFWpUXuedtowG7iLOzp0kQg==",
+      "texts": [
+        "texts/npm-undici-types-8.9.0/LICENSE"
+      ]
+    },
+    {
+      "name": "ws",
+      "version": "8.22.0",
+      "license": "MIT",
+      "selectedLicense": "MIT",
+      "source": "https://registry.npmjs.org/ws/-/ws-8.22.0.tgz",
+      "integrity": "sha512-Ydggc987+RO0AnWtZ/7Wq9FtNvcrL1b/RO0ud9mWjUPgDrsAAwQSF51sm2hm1XofbU/4jkpGEsLFsZZxU+1DOg==",
+      "texts": [
+        "texts/npm-ws-8.22.0/LICENSE"
       ]
     }
   ],
@@ -5348,6 +5624,66 @@
       "sha256": "106423785c5b7eba0a8e61d1837f2132e9c828e20ad530f565d981c1df60dd90"
     },
     {
+      "path": "texts/npm-@huggingface+jinja-0.5.10/LICENSE",
+      "bytes": 1069,
+      "sha256": "d6e7b19451c1b3d1d66353bb4b1274138953b3bfd9ae60c56e77b1f548796982"
+    },
+    {
+      "path": "texts/npm-@huggingface+tokenizers-0.2.0/LICENSE",
+      "bytes": 11357,
+      "sha256": "c71d239df91726fc519c6eb72d318ec65820627232b2f796219e87dcf35d0ab4"
+    },
+    {
+      "path": "texts/npm-@huggingface+transformers-4.3.1/LICENSE",
+      "bytes": 11358,
+      "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30"
+    },
+    {
+      "path": "texts/npm-@protobufjs+aspromise-1.1.2/LICENSE",
+      "bytes": 1505,
+      "sha256": "a67b34a24a5daddcce46aea68c5004e4442bbfb63690329fa607bf4de4269794"
+    },
+    {
+      "path": "texts/npm-@protobufjs+base64-1.1.2/LICENSE",
+      "bytes": 1505,
+      "sha256": "a67b34a24a5daddcce46aea68c5004e4442bbfb63690329fa607bf4de4269794"
+    },
+    {
+      "path": "texts/npm-@protobufjs+codegen-2.0.5/LICENSE",
+      "bytes": 1505,
+      "sha256": "a67b34a24a5daddcce46aea68c5004e4442bbfb63690329fa607bf4de4269794"
+    },
+    {
+      "path": "texts/npm-@protobufjs+eventemitter-1.1.1/LICENSE",
+      "bytes": 1505,
+      "sha256": "a67b34a24a5daddcce46aea68c5004e4442bbfb63690329fa607bf4de4269794"
+    },
+    {
+      "path": "texts/npm-@protobufjs+fetch-1.1.1/LICENSE",
+      "bytes": 1505,
+      "sha256": "a67b34a24a5daddcce46aea68c5004e4442bbfb63690329fa607bf4de4269794"
+    },
+    {
+      "path": "texts/npm-@protobufjs+float-1.0.2/LICENSE",
+      "bytes": 1505,
+      "sha256": "a67b34a24a5daddcce46aea68c5004e4442bbfb63690329fa607bf4de4269794"
+    },
+    {
+      "path": "texts/npm-@protobufjs+path-1.1.2/LICENSE",
+      "bytes": 1505,
+      "sha256": "a67b34a24a5daddcce46aea68c5004e4442bbfb63690329fa607bf4de4269794"
+    },
+    {
+      "path": "texts/npm-@protobufjs+pool-1.1.0/LICENSE",
+      "bytes": 1505,
+      "sha256": "a67b34a24a5daddcce46aea68c5004e4442bbfb63690329fa607bf4de4269794"
+    },
+    {
+      "path": "texts/npm-@protobufjs+utf8-1.1.2/LICENSE",
+      "bytes": 1505,
+      "sha256": "a67b34a24a5daddcce46aea68c5004e4442bbfb63690329fa607bf4de4269794"
+    },
+    {
       "path": "texts/npm-@tauri-apps+api-2.11.1/LICENSE_APACHE-2.0",
       "bytes": 10174,
       "sha256": "0d542e0c8804e39aa7f37eb00da5a762149dc682d7829451287e11b938e94594"
@@ -5358,9 +5694,69 @@
       "sha256": "9dd42ea92cff2ede5cd477cbfcce051b2d0115c0ac7f368ee88cb545055dff1d"
     },
     {
+      "path": "texts/npm-@types+node-26.6.5/LICENSE",
+      "bytes": 1141,
+      "sha256": "c2cfccb812fe482101a8f04597dfc5a9991a6b2748266c47ac91b6a5aae15383"
+    },
+    {
+      "path": "texts/npm-@zip.js+zip.js-2.24.0/LICENSE",
+      "bytes": 1501,
+      "sha256": "1b7ebc8d7889ed25491484ab2b102370742ca6c0b26650a0c62cc2269b579b84"
+    },
+    {
+      "path": "texts/npm-fflate-0.8.3/LICENSE",
+      "bytes": 1069,
+      "sha256": "0a1df3a083d0c010560aa342e87959c8c1070e6fd54545741f083f22d0c8b551"
+    },
+    {
+      "path": "texts/npm-flatbuffers-25.9.23/LICENSE",
+      "bytes": 11358,
+      "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30"
+    },
+    {
+      "path": "texts/npm-long-5.3.2/LICENSE",
+      "bytes": 11358,
+      "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30"
+    },
+    {
+      "path": "texts/npm-onnxruntime-common-1.31.0-dev.20260911-2a43ec07e/LICENSE",
+      "bytes": 1073,
+      "sha256": "2f07c72751aed99790b8a4869cf2311df85a860b22ded05fa22803587a48922c"
+    },
+    {
+      "path": "texts/npm-onnxruntime-common-1.31.0-dev.20260911-2a43ec07e/ThirdPartyNotices.txt",
+      "bytes": 338088,
+      "sha256": "143764b952fdb1a7c69ce653bfba74a7744d6a8a573bfb73e235fba356c83de3"
+    },
+    {
+      "path": "texts/npm-onnxruntime-web-1.31.0-dev.20260914-8d85527a0/LICENSE",
+      "bytes": 1073,
+      "sha256": "2f07c72751aed99790b8a4869cf2311df85a860b22ded05fa22803587a48922c"
+    },
+    {
+      "path": "texts/npm-onnxruntime-web-1.31.0-dev.20260914-8d85527a0/ThirdPartyNotices.txt",
+      "bytes": 338088,
+      "sha256": "143764b952fdb1a7c69ce653bfba74a7744d6a8a573bfb73e235fba356c83de3"
+    },
+    {
+      "path": "texts/npm-protobufjs-7.6.6/LICENSE",
+      "bytes": 1937,
+      "sha256": "49d6a1c9a623784c61c6cb70f773f3457faceb1914a13c8560a9823b7631950c"
+    },
+    {
       "path": "texts/npm-qrcode-generator-2.0.4/LICENSE",
       "bytes": 1071,
       "sha256": "3a850fa5f08101db6f40676c2786e10bd2cd5fff7b12ffdf1e0c434d4e49d90c"
+    },
+    {
+      "path": "texts/npm-undici-types-8.9.0/LICENSE",
+      "bytes": 1090,
+      "sha256": "a6db8096b2707bc0102d256917d4d33f298ba36d8c3f25de067a2b5bb379db27"
+    },
+    {
+      "path": "texts/npm-ws-8.22.0/LICENSE",
+      "bytes": 1183,
+      "sha256": "2b29dcfe0d6471f7e8c92c5fb38c9f93edee10330937055440192f1832b1ecef"
     },
     {
       "path": "texts/rust-adler2-2.0.1/LICENSE-0BSD",

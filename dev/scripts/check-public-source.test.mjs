@@ -30,6 +30,14 @@ test('既知トークン・UTF16秘密鍵・固定資格情報を値なしで検
  assert.equal(scanContent('source.txt',key)[0].kind,'private-key');
 });
 
+test('RustのURL拒否試験の既知合成URIだけを例外とする',()=>{
+ const uri='http://'+'user:secret@localhost';
+ assert.deepEqual(scanContent('src-tauri/src/services.rs',Buffer.from('#[cfg(test)] mod tests { validate_url("'+uri+'"); }')),[]);
+ assert.equal(scanContent('src-tauri/src/services.rs',Buffer.from('validate_url("'+uri+'");'))[0].kind,'url-password');
+ assert.equal(scanContent('src/config.ts',Buffer.from('const url="'+uri+'";'))[0].kind,'url-password');
+ assert.equal(scanContent('src-tauri/src/services.rs',Buffer.from('#[cfg(test)] "http://'+'user:another-secret@localhost"'))[0].kind,'url-password');
+});
+
 test('秘密ファイルを拒否し、例示設定と合成テストの一般パスワードを許可する',()=>{
  assert.equal(scanContent('private/credential.pfx',Buffer.from([0,1]))[0].kind,'private-file');
  assert.equal(scanContent('project.scriptsync',Buffer.from('{}'))[0].kind,'private-file');

@@ -9,14 +9,19 @@ fn token()->Result<String>{
  let value=std::fs::read_to_string(root.join("gateway-token.txt")).map_err(|_|"接続トークンをSCRIPTSYNC_GATEWAY_TOKENまたはC:/AI/env/ScriptSync/gateway-token.txtへ設定してください")?;let value=value.trim().to_string();if value.is_empty(){return Err("接続トークンが空です".into())}Ok(value)
 }
 pub fn request(settings:&Settings,path:&str,body:Option<Value>)->Result<Vec<u8>>{
+ request_authenticated(settings,path,body,&token()?)
+}
+fn request_authenticated(settings:&Settings,path:&str,body:Option<Value>,token:&str)->Result<Vec<u8>>{
  validate_url(&settings.service_url)?;
  let client=reqwest::blocking::Client::builder().connect_timeout(Duration::from_secs(10)).timeout(Duration::from_secs(300)).redirect(reqwest::redirect::Policy::none()).build().map_err(|_|"接続クライアントを準備できません")?;
  let url=format!("{}{path}",settings.service_url.trim_end_matches('/'));
  let req=if let Some(body)=body{client.post(url).json(&body)}else{client.get(url)};
- let response=req.bearer_auth(token()?).send().map_err(|_|"サービスに接続できません。起動・URL・認証を確認してください")?;
+ let response=req.bearer_auth(token).send().map_err(|_|"サービスに接続できません。起動・URL・認証を確認してください")?;
  if !response.status().is_success(){return Err(format!("接続サーバーがHTTP {}を返しました",response.status().as_u16()))}
  if response.content_length().is_some_and(|n|n>50_000_000){return Err("応答が大きすぎます".into())}
  use std::io::Read;let mut bytes=Vec::new();response.take(50_000_001).read_to_end(&mut bytes).map_err(|_|"応答を取得できません")?;if bytes.len()>50_000_000{return Err("応答が大きすぎます".into())}Ok(bytes)
 }
 pub fn improve(settings:&Settings,prompt:&str)->Result<String>{let bytes=request(settings,"/v1/text-improve",Some(json!({"provider":settings.ai_provider,"model":settings.codex_model,"prompt":prompt})))?;let data:Value=serde_json::from_slice(&bytes).map_err(|_|"AIの応答が不正です")?;let text=data["text"].as_str().filter(|s|!s.trim().is_empty()&&s.len()<=160_000).ok_or("AIの本文が空か長すぎます")?;Ok(text.trim().into())}
-#[cfg(test)]mod tests{use super::*;#[test]fn endpoints_are_not_credentials(){for url in ["http://localhost:4318","https://192.168.11.15:4318"]{assert!(validate_url(url).is_ok())}for url in ["file:///secret","http://user:secret@localhost","https://a/?key=x","https://a/#token"]{assert!(validate_url(url).is_err())}}}
+#[cfg(test)]mod tests{use super::*;#[test]fn endpoints_are_not_credentials(){for url in ["http://localhost:4318","https://192.168.11.15:4318"]{assert!(validate_url(url).is_ok())}for url in ["file:///secret","http://user:secret@localhost","https://a/?key=x","https://a/#token"]{assert!(validate_url(url).is_err())}}
+#[test]fn desktop_uses_configured_http_server_without_a_cli(){use std::{net::TcpListener,io::{Read,Write}};let listener=TcpListener::bind("127.0.0.1:0").unwrap();let settings=Settings{service_url:format!("http://{}",listener.local_addr().unwrap()),..Settings::default()};let server=std::thread::spawn(move||{let(mut stream,_)=listener.accept().unwrap();let mut data=[0u8;4096];let n=stream.read(&mut data).unwrap();let header=String::from_utf8_lossy(&data[..n]);assert!(header.starts_with("POST /v1/text-improve "));assert!(header.to_lowercase().contains("authorization: bearer synthetic-test-token"));let body=r#"{"text":"校正済み"}"#;write!(stream,"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",body.len(),body).unwrap();});let result=request_authenticated(&settings,"/v1/text-improve",Some(json!({"prompt":"合成本文"})),"synthetic-test-token").unwrap();let response:Value=serde_json::from_slice(&result).unwrap();assert_eq!(response["text"],"校正済み");server.join().unwrap();}
+}

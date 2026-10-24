@@ -1,0 +1,16 @@
+import {beforeEach,expect,it} from 'vitest';
+import {IDBFactory} from 'fake-indexeddb';
+import {WebBackend,parseMarkdown,readZip} from '../../src/web/backend';
+import {encodeWav,editPcm,joinPcm} from '../../src/web/audio';
+import {zipSync,strToU8} from 'fflate';
+beforeEach(()=>{globalThis.indexedDB=new IDBFactory();});
+it('Markdownの見出し・元行・階層を保持する',()=>{const rows=parseMarkdown('# 部\n\n本文\n## 章\n次');expect(rows.map(r=>r.line)).toEqual([0,2,3,4]);expect(rows.at(-1)?.hierarchy).toEqual([1,1,0,0]);});
+it('承認前の下書きが確定対象を変えず、保存から復元できる',async()=>{const backend=new WebBackend();await backend.rpc('new');const state=await backend.rpc('state'),source={id:'source',name:'原稿.md',text:'一行目\n二行目',lines:parseMarkdown('一行目\n二行目')};await backend.rpc('script_draft',{sources:[source],project_id:state.project.id,base_generation:0});expect((await backend.rpc('state')).project.segments).toHaveLength(0);await expect(backend.rpc('script_commit',{sources:[source]})).rejects.toThrow('承認');await backend.rpc('script_commit',{sources:[{...source,approved_text:source.text}]});const saved=await backend.rpc('state');expect(saved.project.segments).toHaveLength(2);const restored=new WebBackend();expect((await restored.rpc('state')).project.segments.map((s:any)=>s.text)).toEqual(['一行目','二行目']);});
+it('編集は対象IDへ保存し、古い世代は拒否する',async()=>{const b=new WebBackend();await b.rpc('new');await b.rpc('append',{text:'前\n後'});const p=(await b.rpc('state')).project;await b.rpc('recording_draft',{segment:p.segments[0].id,text:'前の修正'});const after=(await b.rpc('state')).project;expect(after.segments[1].recording_draft).toBeUndefined();await expect(b.rpc('project_rename',{name:'誤上書き',base_generation:p.generation})).rejects.toThrow('世代');expect((await b.rpc('state')).project.title).toBe('新しいプロジェクト');});
+it('保存失敗時に本文と世代を巻き戻す',async()=>{const b=new WebBackend();await b.rpc('new');await b.rpc('append',{text:'保持'});const before=await b.rpc('state');b.storage.save=async()=>{throw Error('容量不足')};await expect(b.rpc('edit',{segment:before.project.segments[0].id,text:'消える変更'})).rejects.toThrow('容量不足');expect((await b.rpc('state')).project).toEqual(before.project);});
+it('PCM途中削除・順序結合は元配列を保持する',async()=>{const input={sampleRate:10,channels:[new Float32Array([0,.1,.2,.3,.4,.5,.6,.7,.8,.9])]},edited=editPcm(input,0,1,{start:.3,end:.7});expect(edited.channels[0]).toHaveLength(6);expect(input.channels[0]).toHaveLength(10);const joined=joinPcm([edited,edited]);expect(joined.channels[0]).toHaveLength(12);expect(encodeWav(joined).size).toBe(68);expect(()=>editPcm(input,-1,1)).toThrow();expect(()=>editPcm(input,0,1,{start:.8,end:.3})).toThrow();});
+it('ZIPのパス越境・展開量上限を拒否する',()=>{expect(()=>readZip(zipSync({'../private':strToU8('secret')}))).toThrow('パス');expect(readZip(zipSync({'project.json':strToU8('{}')}))['project.json']).toBeDefined();});
+
+it('録音時計は共有UI契約のミリ秒で返す',async()=>{const b=new WebBackend();b.elapsed=1.25;expect((await b.rpc('state')).elapsed).toBe(1250);});
+
+it('新規作成の保存失敗でも作業中のプロジェクトを保持する',async()=>{const b=new WebBackend();await b.rpc('new');await b.rpc('append',{text:'元の原稿'});const before=(await b.rpc('state')).project;b.storage.save=async()=>{throw Error('容量不足')};await expect(b.rpc('new')).rejects.toThrow('容量不足');expect((await b.rpc('state')).project).toEqual(before);});

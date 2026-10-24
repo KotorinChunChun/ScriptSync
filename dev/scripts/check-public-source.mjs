@@ -24,7 +24,11 @@ export function scanContent(name, buffer) {
  const text=buffer[0]===0xff && buffer[1]===0xfe ? buffer.subarray(2).toString('utf16le') : buffer.toString('utf8');
  for(const [kind,rule] of tokenRules){
   rule.lastIndex=0;
-  for(const match of text.matchAll(rule))findings.push({kind,line:text.slice(0,match.index).split('\n').length});
+  for(const match of text.matchAll(rule)){
+   // URL拒否試験の既知の合成例だけ。実際の秘密・他のURL・他ファイルは除外しない。
+   if(kind==='url-password'&&name==='src-tauri/src/services.rs'&&match[0]===('http://'+'user:secret@')&&text.slice(match.index+match[0].length).startsWith('localhost')&&text.lastIndexOf('#[cfg(test)]',match.index)>=0)continue;
+   findings.push({kind,line:text.slice(0,match.index).split('\n').length});
+  }
  }
  // 一般的なパスワードのfixtureは、既知トークンと別に扱う。
  if(!name.startsWith('tests/') && !/\.test\.[cm]?[jt]s$/.test(name)){

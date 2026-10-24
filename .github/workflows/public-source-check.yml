@@ -20,7 +20,9 @@ jobs:
       - run: npm run check:static -- --release-page
       - run: npm audit --audit-level=low
       - run: npm test -- --maxWorkers=2
+      - run: npm run test:services
       - run: npm run build
+      - run: npm run build:web
   native:
     if: github.event_name == 'workflow_dispatch'
     runs-on: windows-latest

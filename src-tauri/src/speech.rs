@@ -21,7 +21,7 @@ fn service(settings:&crate::machine_settings::Settings,args:&[String],_folder:&P
  let bytes=crate::services::request(settings,"/v1/audio/speech",Some(json!({"model":settings.tts_model,"voice":settings.tts_voice,"input":plan["proposal"]["reading"].as_str().or(plan["text"].as_str()).ok_or("合成本文がありません")?,"speed":1})))?;
  if stop.load(Ordering::Acquire){return Err("キャンセルしました".into())}
  let output=arg("--output")?;write_new(Path::new(output),&bytes)?;audio::inspect(Path::new(output))?;
- Ok(json!({"actual":{"voice_name":settings.tts_voice,"voice_version":"server-unverified","model":settings.tts_model},"warning":"サーバーの実話者・版は別途確認が必要です"}))
+ Ok(json!({"actual":{"voice_name":settings.tts_voice,"model":settings.tts_model},"warning":"サーバーの実話者・版は別途確認が必要です"}))
 }
 pub fn execution_plan(original: &Value, text: &str, reading: &str) -> Result<Value> {
     if text.chars().count() > 500 || reading.chars().count() > 500 || reading.trim().is_empty() {

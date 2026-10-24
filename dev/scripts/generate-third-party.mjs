@@ -92,7 +92,8 @@ while(npmPending.length){
  const directory=path.join(root,relative),p=JSON.parse(fs.readFileSync(path.join(directory,'package.json'),'utf8'));
  if(p.version!==info.version)throw new Error('導入済みnpm依存とlockが一致しません: '+p.name);
  npm.push({name:p.name,version:p.version,license:p.license,selectedLicense:selectedLicense(p.license),source:info.resolved,integrity:info.integrity,texts:texts(directory,`npm-${p.name.replaceAll('/','+')}-${p.version}`)});
- for(const name of Object.keys(info.dependencies??{})){
+ // TransformersはWeb Workerのbrowser exportだけを配布する。Node専用のsharp/onnxruntime-nodeは成果物に含めない。
+ for(const name of Object.keys(info.dependencies??{}).filter(name=>(p.name!=='@huggingface/transformers'||!['sharp','onnxruntime-node'].includes(name))&&(p.name!=='onnxruntime-web'||!['guid-typescript','platform'].includes(name)))){
   let parent=relative,found;
   while(parent){const candidate=parent+'/node_modules/'+name;if(npmLock.packages[candidate]){found=candidate;break;}const i=parent.lastIndexOf('/node_modules/');parent=i<0?'':parent.slice(0,i);}
   found??='node_modules/'+name;npmPending.push(found);

@@ -1,5 +1,7 @@
 # 画面操作ツールを使わない自動検証
 
+ブラウザー版は[Web版の検証手順](web-browser.md)、AI・音声合成の模擬接続は[サービス接続](service-connections.md)も参照してください。いずれもComputer Use不要です。
+
 WindowsのPowerShell 7.4以上、Node.js 22.12以上、Rust/MSVC、WebView2を用意します。通常の原稿・録音・設定を試験データに使いません。
 
 ```powershell
