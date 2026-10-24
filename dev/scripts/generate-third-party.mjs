@@ -98,7 +98,8 @@ while(npmPending.length){
   found??='node_modules/'+name;npmPending.push(found);
  }
 }
-files.set('texts/Kenney-Interface-Sounds-1.0/LICENSE.txt',fs.readFileSync(path.join(root,'public/sounds/Kenney-LICENSE.txt')));
+// 既存配布物のCRLFを保ち、Git checkoutの改行設定でhashが変わらないようにする。
+files.set('texts/Kenney-Interface-Sounds-1.0/LICENSE.txt',Buffer.from(fs.readFileSync(path.join(root,'public/sounds/Kenney-LICENSE.txt'),'utf8').replaceAll('\r\n','\n').replaceAll('\n','\r\n')));
 const sdkDirectory=path.join(root,'licenses/upstream/Microsoft-WebView2Loader-1.0.3650.58');
 const sdk=JSON.parse(fs.readFileSync(path.join(sdkDirectory,'origin.json'),'utf8'));
 const webview=metadata.packages.find(p=>seen.has(p.id) && p.name==='webview2-com-sys');

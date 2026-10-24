@@ -29,9 +29,10 @@ $msix=Join-Path $artifact $names[0]
 $cer=Join-Path $artifact $names[1]
 # 公開対象の実体、署名者、版を検査。秘密鍵やlayoutは送信しない。
 $signature=Get-AuthenticodeSignature -LiteralPath $msix
+if([Security.Cryptography.X509Certificates.X509Certificate2]::GetCertContentType($cer) -ne [Security.Cryptography.X509Certificates.X509ContentType]::Cert){throw '公開用CER以外は送信できません。秘密鍵を含む形式は使用しないでください。'}
 $certificate=[Security.Cryptography.X509Certificates.X509Certificate2]::new($cer)
 try {
-    if($signature.Status -ne 'Valid' -or !$signature.SignerCertificate -or
+    if($certificate.HasPrivateKey -or $signature.Status -ne 'Valid' -or !$signature.SignerCertificate -or
        $signature.SignerCertificate.Thumbprint -ne $certificate.Thumbprint -or
        $certificate.Subject -ne 'CN=KotorinChunChun'){throw 'MSIX署名または公開証明書が一致しません。'}
 } finally {$certificate.Dispose()}
