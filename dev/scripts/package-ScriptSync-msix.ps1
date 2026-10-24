@@ -15,6 +15,8 @@ $package = Get-Content -LiteralPath (Join-Path $source 'package.json') -Raw | Co
 if ($config.version -ne $package.version -or $config.version -notmatch '^\d+\.\d+\.\d+$') { throw '版番号が一致しません。' }
 . (Join-Path $PSScriptRoot "msix-version.ps1")
 $version = Get-ScriptSyncMsixVersion $SourceDirectory
+& node (Join-Path $source 'dev/scripts/generate-third-party.mjs') --check
+if ($LASTEXITCODE -ne 0) { throw '第三者ライセンスと対応ソースが現在の依存構成に一致しません。' }
 $exeVersion = [version](Get-Item -LiteralPath $exe).VersionInfo.FileVersion
 if ($exeVersion -ne [version]"$($config.version).0" -and $exeVersion -ne [version]$config.version) { throw 'EXEとパッケージの版番号が一致しません。' }
 $output = [IO.Path]::GetFullPath($OutputDirectory)
@@ -35,6 +37,9 @@ try {
     $layout = Join-Path $output ('layout-' + [guid]::NewGuid().ToString('N'))
     New-Item -ItemType Directory -Path (Join-Path $layout 'Assets') -Force | Out-Null
     Copy-Item -LiteralPath $exe -Destination (Join-Path $layout 'scriptsync.exe')
+    Copy-Item -LiteralPath (Join-Path $source 'LICENSE') -Destination (Join-Path $layout 'LICENSE.txt')
+    Copy-Item -LiteralPath (Join-Path $source 'THIRD-PARTY-NOTICES.md') -Destination (Join-Path $layout 'THIRD-PARTY-NOTICES.md')
+    Copy-Item -LiteralPath (Join-Path $source 'licenses/third-party') -Destination (Join-Path $layout 'licenses') -Recurse
     foreach ($asset in @('StoreLogo.png','Square44x44Logo.png','Square150x150Logo.png','ProjectFileLogo.png')) {
         Copy-Item -LiteralPath (Join-Path $source "src-tauri/icons/$asset") -Destination (Join-Path $layout "Assets/$asset")
     }

@@ -1,0 +1,236 @@
+{
+  "schemaVersion": 1,
+  "packages": {
+    "rust-alloc-stdlib-0.2.4": {
+      "revision": "ae42d22078b98549e987d2f03d12df7b984fde47",
+      "files": [
+        {
+          "file": "dropbox+rust-alloc-no-stdlib-ae42d22078b98549e987d2f03d12df7b984fde47/LICENSE",
+          "url": "https://raw.githubusercontent.com/dropbox/rust-alloc-no-stdlib/ae42d22078b98549e987d2f03d12df7b984fde47/LICENSE",
+          "sha256": "c0c56f26d9c051cac4d200c34c84e7ae9aaa853e01a982a1df08b09931e518ae"
+        }
+      ]
+    },
+    "rust-defmt-parser-1.0.0": {
+      "revision": "4a8cdb44891ed57b8ff5a023b6bec7137c48708f",
+      "files": [
+        {
+          "file": "knurling-rs+defmt-4a8cdb44891ed57b8ff5a023b6bec7137c48708f/LICENSE-APACHE",
+          "url": "https://raw.githubusercontent.com/knurling-rs/defmt/4a8cdb44891ed57b8ff5a023b6bec7137c48708f/LICENSE-APACHE",
+          "sha256": "8173d5c29b4f956d532781d2b86e4e30f83e6b7878dce18c919451d6ba707c90"
+        },
+        {
+          "file": "knurling-rs+defmt-4a8cdb44891ed57b8ff5a023b6bec7137c48708f/LICENSE-MIT",
+          "url": "https://raw.githubusercontent.com/knurling-rs/defmt/4a8cdb44891ed57b8ff5a023b6bec7137c48708f/LICENSE-MIT",
+          "sha256": "2710a622a896bba67356913d4d0492cab5465f61b2ecce6d880aeb483834fb50"
+        }
+      ]
+    },
+    "rust-oxiaudio-core-0.2.1": {
+      "revision": "503afda8a3deb407642fabe98949b85b751810bf",
+      "files": [
+        {
+          "file": "cool-japan+oxiaudio-503afda8a3deb407642fabe98949b85b751810bf/LICENSE",
+          "url": "https://raw.githubusercontent.com/cool-japan/oxiaudio/503afda8a3deb407642fabe98949b85b751810bf/LICENSE",
+          "sha256": "b99f0a9599ed18a52f8e6d9c423dc931f5b7756bd7263db5b8eb9f6723d77ff8"
+        }
+      ]
+    },
+    "rust-oxiaudio-decode-0.2.1": {
+      "revision": "503afda8a3deb407642fabe98949b85b751810bf",
+      "files": [
+        {
+          "file": "cool-japan+oxiaudio-503afda8a3deb407642fabe98949b85b751810bf/LICENSE",
+          "url": "https://raw.githubusercontent.com/cool-japan/oxiaudio/503afda8a3deb407642fabe98949b85b751810bf/LICENSE",
+          "sha256": "b99f0a9599ed18a52f8e6d9c423dc931f5b7756bd7263db5b8eb9f6723d77ff8"
+        }
+      ]
+    },
+    "rust-oxiaudio-encode-0.2.1": {
+      "revision": "503afda8a3deb407642fabe98949b85b751810bf",
+      "files": [
+        {
+          "file": "cool-japan+oxiaudio-503afda8a3deb407642fabe98949b85b751810bf/LICENSE",
+          "url": "https://raw.githubusercontent.com/cool-japan/oxiaudio/503afda8a3deb407642fabe98949b85b751810bf/LICENSE",
+          "sha256": "b99f0a9599ed18a52f8e6d9c423dc931f5b7756bd7263db5b8eb9f6723d77ff8"
+        }
+      ]
+    },
+    "rust-selectors-0.36.1": {
+      "revision": "635e1a19d02960588a00e189bd4bd5bdb150ec3d",
+      "files": [
+        {
+          "file": "servo+stylo-635e1a19d02960588a00e189bd4bd5bdb150ec3d/LICENSE-MPL-2.0.txt",
+          "url": "https://www.mozilla.org/media/MPL/2.0/index.txt",
+          "sha256": "3f3d9e0024b1921b067d6f7f88deb4a60cbe7a78e76c64e3f1d7fc3b779b9d04"
+        }
+      ]
+    },
+    "rust-unic-char-property-0.9.0": {
+      "revision": "5878605364af97a3358368a6eaef02104af2e016",
+      "files": [
+        {
+          "file": "open-i18n+rust-unic-5878605364af97a3358368a6eaef02104af2e016/AUTHORS",
+          "url": "https://raw.githubusercontent.com/open-i18n/rust-unic/5878605364af97a3358368a6eaef02104af2e016/AUTHORS",
+          "sha256": "2748c1a1fba7616917c61d455e8d715ab952671ead63f2026ad0124410596b09"
+        },
+        {
+          "file": "open-i18n+rust-unic-5878605364af97a3358368a6eaef02104af2e016/COPYRIGHT.md",
+          "url": "https://raw.githubusercontent.com/open-i18n/rust-unic/5878605364af97a3358368a6eaef02104af2e016/COPYRIGHT.md",
+          "sha256": "f5c342c49f3ac804f3e8e7bb62a8040a44c50d47bb36902b1abd13f66a1adf8b"
+        },
+        {
+          "file": "open-i18n+rust-unic-5878605364af97a3358368a6eaef02104af2e016/LICENSE-APACHE",
+          "url": "https://raw.githubusercontent.com/open-i18n/rust-unic/5878605364af97a3358368a6eaef02104af2e016/LICENSE-APACHE",
+          "sha256": "a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2"
+        },
+        {
+          "file": "open-i18n+rust-unic-5878605364af97a3358368a6eaef02104af2e016/LICENSE-MIT",
+          "url": "https://raw.githubusercontent.com/open-i18n/rust-unic/5878605364af97a3358368a6eaef02104af2e016/LICENSE-MIT",
+          "sha256": "23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3"
+        }
+      ]
+    },
+    "rust-unic-char-range-0.9.0": {
+      "revision": "5878605364af97a3358368a6eaef02104af2e016",
+      "files": [
+        {
+          "file": "open-i18n+rust-unic-5878605364af97a3358368a6eaef02104af2e016/AUTHORS",
+          "url": "https://raw.githubusercontent.com/open-i18n/rust-unic/5878605364af97a3358368a6eaef02104af2e016/AUTHORS",
+          "sha256": "2748c1a1fba7616917c61d455e8d715ab952671ead63f2026ad0124410596b09"
+        },
+        {
+          "file": "open-i18n+rust-unic-5878605364af97a3358368a6eaef02104af2e016/COPYRIGHT.md",
+          "url": "https://raw.githubusercontent.com/open-i18n/rust-unic/5878605364af97a3358368a6eaef02104af2e016/COPYRIGHT.md",
+          "sha256": "f5c342c49f3ac804f3e8e7bb62a8040a44c50d47bb36902b1abd13f66a1adf8b"
+        },
+        {
+          "file": "open-i18n+rust-unic-5878605364af97a3358368a6eaef02104af2e016/LICENSE-APACHE",
+          "url": "https://raw.githubusercontent.com/open-i18n/rust-unic/5878605364af97a3358368a6eaef02104af2e016/LICENSE-APACHE",
+          "sha256": "a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2"
+        },
+        {
+          "file": "open-i18n+rust-unic-5878605364af97a3358368a6eaef02104af2e016/LICENSE-MIT",
+          "url": "https://raw.githubusercontent.com/open-i18n/rust-unic/5878605364af97a3358368a6eaef02104af2e016/LICENSE-MIT",
+          "sha256": "23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3"
+        }
+      ]
+    },
+    "rust-unic-common-0.9.0": {
+      "revision": "5878605364af97a3358368a6eaef02104af2e016",
+      "files": [
+        {
+          "file": "open-i18n+rust-unic-5878605364af97a3358368a6eaef02104af2e016/AUTHORS",
+          "url": "https://raw.githubusercontent.com/open-i18n/rust-unic/5878605364af97a3358368a6eaef02104af2e016/AUTHORS",
+          "sha256": "2748c1a1fba7616917c61d455e8d715ab952671ead63f2026ad0124410596b09"
+        },
+        {
+          "file": "open-i18n+rust-unic-5878605364af97a3358368a6eaef02104af2e016/COPYRIGHT.md",
+          "url": "https://raw.githubusercontent.com/open-i18n/rust-unic/5878605364af97a3358368a6eaef02104af2e016/COPYRIGHT.md",
+          "sha256": "f5c342c49f3ac804f3e8e7bb62a8040a44c50d47bb36902b1abd13f66a1adf8b"
+        },
+        {
+          "file": "open-i18n+rust-unic-5878605364af97a3358368a6eaef02104af2e016/LICENSE-APACHE",
+          "url": "https://raw.githubusercontent.com/open-i18n/rust-unic/5878605364af97a3358368a6eaef02104af2e016/LICENSE-APACHE",
+          "sha256": "a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2"
+        },
+        {
+          "file": "open-i18n+rust-unic-5878605364af97a3358368a6eaef02104af2e016/LICENSE-MIT",
+          "url": "https://raw.githubusercontent.com/open-i18n/rust-unic/5878605364af97a3358368a6eaef02104af2e016/LICENSE-MIT",
+          "sha256": "23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3"
+        }
+      ]
+    },
+    "rust-unic-ucd-ident-0.9.0": {
+      "revision": "8a6ce83063d90b91ae2ce59eddb803edd393fca9",
+      "files": [
+        {
+          "file": "open-i18n+rust-unic-8a6ce83063d90b91ae2ce59eddb803edd393fca9/AUTHORS",
+          "url": "https://raw.githubusercontent.com/open-i18n/rust-unic/8a6ce83063d90b91ae2ce59eddb803edd393fca9/AUTHORS",
+          "sha256": "2748c1a1fba7616917c61d455e8d715ab952671ead63f2026ad0124410596b09"
+        },
+        {
+          "file": "open-i18n+rust-unic-8a6ce83063d90b91ae2ce59eddb803edd393fca9/COPYRIGHT.md",
+          "url": "https://raw.githubusercontent.com/open-i18n/rust-unic/8a6ce83063d90b91ae2ce59eddb803edd393fca9/COPYRIGHT.md",
+          "sha256": "f5c342c49f3ac804f3e8e7bb62a8040a44c50d47bb36902b1abd13f66a1adf8b"
+        },
+        {
+          "file": "open-i18n+rust-unic-8a6ce83063d90b91ae2ce59eddb803edd393fca9/LICENSE-APACHE",
+          "url": "https://raw.githubusercontent.com/open-i18n/rust-unic/8a6ce83063d90b91ae2ce59eddb803edd393fca9/LICENSE-APACHE",
+          "sha256": "a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2"
+        },
+        {
+          "file": "open-i18n+rust-unic-8a6ce83063d90b91ae2ce59eddb803edd393fca9/LICENSE-MIT",
+          "url": "https://raw.githubusercontent.com/open-i18n/rust-unic/8a6ce83063d90b91ae2ce59eddb803edd393fca9/LICENSE-MIT",
+          "sha256": "23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3"
+        }
+      ]
+    },
+    "rust-unic-ucd-version-0.9.0": {
+      "revision": "5878605364af97a3358368a6eaef02104af2e016",
+      "files": [
+        {
+          "file": "open-i18n+rust-unic-5878605364af97a3358368a6eaef02104af2e016/AUTHORS",
+          "url": "https://raw.githubusercontent.com/open-i18n/rust-unic/5878605364af97a3358368a6eaef02104af2e016/AUTHORS",
+          "sha256": "2748c1a1fba7616917c61d455e8d715ab952671ead63f2026ad0124410596b09"
+        },
+        {
+          "file": "open-i18n+rust-unic-5878605364af97a3358368a6eaef02104af2e016/COPYRIGHT.md",
+          "url": "https://raw.githubusercontent.com/open-i18n/rust-unic/5878605364af97a3358368a6eaef02104af2e016/COPYRIGHT.md",
+          "sha256": "f5c342c49f3ac804f3e8e7bb62a8040a44c50d47bb36902b1abd13f66a1adf8b"
+        },
+        {
+          "file": "open-i18n+rust-unic-5878605364af97a3358368a6eaef02104af2e016/LICENSE-APACHE",
+          "url": "https://raw.githubusercontent.com/open-i18n/rust-unic/5878605364af97a3358368a6eaef02104af2e016/LICENSE-APACHE",
+          "sha256": "a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2"
+        },
+        {
+          "file": "open-i18n+rust-unic-5878605364af97a3358368a6eaef02104af2e016/LICENSE-MIT",
+          "url": "https://raw.githubusercontent.com/open-i18n/rust-unic/5878605364af97a3358368a6eaef02104af2e016/LICENSE-MIT",
+          "sha256": "23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3"
+        }
+      ]
+    },
+    "rust-webview2-com-0.38.2": {
+      "revision": "b74dc5e2b394044bea5191052868ce7a106c202c",
+      "files": [
+        {
+          "file": "wravery+webview2-rs-b74dc5e2b394044bea5191052868ce7a106c202c/LICENSE",
+          "url": "https://raw.githubusercontent.com/wravery/webview2-rs/b74dc5e2b394044bea5191052868ce7a106c202c/LICENSE",
+          "sha256": "0dcf41516e608bbcb6cdc5229feb7b86fe4a643b85e7df251133c93408fdac73"
+        }
+      ]
+    },
+    "rust-webview2-com-macros-0.8.1": {
+      "revision": "dffa41a8a46d3f5565eefbff2de57d38d399f158",
+      "files": [
+        {
+          "file": "wravery+webview2-rs-dffa41a8a46d3f5565eefbff2de57d38d399f158/LICENSE",
+          "url": "https://raw.githubusercontent.com/wravery/webview2-rs/dffa41a8a46d3f5565eefbff2de57d38d399f158/LICENSE",
+          "sha256": "0dcf41516e608bbcb6cdc5229feb7b86fe4a643b85e7df251133c93408fdac73"
+        }
+      ]
+    },
+    "rust-webview2-com-sys-0.38.2": {
+      "revision": "b74dc5e2b394044bea5191052868ce7a106c202c",
+      "files": [
+        {
+          "file": "wravery+webview2-rs-b74dc5e2b394044bea5191052868ce7a106c202c/LICENSE",
+          "url": "https://raw.githubusercontent.com/wravery/webview2-rs/b74dc5e2b394044bea5191052868ce7a106c202c/LICENSE",
+          "sha256": "0dcf41516e608bbcb6cdc5229feb7b86fe4a643b85e7df251133c93408fdac73"
+        }
+      ]
+    },
+    "npm-qrcode-generator-2.0.4": {
+      "revision": "83b7e8fe3fddd3b0368dbafd6ce56995bd25e3c8",
+      "npmVersion": "2.0.4",
+      "files": [
+        {
+          "file": "kazuhikoarase+qrcode-generator-83b7e8fe3fddd3b0368dbafd6ce56995bd25e3c8/LICENSE",
+          "url": "https://raw.githubusercontent.com/kazuhikoarase/qrcode-generator/83b7e8fe3fddd3b0368dbafd6ce56995bd25e3c8/LICENSE",
+          "sha256": "3a850fa5f08101db6f40676c2786e10bd2cd5fff7b12ffdf1e0c434d4e49d90c"
+        }
+      ]
+    }
+  }
+}

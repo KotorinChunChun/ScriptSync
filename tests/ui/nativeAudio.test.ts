@@ -64,3 +64,13 @@ it("再生デバイス切断の状態を通知してHTML時計も停止する",a
  const registered=audio();await registered.play();rpc.mockImplementation(async()=>snapshot({playing:false,error:"切断"}));
  await vi.advanceTimersByTimeAsync(100);await settle();expect(registered.paused).toBe(true);expect(notice).toHaveBeenCalledWith("切断",true);
 });
+it("先頭停止後に古い一時停止応答が返っても再生位置を戻さない",async()=>{
+ const registered=audio();await registered.play();registered.currentTime=.7;
+ let releasePause:(value:unknown)=>void=()=>{};
+ rpc.mockImplementation((action:string)=>action==='playback_pause'?new Promise(resolve=>{releasePause=resolve;}):Promise.resolve(snapshot({playing:false,position:0})));
+ registered.pause();registered.dispatchEvent(new Event('pause'));await settle();
+ const stopped=bridge.stopNativeAudio(registered);expect(registered.currentTime).toBe(0);
+ releasePause(snapshot({playing:false,position:.7}));await stopped;
+ expect(registered.currentTime).toBe(0);expect(rpc).toHaveBeenCalledWith('playback_stop');
+ await vi.advanceTimersByTimeAsync(200);expect(registered.currentTime).toBe(0);
+});

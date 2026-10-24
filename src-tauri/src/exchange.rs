@@ -86,7 +86,7 @@ pub fn inspect_zip(path: &Path, password: Option<&str>) -> Result<ValidatedExcha
             Some(value) => zip.by_index_decrypt(index, value.as_bytes()),
             None => zip.by_index(index),
         }.map_err(|e| format!("ZIPを開けません。暗号化ZIPは正しいキーを指定してください: {e}"))?;
-        let name = entry.name().to_owned();
+        let name = entry.name().map_err(|e| format!("ZIPの項目名が不正です: {e}"))?.into_owned();
         if !valid_path(&name) || !names.insert(name.to_lowercase())
             || entry.unix_mode().is_some_and(|mode| mode & 0o170000 == 0o120000) {
             return Err("ZIPのパス、重複項目、リンクが不正です".into());

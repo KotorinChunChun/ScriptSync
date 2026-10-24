@@ -44,6 +44,16 @@ pub fn string(v: &Value, key: &str) -> Result<String> {
         .map(str::to_owned)
         .ok_or_else(|| format!("{key} が必要です"))
 }
+
+// 明示パスがあればOS選択画面を使わず、同じ保存・取込処理を通す。
+fn explicit_path(v: &Value, extensions: &[&str]) -> Result<Option<std::path::PathBuf>> {
+    let Some(value) = v.get("path") else { return Ok(None) };
+    let path = std::path::PathBuf::from(value.as_str().filter(|s| !s.is_empty()).ok_or("ファイルの絶対パスが必要です")?);
+    if !path.is_absolute() || !path.extension().and_then(|e|e.to_str()).is_some_and(|ext|extensions.iter().any(|allowed|ext.eq_ignore_ascii_case(allowed))) {
+        return Err("対象形式のファイルを絶対パスで指定してください".into());
+    }
+    Ok(Some(path))
+}
 pub fn segment<'a>(p: &'a mut Project, id: &str) -> Result<&'a mut Segment> {
     p.segments
         .iter_mut()
@@ -364,7 +374,9 @@ impl App {
             if let Some(directory) = a.project_location.directory.as_ref().filter(|p| p.is_dir()) {
                 dialog = dialog.set_directory(directory);
             }
-            let chosen = if action == "open" && v.get("path").is_some() {
+            let chosen = if action == "new" && v.get("path").is_some() {
+                explicit_path(&v, &[PROJECT_FILE_EXTENSION])?
+            } else if action == "open" && v.get("path").is_some() {
                 let path=std::path::PathBuf::from(string(&v,"path")?);
                 if !path.extension().and_then(|ext|ext.to_str()).is_some_and(|ext|ext.eq_ignore_ascii_case(PROJECT_FILE_EXTENSION)||ext.eq_ignore_ascii_case("json")) {
                     return Err("ScriptSyncプロジェクトを指定してください".into());
@@ -685,10 +697,12 @@ impl App {
                 "script_rebind_legacy" => crate::script_sources::rebind_legacy(&mut store.project, &v)?,
                 "append" | "import_script" => {
                     let text = if action == "import_script" {
-                        let Some(path) = rfd::FileDialog::new()
+                        let chosen = if v.get("path").is_some() {
+                            explicit_path(&v, &["txt", "md"])?
+                        } else { rfd::FileDialog::new()
                             .add_filter("台本", &["txt", "md"])
-                            .pick_file()
-                        else {
+                            .pick_file() };
+                        let Some(path) = chosen else {
                             return Ok(());
                         };
                         std::fs::read_to_string(path).map_err(|e| e.to_string())?
@@ -712,10 +726,12 @@ impl App {
                 }
                 "import_audio" => {
                     let sid = string(&v, "segment")?;
-                    let Some(path) = rfd::FileDialog::new()
+                    let chosen = if v.get("path").is_some() {
+                        explicit_path(&v, &["wav"])?
+                    } else { rfd::FileDialog::new()
                         .add_filter("音声 WAV", &["wav"])
-                        .pick_file()
-                    else {
+                        .pick_file() };
+                    let Some(path) = chosen else {
                         return Ok(());
                     };
                     let mut take = take_from_file(&store.root, &path, "import".into())?;
@@ -1147,6 +1163,15 @@ fn recording_result_or_preserve<T>(store: &mut Store, sid: &str, tid: &str, path
 #[cfg(test)]
 mod recording_failure_tests {
     use super::*;
+    #[test]
+    fn automation_paths_require_absolute_paths_and_expected_formats() {
+        assert!(explicit_path(&json!({}), &["wav"]).unwrap().is_none());
+        assert!(explicit_path(&json!({"path":"relative.wav"}), &["wav"]).is_err());
+        let wav=std::env::temp_dir().join("scriptsync-automation.WAV");
+        assert_eq!(explicit_path(&json!({"path":wav}), &["wav"]).unwrap().unwrap(), wav);
+        assert!(explicit_path(&json!({"path":wav.with_extension("exe")}), &["wav"]).is_err());
+        assert!(explicit_path(&json!({"path":null}), &["wav"]).is_err());
+    }
     #[test]
     fn postprocess_failure_removes_take_but_preserves_captured_audio() {
         let root=std::env::temp_dir().join(format!("scriptsync-postprocess-failure-{}",id()));

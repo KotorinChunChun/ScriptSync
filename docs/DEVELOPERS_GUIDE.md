@@ -8,7 +8,7 @@
 
 署名付きMSIXのローカル作成は[MSIX作成手順](MSIX.md)を参照してください。
 
-Windows、PowerShell 7、Node.js/npm、Rust、TauriのWindowsビルド環境（MSVC・WebView2）が必要です。録音・プロジェクト保存の確認にはネイティブアプリを使用します。
+Windows、PowerShell 7、Node.js 22.12以上/npm（検証は22系）、Rust、TauriのWindowsビルド環境（MSVC・WebView2）が必要です。録音・プロジェクト保存の確認にはネイティブアプリを使用します。
 
 ```powershell
 cd C:\develop\KotorinToys\tools\ScriptSync
@@ -27,6 +27,8 @@ npm run tauri build -- --no-bundle
 実行ファイルは `src-tauri/target/release/scriptsync.exe` です。既存アプリを閉じてから最新ビルドを起動します。配布用インストーラーの作成・別PCでの動作保証とは別です。
 
 ## 通常の検証
+
+一括検証は `npm run verify`、実WebView2・IPC・CSPまでの自動検証は `npm run verify:native`。実出力デバイスを使う無音の検証は `npm run verify:native -- -AudioDevice`。詳細は[自動検証ガイド](automated-testing.md)を参照してください。OS画面操作やComputer Useは必要ありません。
 
 変更前に `git status --short` を確認し、既存変更を保持します。関係する試験から実施し、結果と未確認事項を実装計画へ記録します。
 

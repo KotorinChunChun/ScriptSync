@@ -5,8 +5,13 @@ type Snapshot={playing:boolean;position:number;duration:number;file:string;error
 const sources=new Map<string,Source>();
 let nativeRpc:Rpc|null=null;
 let nativeNotice:((message:string,error?:boolean)=>void)|null=null;
+let stopNative:((audio:HTMLMediaElement)=>Promise<void>)|null=null;
 const cueSamples=new Map<string,Promise<number[]>>();
 export function hasNativeAudio(){return nativeRpc!==null;}
+export async function stopNativeAudio(audio:HTMLMediaElement):Promise<void>{
+ if(stopNative){await stopNative(audio);return;}
+ audio.pause();audio.currentTime=0;
+}
 /** 復号のみをWeb Audioで行い、出力は独立したWASAPIプレーヤーへ渡す。 */
 export async function playNativeCue(url:string,volume:number):Promise<void>{
  if(!nativeRpc)return;
@@ -44,12 +49,20 @@ export function installNativeAudio(rpc:Rpc,notice:(message:string,error?:boolean
  const run=<T>(operation:()=>Promise<T>):Promise<T>=>{const result=queue.then(operation);queue=result.catch(()=>{});return result;};
  const report=(error:unknown)=>notice(String(error),true);
  const clock=(audio:HTMLMediaElement,position:number)=>{if(Number.isFinite(position)&&Math.abs(audio.currentTime-position)>.15){synchronizing.set(audio,position);audio.currentTime=position;}};
+ stopNative=audio=>{
+  const ownsPlayback=active===audio;
+  if(ownsPlayback){active=null;++generation;}
+  originalPause.call(audio);synchronizing.set(audio,0);audio.currentTime=0;
+  audio.dispatchEvent(new Event('timeupdate'));
+  // 古いpoll/pause応答を無効にし、先行処理が終わってから実再生も先頭停止する。
+  return ownsPlayback?run(async()=>{await rpc('playback_stop');}):Promise.resolve();
+ };
  const bind=(audio:HTMLMediaElement)=>{
   if(bound.has(audio))return;bound.add(audio);
   audio.addEventListener("pause",()=>{
    if(active!==audio||!audio.paused||audio.ended)return;
    const version=++generation;
-   void run(async()=>{if(active!==audio||version!==generation)return;const state=await rpc<Snapshot>("playback_pause");clock(audio,state.position);}).catch(report);
+   void run(async()=>{if(active!==audio||version!==generation)return;const state=await rpc<Snapshot>("playback_pause");if(active===audio&&version===generation)clock(audio,state.position);}).catch(report);
   });
   audio.addEventListener("seeking",()=>{
    const expected=synchronizing.get(audio);

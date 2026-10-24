@@ -24,3 +24,27 @@ Thumbs.db
 
 /dev/test-videos/
 /dev/history/*/logs/
+
+# 秘密情報・端末固有設定・実原稿と録音は追跡しない。
+*.pfx
+*.p12
+*.pem
+*.key
+id_rsa
+id_ed25519
+**/.env
+**/.env.*
+!**/.env.example
+**/signing.json
+**/machine-settings.json
+*.scriptsync
+*.scriptsync.data/
+*.wav
+*.flac
+*.mp3
+*.mp4
+*.webm
+*.sqlite3
+*.db
+**/.venv/
+**/venv/

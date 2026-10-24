@@ -3,6 +3,7 @@ name = "scriptsync"
 version = "0.0.6"
 description = "人間音声と合成音声の読みを照合する制作支援ツール"
 authors = ["amekoro"]
+license = "MIT"
 edition = "2024"
 
 [lib]
@@ -17,14 +18,14 @@ anyhow = "1"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 tauri = { version = "2", features = [] }
-audio_mixer_backend = { package = "microphone-recorder-example", path = "../crates/scriptsync-recorder" }
+audio_mixer_backend = { package = "microphone-recorder-example", path = "../crates/scriptsync-recorder", default-features = false }
 uuid = { version = "1", features = ["v4", "serde"] }
 sha2 = "0.10"
 hound = "3.5"
 rfd = "0.15"
 fs2 = "0.4"
 base64 = "0.22"
-zip = { version = "2", default-features = false, features = ["deflate", "aes-crypto"] }
+zip = { version = "9", default-features = false, features = ["deflate", "aes-crypto"] }
 reqwest = { version = "0.12", default-features = false, features = ["blocking", "json", "rustls-tls", "multipart"] }
 pbkdf2 = "0.12"
 
