@@ -37,11 +37,18 @@ try {
 } finally {$certificate.Dispose()}
 $zip=[IO.Compression.ZipFile]::OpenRead($msix)
 try {
+    # OPC/MSIXは@や+をパート名でpercent-encodeする。インストール先の名前へ戻して照合する。
+    $parts=@{}
+    foreach($part in $zip.Entries){
+        $name=[Uri]::UnescapeDataString($part.FullName)
+        if($parts.ContainsKey($name)){throw 'MSIXに重複したパート名があります。'}
+        $parts[$name]=$part
+    }
     if(!$zip.GetEntry('LICENSE.txt') -or !$zip.GetEntry('THIRD-PARTY-NOTICES.md')){throw 'ライセンス文書を同梱したMSIXを作成してください。'}
     $manifestPath=Join-Path $root 'licenses/third-party/manifest.json'
     $expectedLicenseManifest=Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
     foreach($expected in @([pscustomobject]@{path='manifest.json';sha256=(Get-FileHash $manifestPath).Hash})+@($expectedLicenseManifest.files)){
-        $entry=$zip.GetEntry('licenses/'+$expected.path)
+        $entry=$parts['licenses/'+$expected.path]
         if(!$entry){throw "対応ソースまたはライセンスがMSIXにありません: $($expected.path)"}
         $stream=$entry.Open()
         try {$actual=[Convert]::ToHexString([Security.Cryptography.SHA256]::HashData($stream))}finally{$stream.Dispose()}

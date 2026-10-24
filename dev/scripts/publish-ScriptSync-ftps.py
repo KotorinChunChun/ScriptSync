@@ -73,6 +73,8 @@ def publish(args):
 
 
 if __name__ == '__main__':
+    sys.stdout.reconfigure(encoding='utf-8')
+    sys.stderr.reconfigure(encoding='utf-8')
     parser = argparse.ArgumentParser()
     parser.add_argument('--artifact', type=Path, required=True)
     parser.add_argument('--baseline', type=Path, required=True)
