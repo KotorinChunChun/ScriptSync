@@ -1,5 +1,5 @@
 """ScriptSyncの2つのWeb版だけを既存WebsiteのFTPS経路で配信する。"""
-import argparse,hashlib,importlib.util,json,mimetypes,time
+import argparse,hashlib,importlib.util,json,sys
 from pathlib import Path
 from datetime import datetime,timezone
 from urllib.request import Request,urlopen
@@ -29,6 +29,7 @@ def main():
             if name.startswith('test/scriptsync/'):
                 target=SITE/'www'/name;target.parent.mkdir(parents=True,exist_ok=True);target.write_bytes(data)
     if not args.execute:return
+    sys.path.insert(0,str(SITE/'scripts'))
     spec=importlib.util.spec_from_file_location('existing_ftps',SITE/'scripts/publish-othello.py');base=importlib.util.module_from_spec(spec);spec.loader.exec_module(base)
     with base.connect() as ftp:
         # 全上書き対象を先に退避する。存在判定以外のエラーは握りつぶさない。
