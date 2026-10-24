@@ -12,15 +12,16 @@ import {chromium} from 'playwright';
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'../..');
 const args=process.argv.slice(2),versionInfo=JSON.parse(fs.readFileSync(path.join(root,'dev/msix-version.json'),'utf8'));
 const version=`${versionInfo.applicationVersion}.${versionInfo.revision}`;
-let exe=path.join(root,'target/kotorintoys/scriptsync.exe'),withDevice=false;
+let exe=path.join(root,'target/kotorintoys/scriptsync.exe'),withDevice=false,reportVersion=version;
 for(let i=0;i<args.length;i++){
  if(args[i]==='--exe' && args[i+1])exe=path.resolve(args[++i]);
  else if(args[i]==='--with-audio-device')withDevice=true;
- else throw new Error('使い方: test-native.mjs [--exe EXE] [--with-audio-device]');
+ else if(args[i]==='--report-version'&&args[i+1]){reportVersion=args[++i].replace(/^v/,'');if(!/^\d+\.\d+\.\d+(?:\.\d+)?$/.test(reportVersion))throw Error('記録対象版が不正です');}
+ else throw new Error('使い方: test-native.mjs [--exe EXE] [--with-audio-device] [--report-version vX.Y.Z]');
 }
 if(process.platform!=='win32')throw new Error('ネイティブ試験はWindows専用です');
 if(!fs.existsSync(exe))throw new Error('画面内包EXEを先にビルドしてください: npm run verify:native');
-const run=path.join(root,`dev/history/v${version}/logs/native-${new Date().toISOString().replaceAll(/[:.]/g,'-')}-${crypto.randomUUID().slice(0,8)}`);
+const run=path.join(root,`dev/history/v${reportVersion}/logs/native-${new Date().toISOString().replaceAll(/[:.]/g,'-')}-${crypto.randomUUID().slice(0,8)}`);
 fs.mkdirSync(run,{recursive:true});
 const sid=spawnSync('whoami',['/user','/fo','csv','/nh'],{encoding:'utf8'}).stdout?.match(/S-1-5-\d+(?:-\d+)+/)?.[0];
 if(!sid)throw new Error('現在利用者のSIDを確認できません');
