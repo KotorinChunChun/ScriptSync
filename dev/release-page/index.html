@@ -27,7 +27,7 @@
       </div>
       <aside class="release-card" aria-label="配布版">
         <div class="release-mark"><img src="./icon.png" alt=""></div>
-        <dl><div><dt>アプリ版</dt><dd>0.0.6（ベータ）</dd></div><div><dt>パッケージ版</dt><dd>0.0.6.3</dd></div><div><dt>公開日</dt><dd>2026-09-19</dd></div><div><dt>発行元</dt><dd>KotorinChunChun</dd></div></dl>
+        <dl><div><dt>アプリ版</dt><dd>0.0.6（ベータ）</dd></div><div><dt>パッケージ版</dt><dd>0.0.6.4</dd></div><div><dt>公開日</dt><dd>2026-10-24</dd></div><div><dt>発行元</dt><dd>KotorinChunChun</dd></div></dl>
       </aside>
     </section>
     <section class="requirements" aria-labelledby="features"><h2 id="features">できること</h2>
@@ -36,7 +36,7 @@
     <section class="downloads" id="downloads" aria-labelledby="files"><div class="section-heading"><h2 id="files">ダウンロード</h2><p>現在はベータ版を配布しています。初めて使うPCでは、下の手順で証明書を登録してください。</p></div>
       <div class="file-list">
         <a href="./ScriptSync.appinstaller" download><span><strong>インストール・更新</strong><small>App Installerで導入。起動時に更新を確認します。</small></span><code>.appinstaller</code></a>
-        <a href="./ScriptSync_0.0.6.3_x64.msix" download><span><strong>本体をダウンロード</strong><small>パッケージ版 0.0.6.3・Windows x64</small></span><code>.msix</code></a>
+        <a href="./ScriptSync_0.0.6.4_x64.msix" download><span><strong>本体をダウンロード</strong><small>パッケージ版 0.0.6.4・Windows x64</small></span><code>.msix</code></a>
         <a href="./ScriptSync.cer" download><span><strong>署名証明書</strong><small>初回導入用・発行元 KotorinChunChun</small></span><code>.cer</code></a>
       </div>
     </section>
@@ -44,7 +44,7 @@
       <ol><li>「署名証明書」をダウンロードして開き、発行先が <code>KotorinChunChun</code> であることを確認します。</li><li>「証明書のインストール」で「ローカル コンピューター」を選びます。管理者の許可が必要です。</li><li>「証明書をすべて次のストアに配置する」を選び、「信頼されたユーザー」に登録します。</li><li>「インストール・更新」をダウンロードして開き、インストールします。</li><li>スタートメニューから「読みあわせ (ScriptSync)」を開き、新規プロジェクトを作成して台本を追加します。</li></ol>
       <p>同じ署名証明書を登録済みなら、再登録は不要です。App Installerで開けない場合は、本体のMSIXをダウンロードして開いてください。</p>
     </section>
-    <section class="requirements" aria-labelledby="changes"><h2 id="changes">0.0.6の変更</h2><ul><li>原稿再読込後の下書き保存と、重複行の安全な対応付けを改善しました。</li><li>採用取消、別原稿へのテイク移動、前後編集と途中カットの試聴編集に対応しました。</li><li>録音・出力画面へ待ち時間を含む合計時間を表示します。</li></ul><p>旧版からの録音、文字起こし、AI文章改善、置換辞書も引き続き利用できます。</p></section>
+    <section class="requirements" aria-labelledby="changes"><h2 id="changes">今回の更新</h2><ul><li>KotorinToysの管理通信に対応し、起動・画面表示・状態確認・正常停止を受け付けます。</li><li>録音・処理・未保存入力・ダイアログ中は管理停止を拒否し、作業を保護します。</li><li>本体からの管理操作は現在、開発EXEで対応しています。インストール済みMSIXの本体管理は今後の対応です。</li></ul><h3>0.0.6系列の改善</h3><ul><li>原稿再読込後の下書き保存と、重複行の安全な対応付けを改善しました。</li><li>採用取消、別原稿へのテイク移動、前後編集と途中削除の試聴編集に対応しました。</li><li>録音・出力画面へ待ち時間を含む合計時間を表示します。</li></ul><p>旧版からの録音、文字起こし、AI文章改善、置換辞書も引き続き利用できます。</p></section>
     <section class="requirements" aria-labelledby="requirements"><h2 id="requirements">動作環境</h2><ul><li>Windows 10 version 2004以降、またはWindows 11（x64）</li><li>Microsoft Edge WebView2 Runtime、Microsoft App Installer</li><li>録音用マイク</li></ul><p>録音と音声出力だけなら、文字起こし環境は不要です。Whisperを使う場合は、設定画面から専用環境を導入します。初回はインターネット接続が必要です。Codexによる文章改善は、Codex CLIの導入と認証が別途必要です。</p></section>
   </main>
   <footer><p>読みあわせ（ScriptSync）・KotorinChunChun</p><p><a href="../">アプリ一覧</a></p></footer>
