@@ -37,8 +37,12 @@ fn commit_stop(app: &App) -> bool {
 fn rollback_stop(app: &App) {
     if let Ok(mut state) = app.0.lock() { state.management_stopping = false; }
 }
+fn cancel_prepared_stop(app: &App, prepared: bool) {
+    // 拒否しただけなら、ネイティブ選択画面が保持するロックを待たない。
+    if prepared { rollback_stop(app); }
+}
 
-struct PendingStop { id: String, deadline: Instant, sender: mpsc::SyncSender<bool> }
+struct PendingStop { id: String, deadline: Instant, sender: mpsc::SyncSender<bool>, prepared: Arc<AtomicBool> }
 pub struct Management {
     ready: Arc<AtomicBool>,
     shutdown: Arc<AtomicBool>,
@@ -94,7 +98,10 @@ pub fn management_stop_reply(id: String, allowed: bool, management: tauri::State
     if !pending.as_ref().is_some_and(|request| request.id == id && Instant::now() < request.deadline) { return false; }
     let request = pending.take().unwrap();
     let accepted = allowed && commit_stop(&app);
-    if request.sender.send(accepted).is_err() && accepted { rollback_stop(&app); return false; }
+    request.prepared.store(accepted, Ordering::Release);
+    if request.sender.send(accepted).is_err() && accepted {
+        rollback_stop(&app); request.prepared.store(false, Ordering::Release); return false;
+    }
     accepted
 }
 
@@ -125,6 +132,7 @@ fn handle_request(server: &pipe::ManagementPipe, app: &AppHandle, ready: &Atomic
     let is_ready = ready.load(Ordering::Acquire);
     let (mut result, mut detail) = ("completed", "");
     let mut stop = false;
+    let mut prepared = false;
     if !server.same_session().unwrap_or(false) { result = "refused"; detail = "別の対話セッションです。"; }
     else if parsed.is_err() { result = "failed"; detail = "管理要求が不正です。"; }
     else {
@@ -136,10 +144,12 @@ fn handle_request(server: &pipe::ManagementPipe, app: &AppHandle, ready: &Atomic
             "stop" => {
                 let id = uuid::Uuid::new_v4().to_string();
                 let (tx, rx) = mpsc::sync_channel(1);
-                *pending.lock().unwrap() = Some(PendingStop { id: id.clone(), deadline, sender: tx });
+                let preparation = Arc::new(AtomicBool::new(false));
+                *pending.lock().unwrap() = Some(PendingStop { id: id.clone(), deadline, sender: tx, prepared: preparation.clone() });
                 stop = app.emit("management-stop-requested", &id).is_ok()
                     && rx.recv_timeout(deadline.saturating_duration_since(Instant::now())).unwrap_or(false);
                 *pending.lock().unwrap() = None;
+                prepared = preparation.load(Ordering::Acquire);
                 if stop { result = "accepted"; } else { result = "refused"; detail = "編集中・処理中、または画面の終了確認に応答がありません。作業を完了してから再試行してください。"; }
             },
             _ => { result = "unsupported"; detail = "未対応の操作です。"; }
@@ -149,7 +159,7 @@ fn handle_request(server: &pipe::ManagementPipe, app: &AppHandle, ready: &Atomic
         "version":version(),"launchOrigin":origin,"capabilities":["status","show","stop"],"result":result,"detail":detail});
     let written = server.write_line(&response.to_string(), deadline).is_ok();
     if command == "stop" && (!stop || !written) {
-        rollback_stop(&app.state::<App>());
+        cancel_prepared_stop(&app.state::<App>(), prepared);
         let _ = app.emit("management-stop-cancelled", ());
     }
     stop && written
@@ -193,5 +203,6 @@ mod tests {
     #[test]
     fn held_backend_lock_never_blocks_stop() {
         let app = App::default(); let _lock = app.0.lock().unwrap(); assert!(!commit_stop(&app));
+        cancel_prepared_stop(&app, false); // 拒否後の後処理もロック待ちしない。
     }
 }
