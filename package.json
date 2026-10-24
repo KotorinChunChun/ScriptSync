@@ -16,6 +16,8 @@
     "check:static": "node dev/scripts/check-static.mjs",
     "check:powershell": "pwsh -NoProfile -File dev/scripts/check-powershell.ps1",
     "test:static": "node --test dev/scripts/check-static.test.mjs",
+    "check:security": "node dev/scripts/check-public-source.mjs",
+    "test:security": "node --test dev/scripts/check-public-source.test.mjs",
     "tauri": "tauri",
     "release:msix": "pwsh -NoProfile -File dev/scripts/build-msix.ps1",
     "release:plan": "pwsh -NoProfile -File dev/scripts/publish-ScriptSync.ps1 -Mode Plan"
