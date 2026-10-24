@@ -30,6 +30,7 @@ def main():
                 target=SITE/'www'/name;target.parent.mkdir(parents=True,exist_ok=True);target.write_bytes(data)
     if not args.execute:return
     sys.path.insert(0,str(SITE/'scripts'))
+    from upload_ftp import ensure_remote_dir
     spec=importlib.util.spec_from_file_location('existing_ftps',SITE/'scripts/publish-othello.py');base=importlib.util.module_from_spec(spec);spec.loader.exec_module(base)
     with base.connect() as ftp:
         # 全上書き対象を先に退避する。存在判定以外のエラーは握りつぶさない。
@@ -48,7 +49,10 @@ def main():
         # 参照される資産、拒否規則、入口、メニューの順で原子的に置換する。
         ordered=sorted(files,key=lambda n:(not n.endswith('.htaccess'),n=='test/menu.json',n.endswith('index.html'),n))
         for name in ordered:
-            target=REMOTE+'/'+name;base.mkdir(ftp,str(Path(target).parent).replace('\\','/'));base.replace_remote(ftp,target,files[name],run.name,'644')
+            target=REMOTE+'/'+name
+            if not name.startswith(('test/scriptsync/','test/scriptsyncweb/')) and name!='test/menu.json':raise RuntimeError('配信先が許可範囲外です')
+            ensure_remote_dir(ftp,str(Path(target).parent).replace('\\','/'))
+            base.replace_remote(ftp,target,files[name],run.name,'644')
             if base.read_remote(ftp,target)!=files[name]:raise RuntimeError('FTPS読戻し不一致：'+name)
     results={}
     for name,data in files.items():
