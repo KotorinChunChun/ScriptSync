@@ -1,5 +1,7 @@
 # 開発者ガイド
 
+開発正本は `C:\develop\KotorinToys\tools\ScriptSync`。親は採用コミットを記録し、子のGit履歴・配布形式を維持します。[KotorinToys収録](kotorintoys-integration.md)を参照してください。
+
 現行版はv0.0.6です。[実装記録](../dev/history/v0.0.6/v0.0.6-imp.md)で自動試験・ネイティブ操作確認・未確認範囲を確認してください。公開版v0.0.5以前の記録はdev直下またはhistoryに保持しています。
 
 ## 開発起動とビルド
@@ -9,7 +11,7 @@
 Windows、PowerShell 7、Node.js/npm、Rust、TauriのWindowsビルド環境（MSVC・WebView2）が必要です。録音・プロジェクト保存の確認にはネイティブアプリを使用します。
 
 ```powershell
-cd C:\develop\ScriptSync
+cd C:\develop\KotorinToys\tools\ScriptSync
 npm ci
 npm run tauri dev
 ```

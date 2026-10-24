@@ -5,7 +5,7 @@
 ## 起動してデモを試す
 
 ```powershell
-cd C:\develop\ScriptSync
+cd C:\develop\KotorinToys\tools\ScriptSync
 npm run presentation:dev
 ```
 

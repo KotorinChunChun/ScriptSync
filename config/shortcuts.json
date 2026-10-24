@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 1,
+  "shortcuts": [
+    { "id": "record", "keys": "F1", "description": "録音開始／未保存録音の取消。連続録音中は取消後に再録音", "scope": "recording", "configurable": false, "changeLocation": "固定。dev/SHORTCUT_KEYS.mdを参照" },
+    { "id": "save", "keys": "F2", "description": "録音を停止して保存。延長設定時は指定秒数後に停止", "scope": "recording", "configurable": false, "changeLocation": "固定。dev/SHORTCUT_KEYS.mdを参照" },
+    { "id": "preview", "keys": "F3", "description": "最新の保存済みテイクを試聴", "scope": "recording", "configurable": false, "changeLocation": "固定。dev/SHORTCUT_KEYS.mdを参照" },
+    { "id": "adopt", "keys": "F4", "description": "最新テイクを採用して次へ。連続録音中は次の録音へ進む", "scope": "recording", "configurable": false, "changeLocation": "固定。dev/SHORTCUT_KEYS.mdを参照" }
+  ]
+}

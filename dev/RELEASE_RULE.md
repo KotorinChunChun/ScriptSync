@@ -15,7 +15,7 @@ MdVisualizerのdev/RELEASE_RULE.mdとpackaging/release-config.jsonを参考に�
 PowerShell 7.4以降。まずnpm run release:msixで成果物を生成する。次の例の成果物ディレクトリは対象ビルドへ置き換える。
 
 ```powershell
-cd C:\develop\ScriptSync
+cd C:\develop\KotorinToys\tools\ScriptSync
 npm run release:plan
 $artifact = 'release/msix-v0.0.5/20260912-221010'
 pwsh -File dev/scripts/publish-ScriptSync.ps1 -Mode Prepare -ArtifactDirectory $artifact

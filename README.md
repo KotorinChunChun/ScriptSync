@@ -2,6 +2,8 @@
 
 Markdownやテキストを発話ごとに録音し、良いテイクを選んでFLAC/WAVへ結合出力するWindows向けアプリです。読みの確認、局所補正、合成音声との比較採点も必要に応じて利用できます。
 
+開発ソースは `C:\develop\KotorinToys\tools\ScriptSync` に配置し、KotorinToysの収録ツールとして独立Gitで管理します。[収録と対応範囲](docs/kotorintoys-integration.md)を参照してください。
+
 ## ダウンロードと対応環境
 
 現在の配布版は0.0.6.3（内部アプリ版0.0.6）です。
@@ -44,7 +46,7 @@ Markdownやテキストを発話ごとに録音し、良いテイクを選んで
 WindowsでPowerShell 7（pwsh）、Node.js/npm、Rust、TauriのWindowsビルド環境を用意し、次を実行します。
 
 ```powershell
-cd C:\develop\ScriptSync
+cd C:\develop\KotorinToys\tools\ScriptSync
 npm ci
 npm run tauri dev
 ```

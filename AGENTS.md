@@ -1,5 +1,7 @@
 # AI・開発者向け作業案内
 
+開発正本は `C:\develop\KotorinToys\tools\ScriptSync`。独立Gitを維持し、親はgitlinkで採用コミットを記録します。収録状態と管理操作の対応範囲は [KotorinToys収録](docs/kotorintoys-integration.md) を参照してください。
+
 ## 最初に読む資料
 
 1. [README](README.md)：現行版と入口。
@@ -19,7 +21,7 @@ v0.0.2は2026-09-12にユーザーの全課題確認・終了指示により終�
 - 次の版へ進む際は旧版文書を `dev/history/` へ保存して新しい版の文書を作成します。
 - キーや効果音変更時は [SHORTCUT_KEYS](dev/SHORTCUT_KEYS.md)・[SOUND_EFFECTS](dev/SOUND_EFFECTS.md) を更新します。利用者の操作変更はガイド・サンプルにも反映します。
 - 自動試験と、実マイク音質・ネイティブ画面の実機確認を区別して報告します。
-- 利用者に試験を依頼するときは、起動済みでなければ `cd C:\develop\ScriptSync` と `npm run tauri dev` を案内します。
+- 利用者に試験を依頼するときは、起動済みでなければ `cd C:\develop\KotorinToys\tools\ScriptSync` と `npm run tauri dev` を案内します。
 
 保存の正本や音声の扱いは [architecture](docs/architecture.md)、保守上の要点は [KNOWLEDGE](dev/KNOWLEDGE.md) を参照してください。
 

@@ -9,12 +9,12 @@ v0.0.4以降の既定配布形式は、既存の共通証明書で署名したx6
 関連試験に通った最新ソースから、リリースEXEをビルドしてからMSIXを作成します。以下はPowerShell 7.4以降で実行します。
 
 ```powershell
-cd C:\develop\ScriptSync
+cd C:\develop\KotorinToys\tools\ScriptSync
 npm run tauri build -- --no-bundle
 pwsh -File dev/scripts/package-ScriptSync-msix.ps1 `
-  -SourceDirectory C:\develop\ScriptSync `
-  -ExecutablePath C:\develop\ScriptSync\src-tauri\target\release\scriptsync.exe `
-  -OutputDirectory C:\develop\ScriptSync\release\msix-v0.0.4
+  -SourceDirectory C:\develop\KotorinToys\tools\ScriptSync `
+  -ExecutablePath C:\develop\KotorinToys\tools\ScriptSync\src-tauri\target\release\scriptsync.exe `
+  -OutputDirectory C:\develop\KotorinToys\tools\ScriptSync\release\msix-v0.0.4
 ```
 
 スクリプトは `package.json`、`src-tauri/tauri.conf.json`、EXEのファイル版を照合します。版番号が同じでも古いEXEを使用できてしまうため、ソース変更後は再ビルドが必要です。ビルド元コミット・作業差分の有無・EXEとMSIXのSHA-256を [v0.0.4実装記録](../dev/history/v0.0.4/v0.0.4-imp.md) に記録します。
@@ -73,7 +73,7 @@ Tauriの `bundle.fileAssociations` と手書きのMSIX manifestは別管理で�
 ## 通常の配布コマンド
 
 ```powershell
-cd C:\develop\ScriptSync
+cd C:\develop\KotorinToys\tools\ScriptSync
 npm run release:msix
 ```
 
