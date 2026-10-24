@@ -36,6 +36,7 @@ try{
  Invoke-Test 'recorder' 'cargo' @('test','--manifest-path','crates/scriptsync-recorder/Cargo.toml','--locked','--target-dir','src-tauri/target')
  Invoke-Test 'recorder-no-mp3' 'cargo' @('test','--manifest-path','crates/scriptsync-recorder/Cargo.toml','--locked','--no-default-features','--target-dir','src-tauri/target')
  Invoke-Test 'licenses' 'npm.cmd' @('run','licenses:check')
+ Invoke-Test 'rust-advisories' 'npm.cmd' @('run','check:rust-advisories')
  if($Native){
   Invoke-Test 'native-build' 'pwsh' @('-NoProfile','-File','dev/scripts/build-debug-ScriptSync-kotorintoys.ps1')
   $options=@('dev/scripts/test-native.mjs');if($AudioDevice){$options+='--with-audio-device'}

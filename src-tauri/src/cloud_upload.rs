@@ -74,8 +74,9 @@ fn encrypted_zip(bytes: &[u8], key: &str) -> Result<Vec<u8>> {
         .with_aes_encryption(zip::AesMode::Aes256, key);
     for i in 0..archive.len() {
         let mut file = archive.by_index(i).map_err(|e| e.to_string())?;
+        let name = file.name().map_err(|e| format!("ZIPの項目名が不正です: {e}"))?.into_owned();
         output
-            .start_file(file.name(), options)
+            .start_file(name, options)
             .map_err(|e| e.to_string())?;
         std::io::copy(&mut file, &mut output).map_err(|e| e.to_string())?;
     }

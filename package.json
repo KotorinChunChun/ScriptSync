@@ -24,6 +24,7 @@
     "verify": "pwsh -NoProfile -File dev/scripts/Test-ScriptSync.ps1",
     "verify:native": "pwsh -NoProfile -File dev/scripts/Test-ScriptSync.ps1 -Native",
     "test:native": "node dev/scripts/test-native.mjs",
+    "check:rust-advisories": "node dev/scripts/check-rust-advisories.mjs",
     "tauri": "tauri",
     "release:msix": "pwsh -NoProfile -File dev/scripts/build-msix.ps1",
     "release:plan": "pwsh -NoProfile -File dev/scripts/publish-ScriptSync.ps1 -Mode Plan"

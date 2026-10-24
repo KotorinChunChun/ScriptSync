@@ -1,7 +1,7 @@
 #Requires -Version 7.4
 [CmdletBinding()]
 param(
-    [ValidateSet('Plan','Prepare','Stage','Publish','Verify')][string]$Mode='Plan',
+    [ValidateSet('Plan','Prepare','Stage','DryRun','Publish','Verify')][string]$Mode='Plan',
     [string]$ArtifactDirectory,
     [string]$WebsiteDirectory='C:\develop\excel-chunchun',
     [string]$PythonPath='python',
@@ -16,6 +16,7 @@ $packageVersion=Get-ScriptSyncMsixVersion $root
 $base='https://excel-chunchun.sakura.ne.jp/download/ScriptSync/'
 $names=@("ScriptSync_${packageVersion}_x64.msix",'ScriptSync.cer','ScriptSync.appinstaller','index.html','icon.png')
 $site=Join-Path $WebsiteDirectory 'www/download/ScriptSync'
+$siteKey=[Convert]::ToHexString([Security.Cryptography.SHA256]::HashData([Text.Encoding]::UTF8.GetBytes([IO.Path]::GetFullPath($site).ToLowerInvariant())))
 if($Mode -eq 'Plan'){
     $names | ForEach-Object { Write-Output "$base$_ -> $(Join-Path $site $_)" }
     return
@@ -23,6 +24,7 @@ if($Mode -eq 'Plan'){
 if($Mode -eq 'Publish' -and !$PublishConfirmed){throw '公開の明示指示を受けてから -PublishConfirmed を指定してください。'}
 if(!$ArtifactDirectory){throw '署名済み成果物の -ArtifactDirectory を明示してください。'}
 $artifact=[IO.Path]::GetFullPath($ArtifactDirectory)
+$baseline=Join-Path $artifact "publish-baselines/$siteKey.json"
 $msix=Join-Path $artifact $names[0]
 $cer=Join-Path $artifact $names[1]
 # 公開対象の実体、署名者、版を検査。秘密鍵やlayoutは送信しない。
@@ -35,6 +37,16 @@ try {
 } finally {$certificate.Dispose()}
 $zip=[IO.Compression.ZipFile]::OpenRead($msix)
 try {
+    if(!$zip.GetEntry('LICENSE.txt') -or !$zip.GetEntry('THIRD-PARTY-NOTICES.md')){throw 'ライセンス文書を同梱したMSIXを作成してください。'}
+    $manifestPath=Join-Path $root 'licenses/third-party/manifest.json'
+    $expectedLicenseManifest=Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
+    foreach($expected in @([pscustomobject]@{path='manifest.json';sha256=(Get-FileHash $manifestPath).Hash})+@($expectedLicenseManifest.files)){
+        $entry=$zip.GetEntry('licenses/'+$expected.path)
+        if(!$entry){throw "対応ソースまたはライセンスがMSIXにありません: $($expected.path)"}
+        $stream=$entry.Open()
+        try {$actual=[Convert]::ToHexString([Security.Cryptography.SHA256]::HashData($stream))}finally{$stream.Dispose()}
+        if($actual -ne $expected.sha256){throw "MSIXのライセンスと依存構成が一致しません: $($expected.path)"}
+    }
     $reader=[IO.StreamReader]::new($zip.GetEntry('AppxManifest.xml').Open())
     try {[xml]$manifest=$reader.ReadToEnd()}finally{$reader.Dispose()}
 } finally {$zip.Dispose()}
@@ -61,26 +73,31 @@ if($Mode -eq 'Stage'){
     # コピー前に全対象を検査し、版付きMSIXの異なる内容による上書きを防ぐ。
     $destination=Join-Path $site $names[0]
     if((Test-Path $destination) -and (Get-FileHash $destination).Hash -ne (Get-FileHash $msix).Hash){throw '同じ版の異なるMSIXが既にあります。版を更新してください。'}
+    if(!(Test-Path $baseline)){
+        $previous=[ordered]@{}
+        foreach($name in $names){$file=Join-Path $site $name;$previous[$name]=if(Test-Path $file){(Get-FileHash $file).Hash.ToLowerInvariant()}else{$null}}
+        New-Item -ItemType Directory -Force (Split-Path $baseline) | Out-Null
+        $previous | ConvertTo-Json | Set-Content -LiteralPath $baseline -Encoding utf8
+    }
     New-Item -ItemType Directory -Force $site | Out-Null
     foreach($name in $names){Copy-Item -LiteralPath (Join-Path $artifact $name) -Destination (Join-Path $site $name) -Force}
     Write-Output 'ScriptSyncの5ファイルだけをステージしました。Website側で対象差分を確認してコミットしてください。'
     return
 }
-if($Mode -eq 'Publish'){
+if($Mode -in 'DryRun','Publish'){
     foreach($name in $names){
         $target=Join-Path $site $name
         if(!(Test-Path $target) -or (Get-FileHash $target).Hash -ne (Get-FileHash (Join-Path $artifact $name)).Hash){throw "ステージ済みファイル不一致: $name"}
     }
-    $uploader=Join-Path $WebsiteDirectory 'scripts/upload_ftp.py'
-    # パッケージ、公開CER、固定App Installerの順。共有download全体を送信しない。
-    foreach($name in $names){
-        & $PythonPath $uploader --dry-run (Join-Path $site $name)
-        if($LASTEXITCODE -ne 0){throw 'FTP dry-run失敗'}
-    }
-    foreach($name in $names){
-        & $PythonPath $uploader (Join-Path $site $name)
-        if($LASTEXITCODE -ne 0){throw "FTP送信失敗: $name"}
-    }
+    if(!(Test-Path $baseline)){throw 'Stageで公開前の基準を記録してください。'}
+    $uploader=Join-Path $PSScriptRoot 'publish-ScriptSync-ftps.py'
+    $backup=Join-Path $root "dev/history/v$packageVersion/logs/ftps-publication"
+    $arguments=@($uploader,'--website',$WebsiteDirectory,'--artifact',$artifact,'--baseline',$baseline,'--backup-directory',$backup)
+    & $PythonPath @arguments
+    if($LASTEXITCODE -ne 0){throw 'FTPS DryRun失敗'}
+    if($Mode -eq 'DryRun'){return}
+    & $PythonPath @arguments --execute
+    if($LASTEXITCODE -ne 0){throw 'FTPS公開失敗。退避と読戻し結果を確認してください。'}
 }
 # Verify/Publish: 公開先を取得し、HTTP、MIME、長さ、内容hashをローカルと比較。
 $mime=@('application/msix','application/pkix-cert','application/appinstaller','text/html','image/png')

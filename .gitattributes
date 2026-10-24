@@ -1,2 +1,3 @@
 # 上流のライセンス本文・対応ソースは取得時のバイト列を保持する。
 /licenses/** -text -whitespace
+/src-tauri/Cargo.toml text eol=lf
