@@ -6,7 +6,7 @@ Markdownやテキストを発話ごとに録音し、良いテイクを選んで
 
 ブラウザーでも[本体Web版](https://excel-chunchun.sakura.ne.jp/test/scriptsync/)を利用できます。[従来の簡易版](https://excel-chunchun.sakura.ne.jp/test/scriptsyncweb/)は別URLで保持します。[Web版の仕様と検証](docs/web-browser.md)を参照してください。開発版のAI校正と音声合成は、[接続ゲートウェイ](docs/service-connections.md)を通してCodex app-server・OpenAI API・別途用意する音声合成HTTPサーバーを利用します。公開済みWindows MSIX 0.0.6.5は今回再配布していません。
 
-開発ソースは `C:\develop\KotorinToys\tools\ScriptSync` に配置し、KotorinToysの収録ツールとして独立Gitで管理します。[収録と対応範囲](docs/kotorintoys-integration.md)を参照してください。
+開発ソースは KotorinToysからの利用については、[収録と対応範囲](docs/kotorintoys-integration.md)を参照してください。
 
 ## ダウンロードと対応環境
 
@@ -32,42 +32,45 @@ Markdownやテキストを発話ごとに録音し、良いテイクを選んで
 
 録音画面では確定台本を保持したまま修正案を編集できます。Whisperの文字起こしとCodex CLIによる文章改善は別操作で、AIの結果は左右比較して承認した場合だけ修正案へ反映します。単語の静的変換辞書、台本文字サイズ、読み上げ対象フィルタ、選択行への追従表示にも対応しています。
 
-## バージョン
+## 画面を見ながら使う
 
-| 対象 | 状態 |
-| --- | --- |
-| v0.0.6 | 公開版0.0.6.5。同一原稿内のテイク移動と移動先表示を改善。原稿更新の安全性、テイク編集・移動、待ち時間込みの合計時間表示、編集・未採用出力、発話完全消去と台本遷移の改善を追加。[要求](dev/history/v0.0.6/v0.0.6-req.md)／[実装記録](dev/history/v0.0.6/v0.0.6-imp.md) |
-| v0.0.5 | 最終公開版0.0.5.7として終了。録音・再生・台本操作、Whisper／Codex分離、AI改善の承認比較、置換辞書、文字サイズ、行追従を実装。[終了記録](dev/v0.0.5-close.md)／[要求](dev/v0.0.5-req.md)／[実装・検証記録](dev/v0.0.5-imp.md) |
-| v0.0.4 | 台本の確定保存、Web交換ZIP、端末設定、文字起こし環境導入を実装。[要求](dev/history/v0.0.4/v0.0.4-req.md)／[実装記録](dev/history/v0.0.4/v0.0.4-imp.md) |
-| v0.0.3 | 原稿名変更、同名取込の照合、削除予定、ペイン縮小、行対応付け、アーカイブ管理を実装。[要求](dev/history/v0.0.3/v0.0.3-req.md)／[実装記録](dev/history/v0.0.3/v0.0.3-imp.md) |
-| v0.0.2 | 2026-09-12終了。実マイク・連続録音・ASR負荷／音質を含む課題はユーザー確認済み。[終了記録](dev/history/v0.0.2/v0.0.2-README.md) |
-| v0.0.1 | 差し込み修正を含め最終完成。タグ `v0.0.1-final`。[完成記録](dev/history/v0.0.1/RELEASE.md) |
+以下は0.0.6.5で、説明用の短い原稿を使った例です。
 
-自動テストの成功と、実マイク・実再生機器・ネイティブ画面の確認は区別して記録しています。現行の検証方針は[実証・受け入れ方針](docs/validation.md)、版ごとの実施結果と未確認事項は各版の実装記録を参照してください。
+### 1. プロジェクトを作る
 
-## 開発起動
+「新規プロジェクト」で保存先と名前を選びます。続きから作業する場合は「開く」で `.scriptsync` を選んでください。
 
-WindowsでPowerShell 7（pwsh）、Node.js/npm、Rust、TauriのWindowsビルド環境を用意し、次を実行します。
+![新規プロジェクトと開くを選べる起動画面](docs/images/readme/01-start.png)
 
-```powershell
-cd C:\develop\KotorinToys\tools\ScriptSync
-npm ci
-npm run tauri dev
-```
+### 2. 原稿を取り込む
 
-UI変更は開発起動中に反映されます。録音中のコード更新は避け、停止・保存してから更新してください。`npm run dev` だけのブラウザー表示では録音や保存はできません。
+「台本」の左側にある「開く」からMarkdownまたはテキストを選びます。中央で追加・変更箇所を確認して承認し、右側で読み上げる行を選びます。見出しを読まない場合も、この一覧から対象を外せます。
 
-自動検証は `npm run verify`、実WebView2まで含める場合は `npm run verify:native`。Computer Useを使わない検証の範囲・無音の実機再生試験・結果の保存先は[自動検証ガイド](docs/automated-testing.md)を参照してください。
+![サンプル原稿を取り込み4行の追加を確認する画面](docs/images/readme/03-import.png)
 
-通常の録音・結合に音声合成CLIやASRは不要です。文字起こし環境、Codex CLI、外部のTextToSpeech CLIを使う開発・検証は[開発者ガイド](docs/DEVELOPERS_GUIDE.md)を参照してください。文書中の「TextToSpeech CLI」は、テキストを音声に変換する外部CLIソフトウェアの抽象名です。
+### 3. 台本を確定する
 
-## 資料と開発の入口
+変更を承認したら「台本確定」を押します。「台本確定済み」と表示されたら、録音する文章の準備ができています。
 
-- [プレゼン連携試作](docs/PRESENTATION_PROTOTYPE.md)：`npm run presentation:dev` で起動。音声出力とPowerPoint・OBSの対応付け、再生、テンプレートPPTX生成、ローカルAPIを試せます。配布版への組込み前の独立した試作です。
+![原稿の差分がなくなり台本確定済みと表示された結果](docs/images/readme/04-confirmed.png)
 
-- [プロジェクトビジョン](docs/PROJECT_VISION.md)
-- [ドキュメント目録](docs/README.md)
-- [現行アーキテクチャ](docs/architecture.md)
-- [開発者ガイド](docs/DEVELOPERS_GUIDE.md)
-- [最新のファイル構成目録](docs/REPOSITORY_MAP.md)
-- [AI・開発者向け作業案内](AGENTS.md)
+### 4. 録音機器を選ぶ
+
+右上の「設定」で録音・再生デバイスを選びます。「既定のデバイス」はWindows側の設定に従います。変更したら「設定を保存」を押してください。
+
+![録音デバイスと再生デバイスを選ぶ設定画面](docs/images/readme/02-settings.png)
+
+### 5. 発話ごとに録音する
+
+「2 録音」で左の台本から発話を選びます。「録音開始（F1）」で録音し、「停止して保存（F2）」でテイクを残します。試聴して良いテイクを採用し、最後に「5 結合・出力」へ進みます。下の画像は録音を始める前の状態です。
+
+![確定した台本から発話を選んで録音を始める画面](docs/images/readme/05-recording-ready.png)
+
+## 保存と困ったとき
+
+- `.scriptsync` と同名の `.scriptsync.data` フォルダーは一組です。移動やバックアップ時は両方を保持してください。
+- 「台本確定」が押せないときは、未確認の原稿差分が残っていないか確認します。
+- 録音・試聴中はデバイス設定を変更できません。処理を停止してから設定します。
+- 通常の録音と結合にはAI・音声合成・文字起こし環境は不要です。
+
+詳しい操作は[利用者ガイド](docs/USERS_GUIDE.md)と[よくある質問](docs/FAQ.md)、開発・版別記録は[開発者向けの入口](docs/readme-development.md)を参照してください。
