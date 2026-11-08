@@ -14,6 +14,19 @@ npm run verify
 
 npmとRust/OSVの依存監査にはインターネット接続が必要です。Rust照合は公開registryの名前・版だけを送信します。Tauri間接依存のUNIC 0.9.0に関する既知の保守終了5件は、公式分類がunmaintainedであることを確認して表示し、脆弱性・不健全性とは分けます。新しい指摘をまとめて無視する構成にはしません。
 
+## 台本取込・確定とテイク登録をCLIで検証する
+
+Rust依存の準備後に、PowerShell 7から次を実行します。
+
+```powershell
+cd C:\develop\KotorinToys\tools\ScriptSync
+cargo test --manifest-path src-tauri/Cargo.toml --locked --offline --lib workflow_tests::markdown_project_and_imported_take_round_trip -- --exact
+```
+
+試験は一時フォルダーに2行のMarkdown、無音WAV、設定、プロジェクトを用意します。アプリが使う処理を直接呼び、台本取込と承認済み原稿の確定、保存、再読込を検証します。再読込後に1行目へWAVをテイクとして取り込んで採用し、もう一度保存・再読込して、発話との紐づけと音声のバイト列・SHA-256が一致することを検証します。正常終了時に一時フォルダーを削除します。
+
+アプリのウィンドウ、既存設定・履歴、実マイク、外部APIを使いません。録音画面の操作や実際の収録・試聴は別途確認します。
+
 ## 実WebView2まで自動で検証する
 
 ```powershell

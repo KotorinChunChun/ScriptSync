@@ -7,9 +7,148 @@ use crate::{
 };
 use serde_json::json;
 use std::{
+    fs,
     path::PathBuf,
     time::{Duration, Instant},
 };
+
+#[test]
+fn markdown_project_and_imported_take_round_trip() {
+    let root = std::env::temp_dir().join(format!("scriptsync-test-{}", id()));
+    fs::create_dir(&root).unwrap();
+    let project_path = root.join("検証.scriptsync");
+    let markdown_path = root.join("検証原稿.md");
+    let wav_path = root.join("検証音声.wav");
+    let first_line = "最初の検証用原稿です。";
+    let second_line = "次の検証用原稿です。";
+    let markdown = format!("{first_line}\n{second_line}\n");
+    fs::write(&markdown_path, &markdown).unwrap();
+    let mut wav = hound::WavWriter::create(
+        &wav_path,
+        hound::WavSpec {
+            channels: 1,
+            sample_rate: 48_000,
+            bits_per_sample: 16,
+            sample_format: hound::SampleFormat::Int,
+        },
+    )
+    .unwrap();
+    for _ in 0..4_800 {
+        wav.write_sample(0_i16).unwrap();
+    }
+    wav.finalize().unwrap();
+
+    let location_path = root.join("settings/project-location.json");
+    let isolated_app = || {
+        let app = App::default();
+        {
+            let mut inner = app.0.lock().unwrap();
+            inner.project_location =
+                crate::project_location::ProjectLocation::load(location_path.clone());
+            inner.machine_settings = crate::machine_settings::MachineSettings::load(
+                root.join("settings/machine-settings.json"),
+                root.join("asr"),
+            );
+        }
+        app
+    };
+    let app = isolated_app();
+    let project_argument = json!({"path": project_path});
+    app.dispatch("new", project_argument.clone()).unwrap();
+    let before = app.snapshot().unwrap()["project"].clone();
+    let imported = app
+        .dispatch("markdown_drop", json!({"paths": [markdown_path]}))
+        .unwrap();
+    let file = &imported["files"][0];
+    assert_eq!(file["name"], "検証原稿.md");
+    assert_eq!(file["text"], markdown);
+    assert_eq!(app.snapshot().unwrap()["project"], before);
+
+    let source_id = id();
+    app.dispatch(
+        "script_commit",
+        json!({
+            "project_id": before["id"],
+            "base_revision": before["script_revision"],
+            "base_generation": before["generation"],
+            "sources": [{
+                "id": source_id,
+                "name": file["name"],
+                "kind": "markdown",
+                "text": file["text"],
+                "approved_text": file["text"],
+                "lines": [{"line": 0, "enabled": true}, {"line": 1, "enabled": true}]
+            }],
+            "deleted_source_ids": []
+        }),
+    )
+    .unwrap();
+    let confirmed = app.snapshot().unwrap()["project"].clone();
+    app.dispatch("save_project", json!({})).unwrap();
+    app.dispatch("close_project", json!({})).unwrap();
+    drop(app);
+
+    assert_eq!(
+        serde_json::from_slice::<PathBuf>(&fs::read(&location_path).unwrap()).unwrap(),
+        root
+    );
+    let app = isolated_app();
+    app.dispatch("open", project_argument.clone()).unwrap();
+    let reopened = app.snapshot().unwrap()["project"].clone();
+    assert_eq!(reopened["id"], before["id"]);
+    assert_eq!(
+        reopened["script_revision"].as_u64().unwrap(),
+        before["script_revision"].as_u64().unwrap() + 1
+    );
+    assert_eq!(reopened["script_sources"], confirmed["script_sources"]);
+    assert_eq!(reopened["script_sources"][0]["confirmed_text"], markdown);
+    let segments = reopened["segments"].as_array().unwrap();
+    assert_eq!(segments.len(), 2);
+    for (line, expected_text) in [first_line, second_line].into_iter().enumerate() {
+        let segment = &segments[line];
+        assert_eq!(segment["id"], confirmed["segments"][line]["id"]);
+        assert_eq!(segment["text"], expected_text);
+        assert_eq!(segment["source_id"], source_id);
+        assert_eq!(segment["source_line"], line);
+    }
+
+    let segment_id = &segments[0]["id"];
+    app.dispatch("import_audio", json!({"segment": segment_id, "path": wav_path}))
+        .unwrap();
+    let with_take = app.snapshot().unwrap()["project"].clone();
+    let take_id = &with_take["segments"][0]["takes"][0]["id"];
+    app.dispatch("select", json!({"segment": segment_id, "take": take_id}))
+        .unwrap();
+    app.dispatch("save_project", json!({})).unwrap();
+    app.dispatch("close_project", json!({})).unwrap();
+    drop(app);
+
+    let app = isolated_app();
+    app.dispatch("open", project_argument).unwrap();
+    let final_state = app.snapshot().unwrap();
+    let project = &final_state["project"];
+    assert_eq!(project["script_sources"], reopened["script_sources"]);
+    assert_eq!(project["segments"][1], segments[1]);
+    let segment = &project["segments"][0];
+    assert_eq!(&segment["id"], segment_id);
+    assert_eq!(&segment["selected"], take_id);
+    let takes = segment["takes"].as_array().unwrap();
+    assert_eq!(takes.len(), 1);
+    let take = &takes[0];
+    assert_eq!(&take["id"], take_id);
+    assert_eq!(take["script_text"], first_line);
+    assert_eq!(take["status"], "ready");
+    let stored_wav = safe(
+        &PathBuf::from(final_state["root"].as_str().unwrap()),
+        take["file"].as_str().unwrap(),
+    )
+    .unwrap();
+    assert_eq!(take["hash"], hash_file(&wav_path).unwrap());
+    assert_eq!(fs::read(stored_wav).unwrap(), fs::read(wav_path).unwrap());
+    app.dispatch("close_project", json!({})).unwrap();
+    fs::remove_dir_all(root).unwrap();
+}
+
 fn wait(app: &App) {
     let start = Instant::now();
     while app.snapshot().unwrap()["busy"] == true {
