@@ -1,12 +1,12 @@
 # 読みあわせ (ScriptSync)
 
-Markdownやテキストを発話ごとに録音し、良いテイクを選んでFLAC/WAVへ結合出力するWindows向けアプリです。読みの確認、局所補正、合成音声との比較採点も必要に応じて利用できます。
+Markdownやテキストの原稿を発話ごとに録音するWindows向けアプリです。発話ごとに良いテイクを選び、つなげてFLACまたはWAVに出力できます。読みの確認、局所補正、合成音声と比較して採点する機能も必要に応じて使えます。
 
 本体と作者作成の録音基盤は[MITライセンス](LICENSE)です。第三者のライブラリー・素材には元の条件を適用します。[第三者の表示と対応ソース](THIRD-PARTY-NOTICES.md)、[公開前の確認手順](docs/source-publication.md)を参照してください。
 
 ブラウザーでも[本体Web版](https://excel-chunchun.sakura.ne.jp/test/scriptsync/)を利用できます。[従来の簡易版](https://excel-chunchun.sakura.ne.jp/test/scriptsyncweb/)は別URLで保持します。[Web版の仕様と検証](docs/web-browser.md)を参照してください。開発版のAI校正と音声合成は、[接続ゲートウェイ](docs/service-connections.md)を通してCodex app-server・OpenAI API・別途用意する音声合成HTTPサーバーを利用します。公開済みWindows MSIX 0.0.6.5は今回再配布していません。
 
-開発ソースは KotorinToysからの利用については、[収録と対応範囲](docs/kotorintoys-integration.md)を参照してください。
+開発ソースの場所とKotorinToysからの利用方法は、[収録と対応範囲](docs/kotorintoys-integration.md)を参照してください。
 
 ## ダウンロードと対応環境
 
@@ -34,7 +34,7 @@ Markdownやテキストを発話ごとに録音し、良いテイクを選んで
 
 ## 画面を見ながら使う
 
-以下は0.0.6.5で、説明用の短い原稿を使った例です。
+以下は、短い原稿を使った0.0.6.5の操作例です。
 
 ### 1. プロジェクトを作る
 
@@ -44,7 +44,7 @@ Markdownやテキストを発話ごとに録音し、良いテイクを選んで
 
 ### 2. 原稿を取り込む
 
-「台本」の左側にある「開く」からMarkdownまたはテキストを選びます。中央で追加・変更箇所を確認して承認し、右側で読み上げる行を選びます。見出しを読まない場合も、この一覧から対象を外せます。
+「台本」の左側にある「開く」からMarkdownまたはテキストを選びます。中央で追加・変更箇所を確認して承認し、右側で読み上げる行を選びます。見出しを読まない場合は、右側の一覧で対象から外せます。
 
 ![サンプル原稿を取り込み4行の追加を確認する画面](docs/images/readme/03-import.png)
 

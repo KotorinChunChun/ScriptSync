@@ -1,10 +1,10 @@
 # AI・音声合成サーバーへの接続
 
-Web版とデスクトップ版は利用者側の接続ゲートウェイを使います。既定は `http://localhost:4318`。画面の設定でサーバー名/IP・ポートを指定できます。localhostは画面を開いている端末自身です。スマートフォンからPCのゲートウェイを使う場合はPCのLAN IPを指定します。
+Web版とデスクトップ版は利用者側の接続ゲートウェイを使います。既定の接続先は `http://localhost:4318` です。画面の設定でサーバー名またはIPアドレスとポートを指定できます。localhostは画面を開いている端末を指します。スマートフォンからPCのゲートウェイを使う場合は、PCのLAN IPを指定します。
 
 ## ゲートウェイの起動
 
-Node.js 22.12以上。公開サイトにAPIキーを置きません。秘密は `C:\AI\env\ScriptSync\` または環境変数で管理します。ソース・プロジェクト・ログへ値を含めません。
+Node.js 22.12以上を用意します。APIキーなどの秘密情報は `C:\AI\env\ScriptSync\` または環境変数で管理します。公開サイトにAPIキーを置かず、ソース、プロジェクト、ログにも秘密情報の値を含めません。
 
 ```powershell
 cd C:\develop\KotorinToys\tools\ScriptSync
@@ -23,7 +23,7 @@ Codex app-serverは利用者が別に起動します。`codex app-server --liste
 
 ゲートウェイは既定127.0.0.1だけで待受します。LAN利用はSCRIPTSYNC_GATEWAY_HOST、必要なTLS終端・証明書・限定ファイアウォールを別途設定します。公開HTTPSページからの接続にはブラウザーのローカル接続許可/CORS/TLS制約があるため、ブラウザーの保護を無効化せず接続テストで確認します。SCRIPTSYNC_ALLOWED_ORIGINSはカンマ区切りの完全なOriginで、既定は本サイトとローカル開発1420だけです。
 
-Web設定の接続トークンはメモリだけに保持します。再読込後は再入力します。デスクトップはSCRIPTSYNC_GATEWAY_TOKEN、またはC:/AI/env/ScriptSync/gateway-token.txtから読みます。どちらもプロジェクトZIPへ書きません。
+Web版の設定で入力した接続トークンはメモリだけに保持します。ページを再読込したら入力し直します。デスクトップ版はSCRIPTSYNC_GATEWAY_TOKENまたはC:/AI/env/ScriptSync/gateway-token.txtから読み込みます。どちらの版も接続トークンをプロジェクトZIPに書き込みません。
 
 ## 音声合成HTTP契約
 

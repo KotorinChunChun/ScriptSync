@@ -22,7 +22,7 @@ pwsh -File dev/scripts/publish-ScriptSync.ps1 -Mode Prepare -ArtifactDirectory $
 pwsh -File dev/scripts/publish-ScriptSync.ps1 -Mode Stage -ArtifactDirectory $artifact
 ```
 
-Prepareはローカルの署名・CER・Identity・版を検査してApp Installerと公開ページ・アイコンを成果物へまとめる。StageはWebsiteのScriptSync専用5ファイルだけを更新する。同版の異なるMSIXは上書きしない。Websiteの既存変更を保持し、対象5ファイルだけを確認・コミットする。
+Prepareはローカルの署名・CER・Identity・版を検査し、App Installer、公開ページ、アイコンを成果物にまとめる。Stageが更新するのはWebsiteのScriptSync専用5ファイルだけである。同版の異なるMSIXは上書きしない。Websiteの既存変更を保持し、対象の5ファイルだけを確認してコミットする。
 
 実公開を依頼された場合に、以下を実行する。PythonがPATHにない場合は-PythonPathに実行ファイルを指定する。
 

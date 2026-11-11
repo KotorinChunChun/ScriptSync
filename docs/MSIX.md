@@ -1,12 +1,12 @@
 # 署名付きMSIXの作成・配布
 
-v0.0.4以降の既定配布形式は、既存の共通証明書で署名したx64 MSIXです。アプリ版 `0.0.4` はMSIXでは `0.0.4.0` になります。NSISや単体EXEの生成だけではMSIXの作成・署名完了と扱いません。
+v0.0.4以降の既定配布形式は既存の共通証明書で署名したx64 MSIXです。アプリ版 `0.0.4` はMSIXでは `0.0.4.0` になります。NSISや単体EXEを生成しただけでは、MSIXの作成と署名が完了したことにはなりません。
 
 [パッケージ作成スクリプト](../dev/scripts/package-ScriptSync-msix.ps1)は、Windows SDKのMakeAppxとSignToolを使用します。署名設定はPC共通の `%LOCALAPPDATA%\KotorinChunChun\MSIX\signing.json`、証明書は `CurrentUser\My`、Publisherは `CN=KotorinChunChun` です。秘密鍵の新規作成・輸出・信頼登録は行いません。
 
 ## 現行チェックアウトから作成する
 
-関連試験に通った最新ソースから、リリースEXEをビルドしてからMSIXを作成します。以下はPowerShell 7.4以降で実行します。
+関連試験に通った最新のソースでリリースEXEをビルドし、そのEXEを使ってMSIXを作成します。以下のコマンドはPowerShell 7.4以降で実行します。
 
 ```powershell
 cd C:\develop\KotorinToys\tools\ScriptSync
@@ -19,7 +19,7 @@ pwsh -File dev/scripts/package-ScriptSync-msix.ps1 `
 
 スクリプトは `package.json`、`src-tauri/tauri.conf.json`、EXEのファイル版を照合します。版番号が同じでも古いEXEを使用できてしまうため、ソース変更後は再ビルドが必要です。ビルド元コミット・作業差分の有無・EXEとMSIXのSHA-256を [v0.0.4実装記録](../dev/history/v0.0.4/v0.0.4-imp.md) に記録します。
 
-同名MSIXは上書きしません。同じ版を再検証するときは、以前の成果物を保持したまま `-OutputDirectory` に新しい出力先を指定します。別の専用チェックアウトで作る場合は、`-SourceDirectory` と `-ExecutablePath` の両方をそのチェックアウトと対応するビルド成果物へ変更します。
+同名のMSIXは上書きしません。同じ版を再検証するときは、以前の成果物を保持したまま `-OutputDirectory` に新しい出力先を指定します。別の専用チェックアウトで作る場合は、`-SourceDirectory` にそのチェックアウトを、`-ExecutablePath` にそこでビルドしたEXEを指定します。
 
 ## 成果物と署名検証
 

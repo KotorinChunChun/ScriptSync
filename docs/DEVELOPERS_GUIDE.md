@@ -1,6 +1,6 @@
 # 開発者ガイド
 
-開発正本は `C:\develop\KotorinToys\tools\ScriptSync`。親は採用コミットを記録し、子のGit履歴・配布形式を維持します。[KotorinToys収録](kotorintoys-integration.md)を参照してください。
+開発に使う正式なチェックアウトは `C:\develop\KotorinToys\tools\ScriptSync` です。親のKotorinToysは採用したコミットを記録します。ScriptSyncのGit履歴と配布形式は維持します。[KotorinToys収録](kotorintoys-integration.md)を参照してください。
 
 現行版はv0.0.6です。[実装記録](../dev/history/v0.0.6/v0.0.6-imp.md)で自動試験・ネイティブ操作確認・未確認範囲を確認してください。公開版v0.0.5以前の記録はdev直下またはhistoryに保持しています。
 
@@ -16,7 +16,7 @@ npm ci
 npm run tauri dev
 ```
 
-UIはViteのホットリロードで反映されます。録音は停止・保存してから更新してください。Rust変更時は再ビルドされます。`npm run dev`だけではブラウザー表示用で、ネイティブ録音やファイル操作の動作確認にはなりません。
+UIの変更はViteのホットリロードで反映されます。録音中は停止して保存してからコードを更新してください。Rustのコードを変更すると再ビルドされます。`npm run dev` だけで確認できるのはブラウザー表示です。ネイティブ録音やファイル操作の確認には、ネイティブアプリを使います。
 
 KotorinToysから操作する開発版は `pwsh -File dev/scripts/build-debug-ScriptSync-kotorintoys.ps1` で作成します。画面を内包した `target/kotorintoys/scriptsync.exe` を本体が管理します。非表示起動と正常停止、専用設定の試験方法は [管理連携ガイド](kotorintoys-integration.md) を参照してください。
 
@@ -28,7 +28,7 @@ npm run tauri build -- --no-bundle
 
 ## 通常の検証
 
-一括検証は `npm run verify`、実WebView2・IPC・CSPまでの自動検証は `npm run verify:native`。実出力デバイスを使う無音の検証は `npm run verify:native -- -AudioDevice`。詳細は[自動検証ガイド](automated-testing.md)を参照してください。OS画面操作やComputer Useは必要ありません。
+一括検証には `npm run verify` を使います。実際のWebView2でIPCとCSPまで自動検証するには `npm run verify:native`、実出力デバイスで無音の検証を行うには `npm run verify:native -- -AudioDevice` を使います。OS画面操作やComputer Useは必要ありません。詳細は[自動検証ガイド](automated-testing.md)を参照してください。
 
 変更前に `git status --short` を確認し、既存変更を保持します。関係する試験から実施し、結果と未確認事項を実装計画へ記録します。
 
@@ -69,7 +69,7 @@ cargo test --manifest-path src-tauri/Cargo.toml --lib synthetic_asr_measurement 
 [ファイル構成目録](REPOSITORY_MAP.md)から担当モジュールを探し、[現行アーキテクチャ](architecture.md)で保存と処理の境界を確認してください。
 
 - `.scriptsync`と対応する`.scriptsync.data/`がプロジェクト一式です。
-- `revisions/`の保存世代が正本で、`project.json`は閲覧用索引です。破損時に黙って過去へ戻さず、既存世代・音声を保持します。
+- `revisions/`の保存世代が正本で、`project.json`は閲覧用索引です。破損した場合も、通知なしに過去の世代へ戻すことはありません。既存の保存世代と音声は保持します。
 - テイクのトリム保存は音声実体・ハッシュ・長さ・波形を更新します。画面だけの開始終了変更で済ませません。
 - 原文、読み上げ編集、録音時原稿を区別します。ファイルIDと発話IDを保持し、変更行の読み・テイク維持は同じファイル内の明示対応で確認します。
 - 録音crateの由来・変更点は[ORIGIN](../crates/scriptsync-recorder/ORIGIN.md)を更新します。
@@ -102,7 +102,7 @@ npm run check:powershell
 npm run test:static
 ```
 
-通常は1行目でアプリ版・MSIX版・ロックファイル・タイトル・プロジェクトスキル参照を検査します。配布ページを最新に更新した後だけ2行目を使用します。3行目はdev/scripts内のPowerShell構文のみを解析し、対象の処理は実行しません。4行目はcheckerの異常検出試験です。
+通常は1行目のコマンドでアプリ版、MSIX版、ロックファイル、タイトル、プロジェクトスキルへの参照を検査します。2行目は配布ページを最新に更新した後だけ使います。3行目はdev/scripts内のPowerShell構文のみを解析し、対象の処理は実行しません。4行目は静的チェックが異常を検出できるかを試験します。
 
 これらはAI・ネットワーク・録音を使用せず、静的チェック本体はファイルを変更しません。機械処理用には `npm run check:static -- --json` を使用できます。成功時は要約だけ、失敗時は原因だけを確認してください。UI操作・保存・音声の動作確認は別途必要です。
 

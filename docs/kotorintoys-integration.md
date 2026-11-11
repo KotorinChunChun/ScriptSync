@@ -1,10 +1,10 @@
 # KotorinToysの管理連携
 
-2026-10-24。ScriptSync（読みあわせ）の開発正本は `C:\develop\KotorinToys\tools\ScriptSync`。独立Gitと [ScriptSyncリポジトリ](https://github.com/KotorinChunChun/ScriptSync) を維持し、親は採用コミットをgitlinkで記録する。
+2026-10-24。ScriptSync（読みあわせ）の開発に使う正式なチェックアウトは `C:\develop\KotorinToys\tools\ScriptSync`。ScriptSyncは独立したGitで管理し、[ScriptSyncリポジトリ](https://github.com/KotorinChunChun/ScriptSync) を維持する。親のKotorinToysは採用したコミットをgitlinkで記録する。
 
 ## 対応する操作
 
-本体の開発一覧から、管理用EXEの起動・画面表示・状態確認・正常停止に対応する。[tool.json](../tool.json) が4能力を宣言する。通常起動はメイン画面を表示し、本体の `--startup --launch-origin host_manual` 起動は非表示で待機する。起動済みの場合、本体は既存PIDを維持して画面を表示し、最小化状態も復元する。本体を終了しても子は動作を続ける。
+KotorinToys本体の開発一覧から、管理用EXEを起動し、画面の表示、状態の確認、正常停止を行える。[tool.json](../tool.json) にこの4つの操作を定義する。通常起動ではメイン画面を表示する。本体が `--startup --launch-origin host_manual` を付けて起動すると、ScriptSyncは画面を表示せずに待機する。起動済みの場合、本体は既存PIDのまま画面を表示し、最小化されていれば元の状態に戻す。本体を終了してもScriptSyncは動作を続ける。
 
 停止時は画面側とバックエンドの両方を照合する。録音・保存・文字起こし・一括処理・連続録音モード・原稿や設定の未保存入力・確認／編集ダイアログが残っている場合は拒否する。作業を完了してから再試行する。強制終了や未保存内容の自動破棄へ切り替えない。停止受理後は新しい操作を遮断し、試聴とホットキーを終了して画面状態を保存する。
 
