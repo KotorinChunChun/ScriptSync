@@ -74,3 +74,9 @@ Markdownやテキストの原稿を発話ごとに録音するWindows向けア�
 - 通常の録音と結合にはAI・音声合成・文字起こし環境は不要です。
 
 詳しい操作は[利用者ガイド](docs/USERS_GUIDE.md)と[よくある質問](docs/FAQ.md)、開発・版別記録は[開発者向けの入口](docs/readme-development.md)を参照してください。
+
+## 使用言語とライブラリ
+
+- 使用言語はRust、TypeScript、JavaScriptです。
+- Tauri（デスクトップ画面）、wasapi・hound・OxiAudio（録音・音声処理）、Transformers.js（音声認識）、zip.js・fflate（圧縮ファイル処理）。
+- 依存定義と資料 [本体の依存定義](src-tauri/Cargo.toml)・[録音基盤の依存定義](crates/scriptsync-recorder/Cargo.toml)・[画面側の依存定義](package.json)・[第三者コンポーネント](THIRD-PARTY-NOTICES.md)
