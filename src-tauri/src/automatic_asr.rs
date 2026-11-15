@@ -21,10 +21,16 @@ pub struct Job {
     hash: String,
     revision: u64,
     run: String,
+    server: bool,
 }
 impl App {
-    pub fn enqueue_recording_asr(&self, sid: &str, tid: &str) -> Result<()> {
+    pub fn enqueue_recording_asr(&self, sid: &str, tid: &str, requested: bool) -> Result<()> {
         let mut a = self.0.lock().map_err(|e| e.to_string())?;
+        let server = a.machine_settings.settings.asr_provider == crate::transcription_server::PROVIDER;
+        // サーバーを選んだ場合も、テイクごとの操作があるまで送信しない。
+        if server && !requested {
+            return Ok(());
+        }
         let store = a.store.as_mut().ok_or("プロジェクトを開いてください")?;
         let s = store
             .project
@@ -53,6 +59,7 @@ impl App {
             hash: t.hash.clone(),
             revision: s.revision,
             run: id(),
+            server,
         };
         let previous = store.project.clone();
         store.project.segments.iter_mut().find(|s|s.id==sid).unwrap().transcriptions.push(json!({"id":job.run,"take_id":tid,"file":job.file,"audio_hash":job.hash,"status":"queued","needs_review":true}));
@@ -125,6 +132,15 @@ fn recognize(app: &App, job: &Job) -> Outcome {
     let work = (|| -> Result<Option<Value>> {
         let (runtime_root, settings) = { let a = app.0.lock().map_err(|e| e.to_string())?; (a.machine_settings.runtime_root.clone(), a.machine_settings.settings.clone()) };
         let input = safe(&job.root, &job.file)?;
+        if job.server {
+            let result = crate::transcription_server::transcribe(
+                &settings.asr_server_url, &settings.asr_server_model, &input, &job.hash,
+            )?;
+            if hash_file(&input)? != job.hash {
+                return Err("認識中に音声が変更されました".into());
+            }
+            return Ok(Some(result));
+        }
         if hash_file(&input)? != job.hash {
             return Err("音声が変更されています".into());
         }
@@ -200,6 +216,9 @@ fn apply_result(p: &mut Project, job: &Job, result: Result<Value>) -> Result<()>
     record["file"] = job.file.clone().into();
     record["audio_hash"] = job.hash.clone().into();
     record["needs_review"] = true.into();
+    if job.server {
+        record["provider"] = crate::transcription_server::PROVIDER.into();
+    }
     let text = record["raw"].as_str().unwrap_or("").trim().to_owned();
     if record["status"] == "succeeded" && !text.is_empty() {
         let eligible = p

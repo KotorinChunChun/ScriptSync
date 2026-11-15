@@ -50,6 +50,7 @@ fn fixture(segment_text: &str, source_id: &str) -> (Project, Job) {
         hash: "hash-1".into(),
         revision: 7,
         run: "run-1".into(),
+        server: false,
     };
     (project, job)
 }
@@ -238,7 +239,7 @@ fn real_worker_saves_transcript_and_preserves_baseline() {
     let app = App::default();
     app.0.lock().unwrap().machine_settings.runtime_root = std::env::var("SCRIPTSYNC_ASR_RUNTIME_ROOT").map(std::path::PathBuf::from).expect("設定画面で導入したASRのパスをSCRIPTSYNC_ASR_RUNTIME_ROOTに指定してください");
     app.0.lock().unwrap().store = Some(store);
-    app.enqueue_recording_asr(&sid, &tid).unwrap();
+    app.enqueue_recording_asr(&sid, &tid, true).unwrap();
     let start = Instant::now();
     loop {
         let state = app.snapshot().unwrap();

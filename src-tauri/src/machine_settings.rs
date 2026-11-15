@@ -17,6 +17,8 @@ pub struct Settings {
     pub render_endpoint: String,
     pub asr_provider: String,
     pub asr_model: String,
+    pub asr_server_url: String,
+    pub asr_server_model: String,
     pub codex_path: String,
     pub codex_prompt: String,
     pub codex_model: String,
@@ -33,6 +35,8 @@ impl Default for Settings {
             render_endpoint: String::new(),
             asr_provider: "local".into(),
             asr_model: "small".into(),
+            asr_server_url: crate::transcription_server::DEFAULT_URL.into(),
+            asr_server_model: crate::transcription_server::DEFAULT_MODEL.into(),
             codex_path: String::new(),
             codex_prompt: DEFAULT_CODEX_PROMPT.into(),
             codex_model: "gpt-5.6-luna".into(),
@@ -49,8 +53,12 @@ impl Settings {
         crate::services::validate_url(&self.service_url)?;
         if !matches!(self.ai_provider.as_str(),"codex"|"openai"|"chat-completions") { return Err("AI接続方式が不正です".into()); }
         for value in [&self.codex_model,&self.tts_model,&self.tts_voice] { if value.trim().is_empty()||value.len()>200||value.chars().any(char::is_control) {return Err("モデル・音声名が不正です".into());} }
-        if !matches!(self.asr_provider.as_str(), "local" | "codex") {
+        if !matches!(self.asr_provider.as_str(), "local" | "codex" | crate::transcription_server::PROVIDER) {
             return Err("文字起こし方式が不正です".into());
+        }
+        crate::transcription_server::parse_url(&self.asr_server_url)?;
+        if !crate::transcription_server::valid_model(&self.asr_server_model) {
+            return Err("TranscriptionServerのモデルIDは engine/model 形式で指定してください".into());
         }
         if !matches!(
             self.asr_model.as_str(),
@@ -103,7 +111,9 @@ impl MachineSettings {
             .and_then(|b| serde_json::from_slice::<Settings>(&b).map_err(|e| e.to_string()))
             .and_then(|mut s| {
                 s.validate()?;
-                s.asr_provider = "local".into();
+                if s.asr_provider == "codex" {
+                    s.asr_provider = "local".into();
+                }
                 if s.codex_prompt == LEGACY_CODEX_PROMPT || s.codex_prompt == PREVIOUS_CODEX_PROMPT { s.codex_prompt = DEFAULT_CODEX_PROMPT.into(); }
                 Ok(s)
             });
@@ -122,7 +132,9 @@ impl MachineSettings {
     }
     pub fn save(&mut self, mut settings: Settings) -> Result<()> {
         settings.validate()?;
-        settings.asr_provider = "local".into();
+        if settings.asr_provider == "codex" {
+            settings.asr_provider = "local".into();
+        }
         let file = self
             .file
             .as_ref()
@@ -203,6 +215,11 @@ pub fn dispatch(app: &App, action: &str, payload: &Value) -> Option<Result<Value
         })(),
         "asr_setup" => crate::asr_runtime::start_setup(app),
         "asr_check" => crate::asr_runtime::check_installation(app),
+        "asr_server_check" => (|| {
+            let url = crate::app::string(payload, "url")?;
+            let info = crate::transcription_server::check(&url)?;
+            serde_json::to_value(info).map_err(|_| "接続確認の結果を表示できませんでした".into())
+        })(),
         "asr_uninstall" => crate::asr_runtime::uninstall(app),
         "open_settings_link" => (|| {
             let url = match payload["kind"].as_str().unwrap_or("web") {

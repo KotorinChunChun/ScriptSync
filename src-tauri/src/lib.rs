@@ -6,6 +6,7 @@ mod cloud_upload;
 #[cfg(test)]
 mod v004_tests;
 mod asr_runtime;
+mod transcription_server;
 mod export_settings;
 mod exchange;
 mod project_location;

@@ -95,7 +95,7 @@ impl App {
     pub fn snapshot(&self) -> Result<Value> {
         let a = self.0.lock().map_err(|e| e.to_string())?;
         Ok(
-            json!({"project":a.store.as_ref().map(|s|&s.project),"root":a.store.as_ref().map(|s|s.root.to_string_lossy()),"busy":a.busy||a.queue_stop.is_some(),"job":a.job,"message":a.message,"peak":a.peak,"elapsed":a.elapsed,"recording_peaks":a.recording_peaks,"stop_scheduled":a.stop_scheduled,"recording_error":a.recording_error,"script_export_ready_source_ids":a.store.as_ref().map(|s|crate::exchange::ready_source_ids(&s.project)).unwrap_or_default()}),
+            json!({"project":a.store.as_ref().map(|s|&s.project),"root":a.store.as_ref().map(|s|s.root.to_string_lossy()),"busy":a.busy||a.queue_stop.is_some(),"job":a.job,"message":a.message,"peak":a.peak,"elapsed":a.elapsed,"recording_peaks":a.recording_peaks,"stop_scheduled":a.stop_scheduled,"recording_error":a.recording_error,"recording_asr_provider":a.machine_settings.settings.asr_provider,"script_export_ready_source_ids":a.store.as_ref().map(|s|crate::exchange::ready_source_ids(&s.project)).unwrap_or_default()}),
         )
     }
     pub fn dispatch(&self, action: &str, v: Value) -> Result<Value> {
@@ -362,7 +362,7 @@ impl App {
             return self.transcribe(v);
         }
         if action == "recording_asr" {
-            self.enqueue_recording_asr(&string(&v,"segment")?, &string(&v,"take")?)?;
+            self.enqueue_recording_asr(&string(&v,"segment")?, &string(&v,"take")?, true)?;
             return Ok(Value::Null);
         }
         let mut a = self.0.lock().map_err(|e| e.to_string())?;
@@ -957,7 +957,7 @@ impl App {
         drop(a);
         if let Some((sid, tid)) = enqueue_asr_after_save {
             // 加工済みWAVの保存を確定してから認識を予約する。予約失敗で音声を巻き戻さない。
-            let _ = self.enqueue_recording_asr(&sid, &tid);
+            let _ = self.enqueue_recording_asr(&sid, &tid, false);
         }
         Ok(response)
     }
@@ -1130,7 +1130,7 @@ impl App {
             drop(a);
             if saved_ok {
                 // 音声保存後に認識を予約する。認識失敗を録音失敗にしない。
-                let _ = app.enqueue_recording_asr(&sid, &tid);
+                let _ = app.enqueue_recording_asr(&sid, &tid, false);
             }
         });
         Ok(json!(null))

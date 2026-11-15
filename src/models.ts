@@ -40,6 +40,7 @@ export type Run = {
     reference_kana?: string;
 };
 export type Asr = {
+    provider?: string;
     take_id?: string;
     status?: string;
     id: string;
@@ -90,6 +91,7 @@ export type Segment = {
     transcriptions?: Asr[];
 };
 export type Snapshot = {
+    recording_asr_provider?: string;
     recording_error?: string | null;
     script_export_ready_source_ids?: string[];
     stop_scheduled?: boolean;

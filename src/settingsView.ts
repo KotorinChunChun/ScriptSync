@@ -10,9 +10,14 @@ import {serviceToken,setServiceToken} from './services';
 export type MachineSettings = {
   capture_endpoint:string; render_endpoint:string; asr_provider:string; asr_model:string; codex_path:string;
   codex_prompt:string; codex_model:string; word_replacements?:{from:string;to:string}[];
+  asr_server_url?:string; asr_server_model?:string;
   service_url?:string;ai_provider?:string;tts_model?:string;tts_voice?:string;
 };
 type Device={endpoint_id:string;friendly_name:string;is_default:boolean};
+type AsrServerInfo={
+  version:string; auth_mode:'local'|'lan'; protocol:number;
+  models:{id:string;availability:'installed'|'download_on_first_use'}[];
+};
 type Snapshot={settings:MachineSettings;web_url:string;runtime_root:string;ready:boolean;installed?:boolean;setup:{running:boolean;phase:string;message:string};browser?:boolean;load_error?:string};
 type Context={rpc:<T>(action:string,payload?:unknown)=>Promise<T>;notice:(text:string,error?:boolean)=>void;onSaved?:(settings:MachineSettings)=>void|Promise<void>};
 let settingsDirty:()=>boolean=()=>false;
@@ -35,6 +40,70 @@ export async function openSettings(context:Context) {
   const options=(rows:Device[],selected:string)=>`<option value="">既定のデバイス</option>${selected&&!rows.some(row=>row.endpoint_id===selected)?`<option value="${esc(selected)}" selected>選択したデバイスが見つかりません</option>`:''}${rows.map(row=>`<option value="${esc(row.endpoint_id)}" ${row.endpoint_id===selected?'selected':''}>${esc(row.friendly_name)}${row.is_default?'（現在の既定）':''}</option>`).join('')}`;
   const read=():MachineSettings=>{const next={service_url:'http://localhost:4318',ai_provider:'codex',tts_model:'default',tts_voice:'default',...snapshot!.settings};const tokenInput=overlay.querySelector<HTMLInputElement>('[data-service-token]');if(tokenInput)setServiceToken(tokenInput.value);for(const key of Object.keys(next) as (keyof MachineSettings)[]){const input=overlay.querySelector<HTMLInputElement|HTMLSelectElement|HTMLTextAreaElement>(`[name="${key}"]`);if(input&&key!=='word_replacements')next[key]=input.value;}next.word_replacements=[...overlay.querySelectorAll<HTMLElement>('[data-word-row]')].map(row=>({from:row.querySelector<HTMLInputElement>('[data-word-from]')!.value,to:row.querySelector<HTMLInputElement>('[data-word-to]')!.value}));return next;};
   const notify=(text:string)=>{message=text;const target=overlay.querySelector('[data-message]');if(target)target.textContent=text;};
+  const serverSettings=(settings:MachineSettings)=>`
+    <label>テイクの文字起こし方式<select name="asr_provider">
+      <option value="local">ローカルWhisper</option>
+      <option value="transcription_server" ${settings.asr_provider==='transcription_server'?'selected':''}>TranscriptionServer</option>
+    </select></label>
+    <section data-asr-server hidden>
+      <label>TranscriptionServerのURL<input name="asr_server_url" value="${esc(settings.asr_server_url??'http://127.0.0.1:8769')}"></label>
+      <label>モデルID<input name="asr_server_model" list="asr-server-models" value="${esc(settings.asr_server_model??'whisper/tiny')}"></label>
+      <datalist id="asr-server-models"></datalist>
+      <button type="button" data-asr-server-check>接続確認・モデル一覧を取得</button>
+      <p data-asr-server-status role="status"></p>
+    </section>`;
+  const bindServerSettings=()=>{
+    const provider=overlay.querySelector<HTMLSelectElement>('[name="asr_provider"]');
+    if(!provider)return;
+    const panel=overlay.querySelector<HTMLElement>('[data-asr-server]')!;
+    const url=panel.querySelector<HTMLInputElement>('[name="asr_server_url"]')!;
+    const model=panel.querySelector<HTMLInputElement>('[name="asr_server_model"]')!;
+    const check=panel.querySelector<HTMLButtonElement>('[data-asr-server-check]')!;
+    const status=panel.querySelector<HTMLElement>('[data-asr-server-status]')!;
+    const list=panel.querySelector<HTMLDataListElement>('datalist')!;
+    let info:AsrServerInfo|undefined;
+    let request=0;
+    const showStatus=()=>{
+      if(!info)return;
+      const availability=info.models.find(row=>row.id===model.value)?.availability;
+      const selected=availability==='installed'?'導入済み':availability==='download_on_first_use'?'初回利用時に取得':'指定のモデルは使用できません';
+      status.textContent=`v${info.version} / プロトコル ${info.protocol} / ${info.auth_mode} / 受付中。 ${selected}`;
+    };
+    const toggle=()=>{panel.hidden=provider.value!=='transcription_server';};
+    provider.onchange=toggle;
+    toggle();
+    url.oninput=()=>{
+      request++;
+      info=undefined;
+      list.replaceChildren();
+      status.textContent='';
+      check.disabled=false;
+    };
+    model.oninput=showStatus;
+    check.onclick=async()=>{
+      const current=++request;
+      check.disabled=true;
+      info=undefined;
+      list.replaceChildren();
+      status.textContent='接続を確認しています…';
+      try{
+        const result=await context.rpc<AsrServerInfo>('asr_server_check',{url:url.value});
+        if(!panel.isConnected||current!==request)return;
+        info=result;
+        list.replaceChildren(...result.models.map(row=>{
+          const option=document.createElement('option');
+          option.value=row.id;
+          option.label=row.availability==='installed'?'導入済み':'初回利用時に取得';
+          return option;
+        }));
+        showStatus();
+      }catch(error){
+        if(panel.isConnected&&current===request)status.textContent=String(error);
+      }finally{
+        if(current===request)check.disabled=false;
+      }
+    };
+  };
   const updateStatus=()=>{const target=overlay.querySelector('[data-setup-status]');if(target&&snapshot)target.textContent=snapshot.setup.message||(snapshot.ready?'選択したローカルモデルは導入済みです':'選択した認識モデルの導入が必要です');const button=overlay.querySelector<HTMLButtonElement>('[data-setup]');if(button&&snapshot){button.disabled=snapshot.setup.running||saving||testing;button.hidden=snapshot.ready&&overlay.querySelector<HTMLSelectElement>('[name="asr_model"]')?.value===snapshot.settings.asr_model;}const remove=overlay.querySelector<HTMLButtonElement>('[data-uninstall]');if(remove&&snapshot){remove.hidden=!(snapshot.installed??snapshot.ready);remove.disabled=snapshot.setup.running||saving||testing;}const check=overlay.querySelector<HTMLButtonElement>('[data-check]');if(check&&snapshot)check.disabled=snapshot.setup.running||saving||testing;};
   const refreshStatus=async()=>{try{const next=await context.rpc<Snapshot>('asr_setup_status');if(!overlay.isConnected)return;snapshot={...next,settings:snapshot?.settings??next.settings};updateStatus();if(next.setup.running)poll=setTimeout(()=>void refreshStatus(),1200);}catch(error){notify(String(error));}};
   const save=async()=>{if(saving||testing||!snapshot)return false;saving=true;try{snapshot=await context.rpc<Snapshot>('settings_save',{settings:read()});savedSettings={...snapshot.settings,word_replacements:snapshot.settings.word_replacements??[]};await context.onSaved?.(snapshot.settings);notify('このPCの設定を保存しました');return true;}catch(error){notify(String(error));return false;}finally{saving=false;}};
@@ -45,7 +114,7 @@ export async function openSettings(context:Context) {
     const s=snapshot.settings,qr=qrcode(0,'M');qr.addData(snapshot.web_url);qr.make();
     overlay.innerHTML=`<section class="settings-dialog"><header><h2>設定</h2></header><p data-message role="status">${esc(message||snapshot.load_error||'このPCに保存します。プロジェクトの保存状態には影響しません。')}</p><div class="settings-scroll"><fieldset class="settings-app-info"><legend>アプリ情報</legend><p>${esc(appInfo.name)}</p><p>バージョン：<span data-app-version>${esc(appInfo.version)}</span></p><p>更新日：<time datetime="${appInfo.updatedAt}">${appInfo.updatedAt}</time></p></fieldset>
       <fieldset><legend>音声デバイス</legend><label>録音デバイス<select name="capture_endpoint">${options(devices.capture,s.capture_endpoint)}</select></label><label>再生デバイス<select name="render_endpoint">${options(devices.render,s.render_endpoint)}</select></label><p>「既定」はWindowsで変更したデバイスに追従します。選択した機器がない場合は、選び直してください。録音・認識中は設定を変更できません。</p><button data-refresh-devices>デバイス一覧を更新</button></fieldset>
-      <fieldset><legend>文字起こし</legend><p>Whisperで文字起こしした後、必要に応じて「AIで文章改善」を別操作で実行します。</p><label>認識モデル<select name="asr_model">${[['tiny','tiny（軽量）'],['base','base'],['small','small（標準）'],['medium','medium'],['large-v3','large-v3（高精度・大容量）']].filter(([value])=>!snapshot!.browser||['tiny','base','small'].includes(value)).map(([value,label])=>`<option value="${value}" ${value===s.asr_model?'selected':''}>${label}</option>`).join('')}</select></label><p>${snapshot.browser?'ブラウザー内Whisperを使用します。初回はモデルを取得し、認識は端末内で行います。Web版ではtiny/base/smallを選択してください。':'初回はPython未導入でも、ボタン1つでこのユーザー専用のPython・ライブラリ・モデルを取得します。'}インターネット接続と空き容量が必要です。通常のローカル認識では音声を外部送信しません。</p><p data-setup-status role="status"></p><button data-check>Whisperの導入状態を確認</button><button data-setup>文字起こし環境を導入／再試行</button><button data-uninstall>Whisperをアンインストール</button><p>導入先：<code>${esc(snapshot.runtime_root)}</code></p><button data-link="whisper">Whisperライブラリの案内</button><section class="settings-codex" aria-label="AI・音声合成サービス"><h3>AI・音声合成サービス</h3><p>利用者側の接続ゲートウェイを指定します。Codex app-server・OpenAI API等の接続先と秘密はゲートウェイ側で管理します。音声合成は別のHTTPサーバーを使用します。</p><label>接続URL（既定localhost）<input name="service_url" value="${esc(s.service_url??'http://localhost:4318')}" placeholder="http://localhost:4318"></label><label>AI接続方式<select name="ai_provider">${[['codex','Codex app-server'],['openai','OpenAI Responses API'],['chat-completions','Chat Completions互換API']].map(([v,l])=>`<option value="${v}" ${(s.ai_provider??'codex')===v?'selected':''}>${l}</option>`).join('')}</select></label>${'__TAURI_INTERNALS__'in window?'<p>接続トークンは環境変数SCRIPTSYNC_GATEWAY_TOKEN、またはC:/AI/env/ScriptSync/gateway-token.txtへ設定します。</p>':`<label>接続トークン（このページを開いている間だけ保持）<input type="password" data-service-token autocomplete="off" value="${esc(serviceToken())}"></label>`}<label>AIモデル<input name="codex_model" value="${esc(s.codex_model)}"></label><label>音声合成モデル<input name="tts_model" value="${esc(s.tts_model??'default')}"></label><label>音声名<input name="tts_voice" value="${esc(s.tts_voice??'default')}"></label><label>文章改善プロンプト<textarea name="codex_prompt" rows="8">${esc(s.codex_prompt)}</textarea></label><p>「AIで文章改善」を押した時だけ、現在の台本の修正案・確定台本を送信します。結果は承認後に反映します。localhostは閲覧端末自身を指します。</p><button data-codex-test>AI接続の動作テスト</button><div data-codex-test-result role="status"></div><button data-link="codex">Codex app-serverの案内</button></section><p>OpenAI音声認識APIは参考情報です。本アプリからは実行しません。</p><button data-link="api">OpenAIファイル文字起こしの案内</button></fieldset>
+      <fieldset><legend>文字起こし</legend>${snapshot.browser?'':serverSettings(s)}<p>Whisperで文字起こしした後、必要に応じて「AIで文章改善」を別操作で実行します。</p><label>認識モデル<select name="asr_model">${[['tiny','tiny（軽量）'],['base','base'],['small','small（標準）'],['medium','medium'],['large-v3','large-v3（高精度・大容量）']].filter(([value])=>!snapshot!.browser||['tiny','base','small'].includes(value)).map(([value,label])=>`<option value="${value}" ${value===s.asr_model?'selected':''}>${label}</option>`).join('')}</select></label><p>${snapshot.browser?'ブラウザー内Whisperを使用します。初回はモデルを取得し、認識は端末内で行います。Web版ではtiny/base/smallを選択してください。':'初回はPython未導入でも、ボタン1つでこのユーザー専用のPython・ライブラリ・モデルを取得します。'}インターネット接続と空き容量が必要です。通常のローカル認識では音声を外部送信しません。</p><p data-setup-status role="status"></p><button data-check>Whisperの導入状態を確認</button><button data-setup>文字起こし環境を導入／再試行</button><button data-uninstall>Whisperをアンインストール</button><p>導入先：<code>${esc(snapshot.runtime_root)}</code></p><button data-link="whisper">Whisperライブラリの案内</button><section class="settings-codex" aria-label="AI・音声合成サービス"><h3>AI・音声合成サービス</h3><p>利用者側の接続ゲートウェイを指定します。Codex app-server・OpenAI API等の接続先と秘密はゲートウェイ側で管理します。音声合成は別のHTTPサーバーを使用します。</p><label>接続URL（既定localhost）<input name="service_url" value="${esc(s.service_url??'http://localhost:4318')}" placeholder="http://localhost:4318"></label><label>AI接続方式<select name="ai_provider">${[['codex','Codex app-server'],['openai','OpenAI Responses API'],['chat-completions','Chat Completions互換API']].map(([v,l])=>`<option value="${v}" ${(s.ai_provider??'codex')===v?'selected':''}>${l}</option>`).join('')}</select></label>${'__TAURI_INTERNALS__'in window?'<p>接続トークンは環境変数SCRIPTSYNC_GATEWAY_TOKEN、またはC:/AI/env/ScriptSync/gateway-token.txtへ設定します。</p>':`<label>接続トークン（このページを開いている間だけ保持）<input type="password" data-service-token autocomplete="off" value="${esc(serviceToken())}"></label>`}<label>AIモデル<input name="codex_model" value="${esc(s.codex_model)}"></label><label>音声合成モデル<input name="tts_model" value="${esc(s.tts_model??'default')}"></label><label>音声名<input name="tts_voice" value="${esc(s.tts_voice??'default')}"></label><label>文章改善プロンプト<textarea name="codex_prompt" rows="8">${esc(s.codex_prompt)}</textarea></label><p>「AIで文章改善」を押した時だけ、現在の台本の修正案・確定台本を送信します。結果は承認後に反映します。localhostは閲覧端末自身を指します。</p><button data-codex-test>AI接続の動作テスト</button><div data-codex-test-result role="status"></div><button data-link="codex">Codex app-serverの案内</button></section><p>OpenAI音声認識APIは参考情報です。本アプリからは実行しません。</p><button data-link="api">OpenAIファイル文字起こしの案内</button></fieldset>
       <fieldset><legend>単語の静的変換辞書</legend><p>AIへ送信する前に置換します。英数字は単語単位、日本語は一致部分を置換します。長い置換元を優先し、置換結果をさらに置換しません。</p><div data-word-list class="settings-word-list">${(s.word_replacements??[]).map(row=>`<div data-word-row class="settings-word-row"><label>置換元<input data-word-from value="${esc(row.from)}"></label><label>置換先<input data-word-to value="${esc(row.to)}"></label><button data-word-remove>削除</button></div>`).join('')}</div><button data-word-add>単語を追加</button></fieldset>
       <fieldset><legend>ScriptSyncWeb</legend><div class="settings-web"><div><p class="settings-url">${esc(snapshot.web_url)}</p><button data-link="web">ScriptSyncWebを開く</button><p>スマートフォンでは右のQRコードから開けます。</p></div><div class="settings-qr" aria-label="ScriptSyncWebのQRコード">${qr.createSvgTag({cellSize:4,margin:4,scalable:true})}</div></div></fieldset>
 
@@ -70,6 +139,7 @@ export async function openSettings(context:Context) {
       finally{testing=false;button.disabled=false;guarded.forEach((b,i)=>b.disabled=disabled[i]);}
     };
     overlay.querySelector<HTMLSelectElement>('[name="asr_model"]')!.onchange=updateStatus;
+    bindServerSettings();
     updateStatus();
   };
   overlay.onkeydown=event=>{event.stopPropagation();if(event.key==='Escape'){event.preventDefault();close();}if(event.key==='Tab'){const focus=[...overlay.querySelectorAll<HTMLElement>('button:not(:disabled),input,select,textarea,summary')].filter(el=>el.getClientRects().length>0);const index=focus.indexOf(document.activeElement as HTMLElement);if(event.shiftKey&&index<=0){event.preventDefault();focus.at(-1)?.focus();}else if(!event.shiftKey&&index===focus.length-1){event.preventDefault();focus[0]?.focus();}}};

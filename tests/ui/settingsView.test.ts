@@ -17,7 +17,7 @@ it('プロンプトを保存した成功時に閉じる。上部の閉じると�
  const rpc=vi.fn(async(action:string,payload?:any)=>action==='settings_devices'?{capture:[],render:[]}:action==='settings_save'?{...snapshot(),settings:payload.settings}:snapshot());
  await openSettings({rpc:rpc as never,notice:vi.fn()});
  expect(document.querySelector('header [data-close]')).toBeNull();
- expect(document.querySelector('[name="asr_provider"]')).toBeNull();
+ expect(document.querySelector('[name="asr_provider"] option[value="codex"]')).toBeNull();
  expect(document.querySelector('[name="codex_prompt"]')?.closest('details')).toBeNull();
  expect(document.querySelector('.settings-codex')?.textContent).toContain('現在の台本の修正案');
  expect(document.querySelector('[name="entra_client_id"]')).toBeNull();
@@ -25,6 +25,50 @@ it('プロンプトを保存した成功時に閉じる。上部の閉じると�
  document.querySelector<HTMLButtonElement>('[data-save]')!.click();await flush();
  expect(rpc.mock.calls.find(c=>c[0]==='settings_save')?.[1].settings.codex_prompt).toBe('数値を保持。\n誤字のみ。');
  expect(document.getElementById('settings-manager')).toBeNull();
+});
+
+it('デスクトップで接続先とモデルを確認し、保存操作でだけ方式を変更する',async()=>{
+ const desktop={...snapshot(),settings:{...settings,asr_server_url:'http://127.0.0.1:8769',asr_server_model:'whisper/tiny'}};
+ const rpc=vi.fn(async(action:string,payload?:{settings?:MachineSettings})=>{
+  if(action==='settings_devices')return {capture:[],render:[]};
+  if(action==='asr_server_check')return {version:'0.1.17',protocol:3,auth_mode:'local',models:[{id:'haas/haas-ja-v1.0',availability:'installed'}]};
+  if(action==='settings_save')return {...desktop,settings:payload!.settings};
+  return desktop;
+ });
+ await openSettings({rpc:rpc as never,notice:vi.fn()});
+ const provider=document.querySelector<HTMLSelectElement>('[name="asr_provider"]')!;
+ const panel=document.querySelector<HTMLElement>('[data-asr-server]')!;
+ expect(provider.value).toBe('local');
+ expect(panel.hidden).toBe(true);
+ provider.value='transcription_server';
+ provider.dispatchEvent(new Event('change'));
+ expect(panel.hidden).toBe(false);
+ const url=panel.querySelector<HTMLInputElement>('[name="asr_server_url"]')!;
+ url.value='http://localhost:8769';
+ url.dispatchEvent(new Event('input'));
+ panel.querySelector<HTMLButtonElement>('[data-asr-server-check]')!.click();
+ await flush();
+ expect(rpc).toHaveBeenCalledWith('asr_server_check',{url:'http://localhost:8769'});
+ expect(panel.querySelector('datalist option')?.getAttribute('value')).toBe('haas/haas-ja-v1.0');
+ expect(panel.querySelector('[role="status"]')?.textContent).toContain('指定のモデルは使用できません');
+ expect(rpc.mock.calls.some(([action])=>action==='settings_save')).toBe(false);
+ const model=panel.querySelector<HTMLInputElement>('[name="asr_server_model"]')!;
+ model.value='haas/haas-ja-v1.0';
+ model.dispatchEvent(new Event('input'));
+ expect(panel.querySelector('[role="status"]')?.textContent).toContain('導入済み');
+ document.querySelector<HTMLButtonElement>('[data-save]')!.click();
+ await flush();
+ expect(rpc.mock.calls.find(([action])=>action==='settings_save')?.[1]?.settings).toMatchObject({
+  asr_provider:'transcription_server',asr_server_url:'http://localhost:8769',asr_server_model:'haas/haas-ja-v1.0',
+ });
+});
+
+it('Web版ではブラウザー内Whisperの設定だけを表示する',async()=>{
+ const rpc=vi.fn(async(action:string)=>action==='settings_devices'?{capture:[],render:[]}:{...snapshot(),browser:true});
+ await openSettings({rpc:rpc as never,notice:vi.fn()});
+ expect(document.querySelector('[name="asr_provider"]')).toBeNull();
+ expect(document.querySelector('[data-asr-server-check]')).toBeNull();
+ expect(document.querySelector<HTMLSelectElement>('[name="asr_model"]')!.value).toBe('small');
 });
 it('未保存のモデルとプロンプトで合成テストし、設定や原稿を変更しない',async()=>{
  const rpc=vi.fn(async(action:string,payload?:any)=>action==='settings_devices'?{capture:[],render:[]}:action==='text_improve_test'?{input:'合成入力',text:'合成結果',model:payload.settings.codex_model}:snapshot());

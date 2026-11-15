@@ -27,6 +27,24 @@ cargo test --manifest-path src-tauri/Cargo.toml --locked --offline --lib workflo
 
 アプリのウィンドウ、既存設定・履歴、実マイク、外部APIを使いません。録音画面の操作や実際の収録・試聴は別途確認します。
 
+## テイクのTranscriptionServer連携を検証する
+
+PowerShell 7で作業用チェックアウトのルートを開き、模擬サーバーを使った契約試験を実行します。通常のアプリ処理で、設定の保存、明示操作までの送信抑止、音声の送信、修正案の保存と再読込を調べます。
+
+```powershell
+cargo test --manifest-path src-tauri/Cargo.toml --locked --offline --lib transcription_server::tests
+```
+
+実機試験は、受付中のTranscriptionServerと日本語の合成WAVを用意して実行します。この試験では指定のサーバーへ合成WAVを送信します。初回取得を避ける場合は、サーバーで準備済みの日本語モデルIDを指定してください。URLの既定は `http://127.0.0.1:8769`、モデルの既定は `whisper/tiny` です。
+
+```powershell
+$env:SCRIPTSYNC_TEST_ASR_WAV = '合成WAVの絶対パス'
+$env:SCRIPTSYNC_TEST_ASR_MODEL = 'whisper/base'
+cargo test --manifest-path src-tauri/Cargo.toml --locked --offline --lib transcription_server::tests::real_server_transcription_reaches_only_the_recording_draft -- --ignored --exact --nocapture
+```
+
+どちらもScriptSyncの設定とプロジェクトを一時フォルダーに分け、利用者の設定・原稿・録音・辞書を使用しません。録音画面の操作や実マイクでの録音は別途確認します。
+
 ## 実WebView2まで自動で検証する
 
 ```powershell
