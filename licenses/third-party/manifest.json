@@ -267,7 +267,7 @@
       ]
     }
   },
-  "cargoLockSha256": "4a38304818a6a893366525e84120360b6d4a1a9b2de086218262ed7da62f53cb",
+  "cargoLockSha256": "27f4c70fbc0aacf7da50d11e1bc987ccd9d34092a2c2d10478335512695df701",
   "npmLockSha256": "4c63cefe84f05b0506b111fb02d87a2454df96844138e74d2765b6255ee4ca10",
   "rust": [
     {
@@ -1412,7 +1412,10 @@
       "checksum": "74c892c2b5fa08f967e8b5ad29121570b4762202f2402033ce08479ec65eccd0",
       "texts": [
         "texts/rust-flacenc-0.5.1/LICENSE"
-      ]
+      ],
+      "modified": true,
+      "modifications": "heapless 0.9.4への依存更新とVecエラー型の互換修正",
+      "correspondingSource": "https://github.com/KotorinChunChun/ScriptSync/tree/v0.0.6.6/vendor/flacenc"
     },
     {
       "name": "flate2",
@@ -1674,15 +1677,15 @@
     },
     {
       "name": "heapless",
-      "version": "0.8.0",
+      "version": "0.9.4",
       "license": "MIT OR Apache-2.0",
       "selectedLicense": "MIT",
       "repository": "https://github.com/rust-embedded/heapless",
-      "source": "https://static.crates.io/crates/heapless/heapless-0.8.0.crate",
-      "checksum": "0bfb9eb618601c89945a70e254898da93b13be0388091d42117462b265bb3fad",
+      "source": "https://static.crates.io/crates/heapless/heapless-0.9.4.crate",
+      "checksum": "411fdef4df93751117bd9ef8caa0e7f99c65dafec5bd84313eb8e2fdd75e32f2",
       "texts": [
-        "texts/rust-heapless-0.8.0/LICENSE-APACHE",
-        "texts/rust-heapless-0.8.0/LICENSE-MIT"
+        "texts/rust-heapless-0.9.4/LICENSE-APACHE",
+        "texts/rust-heapless-0.9.4/LICENSE-MIT"
       ]
     },
     {
@@ -2769,28 +2772,28 @@
     },
     {
       "name": "quinn-proto",
-      "version": "0.11.18",
+      "version": "0.11.19",
       "license": "MIT OR Apache-2.0",
       "selectedLicense": "MIT",
       "repository": "https://github.com/quinn-rs/quinn",
-      "source": "https://static.crates.io/crates/quinn-proto/quinn-proto-0.11.18.crate",
-      "checksum": "a9746dbde176634f4f2f1faf2404e30a31b2bc1e9cafb5329c95d8177a18c9fc",
+      "source": "https://static.crates.io/crates/quinn-proto/quinn-proto-0.11.19.crate",
+      "checksum": "0e750cca55fe4f0439a15d0bb529da9651e79993e8e72c61a899a36d462befbe",
       "texts": [
-        "texts/rust-quinn-proto-0.11.18/LICENSE-APACHE",
-        "texts/rust-quinn-proto-0.11.18/LICENSE-MIT"
+        "texts/rust-quinn-proto-0.11.19/LICENSE-APACHE",
+        "texts/rust-quinn-proto-0.11.19/LICENSE-MIT"
       ]
     },
     {
       "name": "quinn-udp",
-      "version": "0.5.15",
+      "version": "0.5.16",
       "license": "MIT OR Apache-2.0",
       "selectedLicense": "MIT",
       "repository": "https://github.com/quinn-rs/quinn",
-      "source": "https://static.crates.io/crates/quinn-udp/quinn-udp-0.5.15.crate",
-      "checksum": "35a133f956daabe89a61a685c2649f13d82d5aa4bd5d12d1277e1072a21c0694",
+      "source": "https://static.crates.io/crates/quinn-udp/quinn-udp-0.5.16.crate",
+      "checksum": "af66907df18639dcf4db56ca65490cabc4b27a97dbadd96f2926cca73298f016",
       "texts": [
-        "texts/rust-quinn-udp-0.5.15/LICENSE-APACHE",
-        "texts/rust-quinn-udp-0.5.15/LICENSE-MIT"
+        "texts/rust-quinn-udp-0.5.16/LICENSE-APACHE",
+        "texts/rust-quinn-udp-0.5.16/LICENSE-MIT"
       ]
     },
     {
@@ -6759,12 +6762,12 @@
       "sha256": "ff8f68cb076caf8cefe7a6430d4ac086ce6af2ca8ce2c4e5a2004d4552ef52a2"
     },
     {
-      "path": "texts/rust-heapless-0.8.0/LICENSE-APACHE",
+      "path": "texts/rust-heapless-0.9.4/LICENSE-APACHE",
       "bytes": 10847,
       "sha256": "a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2"
     },
     {
-      "path": "texts/rust-heapless-0.8.0/LICENSE-MIT",
+      "path": "texts/rust-heapless-0.9.4/LICENSE-MIT",
       "bytes": 1058,
       "sha256": "035e70219855119df4273b3c5b97543ae82e0dd60c520416e759107c602f651b"
     },
@@ -7509,22 +7512,22 @@
       "sha256": "4b2d0aca6789fa39e03d6738e869ea0988cceba210ca34ebb59c15c463e93a04"
     },
     {
-      "path": "texts/rust-quinn-proto-0.11.18/LICENSE-APACHE",
+      "path": "texts/rust-quinn-proto-0.11.19/LICENSE-APACHE",
       "bytes": 11357,
       "sha256": "c71d239df91726fc519c6eb72d318ec65820627232b2f796219e87dcf35d0ab4"
     },
     {
-      "path": "texts/rust-quinn-proto-0.11.18/LICENSE-MIT",
+      "path": "texts/rust-quinn-proto-0.11.19/LICENSE-MIT",
       "bytes": 1064,
       "sha256": "4b2d0aca6789fa39e03d6738e869ea0988cceba210ca34ebb59c15c463e93a04"
     },
     {
-      "path": "texts/rust-quinn-udp-0.5.15/LICENSE-APACHE",
+      "path": "texts/rust-quinn-udp-0.5.16/LICENSE-APACHE",
       "bytes": 11357,
       "sha256": "c71d239df91726fc519c6eb72d318ec65820627232b2f796219e87dcf35d0ab4"
     },
     {
-      "path": "texts/rust-quinn-udp-0.5.15/LICENSE-MIT",
+      "path": "texts/rust-quinn-udp-0.5.16/LICENSE-MIT",
       "bytes": 1064,
       "sha256": "4b2d0aca6789fa39e03d6738e869ea0988cceba210ca34ebb59c15c463e93a04"
     },

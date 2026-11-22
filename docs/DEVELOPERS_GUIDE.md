@@ -8,7 +8,7 @@
 
 署名付きMSIXのローカル作成は[MSIX作成手順](MSIX.md)を参照してください。
 
-Windows、PowerShell 7、Node.js 22.12以上/npm（検証は22系）、Rust、TauriのWindowsビルド環境（MSVC・WebView2）が必要です。録音・プロジェクト保存の確認にはネイティブアプリを使用します。
+Windows、PowerShell 7、Node.js 22.12以上/npm（検証は22系）、Rust 1.88以上、TauriのWindowsビルド環境（MSVC・WebView2）が必要です。録音・プロジェクト保存の確認にはネイティブアプリを使用します。FLAC依存の互換修正は [同梱ソースの記録](../vendor/flacenc/SCRIPTSYNC-CHANGES.md) を参照してください。
 
 ```powershell
 cd C:\develop\KotorinToys\tools\ScriptSync

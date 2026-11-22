@@ -70,11 +70,20 @@ const lockPackages=new Map(lockText.split('[[package]]').slice(1).map(block=>{
  return [`${value('name')}@${value('version')}`,value('checksum')];
 }));
 const rust=[];
-for(const p of [...seen].map(id=>packages.get(id)).filter(p=>p.source).sort((a,b)=>compare(a.name+'@'+a.version,b.name+'@'+b.version))){
- if(!p.source.startsWith('registry+'))throw new Error('公開registry以外の依存は手動確認が必要です: '+p.name);
+for(const p of [...seen].map(id=>packages.get(id)).filter(p=>p.source || path.resolve(p.manifest_path)===path.join(root,'vendor/flacenc/Cargo.toml')).sort((a,b)=>compare(a.name+'@'+a.version,b.name+'@'+b.version))){
+ const vendored=!p.source;
+ if(!vendored && !p.source.startsWith('registry+'))throw new Error('公開registry以外の依存は手動確認が必要です: '+p.name);
  const id=`rust-${p.name}-${p.version}`,directory=path.dirname(p.manifest_path),license=selectedLicense(p.license);
  const entry={name:p.name,version:p.version,license:p.license,selectedLicense:license,repository:p.repository,
   source:`https://static.crates.io/crates/${p.name}/${p.name}-${p.version}.crate`,checksum:lockPackages.get(`${p.name}@${p.version}`),texts:texts(directory,id)};
+ if(vendored){
+  const origin=JSON.parse(fs.readFileSync(path.join(directory,'origin.json'),'utf8'));
+  if(p.name!=='flacenc' || p.version!=='0.5.1' || origin.upstreamSha256!=='74c892c2b5fa08f967e8b5ad29121570b4762202f2402033ce08479ec65eccd0')throw new Error('同梱依存の取得元を確認してください');
+  entry.checksum=origin.upstreamSha256;
+  entry.modified=true;
+  entry.modifications='heapless 0.9.4への依存更新とVecエラー型の互換修正';
+  entry.correspondingSource='https://github.com/KotorinChunChun/ScriptSync/tree/v0.0.6.6/vendor/flacenc';
+ }
  if(!entry.checksum)throw new Error('Cargo.lockのchecksumがありません: '+p.name);
  if(/MPL-/.test(license)){
   const cache=path.join(path.resolve(directory,'../../..'),'cache',path.basename(path.dirname(directory)),`${p.name}-${p.version}.crate`);

@@ -1,0 +1,8 @@
+{
+  "name": "flacenc",
+  "version": "0.5.1",
+  "upstream": "https://static.crates.io/crates/flacenc/flacenc-0.5.1.crate",
+  "upstreamSha256": "74c892c2b5fa08f967e8b5ad29121570b4762202f2402033ce08479ec65eccd0",
+  "license": "Apache-2.0",
+  "patchedDependency": "heapless =0.9.4"
+}

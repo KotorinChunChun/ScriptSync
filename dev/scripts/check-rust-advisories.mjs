@@ -4,8 +4,9 @@ import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'../..');
 const informational=new Map([
- ['RUSTSEC-2025-0081','unic-char-property'],['RUSTSEC-2025-0075','unic-char-range'],
- ['RUSTSEC-2025-0080','unic-common'],['RUSTSEC-2025-0100','unic-ucd-ident'],['RUSTSEC-2025-0098','unic-ucd-version'],
+ ['RUSTSEC-2025-0081',['unic-char-property','0.9.0']],['RUSTSEC-2025-0075',['unic-char-range','0.9.0']],
+ ['RUSTSEC-2025-0080',['unic-common','0.9.0']],['RUSTSEC-2025-0100',['unic-ucd-ident','0.9.0']],['RUSTSEC-2025-0098',['unic-ucd-version','0.9.0']],
+ ['RUSTSEC-2026-0543',['chrono','0.4.45']],
 ]);
 async function read(url,options){
  const response=await fetch(url,{...options,signal:AbortSignal.timeout(30000)});
@@ -19,11 +20,12 @@ try{
  let maintenance=0,failures=0;
  for(let i=0;i<packages.length;i++)for(const finding of result.results[i].vulns??[]){
   const p=packages[i];let accepted=false;
-  if(informational.get(finding.id)===p.name && p.version==='0.9.0'){
+  const maintenancePackage=informational.get(finding.id);
+  if(maintenancePackage?.[0]===p.name && maintenancePackage[1]===p.version){
    const details=await read('https://api.osv.dev/v1/vulns/'+encodeURIComponent(finding.id));
    accepted=details.affected.some(item=>item.package.name===p.name && item.database_specific?.informational==='unmaintained');
   }
-  if(accepted){maintenance++;console.log(`保守終了通知: ${p.name} ${p.version} ${finding.id}（Tauriの間接依存、修正版なし）`);}
+  if(accepted){maintenance++;console.log(`保守終了通知: ${p.name} ${p.version} ${finding.id}（Windows構成の推移依存、修正版なし）`);}
   else{failures++;console.error(`要対応: ${p.name} ${p.version} ${finding.id}`);}
  }
  console.log(`${failures?'失敗':'成功'}: Rust公開依存 ${packages.length}件 / 未解消の脆弱性・不健全性 ${failures}件 / 保守終了通知 ${maintenance}件`);
