@@ -36,7 +36,7 @@ const settings=path.join(run,'settings'),projectFile=path.join(run,'fixture.scri
 fs.writeFileSync(input,bytes);const baseline='前半の合成台本です。\n後半の合成台本です。';
 const markdown=path.join(run,'fixture.md');fs.writeFileSync(markdown,baseline);
 const fixtureToken='fixture-cli-token',recognizedText='合成音声の認識候補です。';
-let posts=0,healthError=false,mockFailure;
+let posts=0,healthError=false,mockFailure,postDelay=0;
 const server=http.createServer(async(req,res)=>{
  try{
   let value;
@@ -48,6 +48,7 @@ const server=http.createServer(async(req,res)=>{
    posts++;assert.equal(req.headers['x-local-token'],fixtureToken);
    const chunks=[];for await(const chunk of req)chunks.push(chunk);const body=Buffer.concat(chunks);
    assert.ok(body.includes(bytes));assert.match(body.toString('latin1'),/whisper\/base/);
+   if(postDelay)await new Promise(resolve=>setTimeout(resolve,postDelay));
    value={text:recognizedText,token:fixtureToken};
   }else{res.writeHead(404).end();return;}
   res.writeHead(200,{'Content-Type':'application/json'}).end(JSON.stringify(value));
@@ -130,6 +131,13 @@ try{
  });
  await check('接続失敗の応答からサーバー秘密値を除外',async()=>{
   healthError=true;const result=await response('asr_server_check',{url});assert.equal(result.ok,false);assert.ok(!JSON.stringify(result).includes(fixtureToken));healthError=false;
+ });
+ await check('処理中の終了要求で認識と保存を完了し、別プロセスで再読込',async()=>{
+  postDelay=150;await rpc('recording_asr',{segment,take:originalTakes[0].id});await close();
+  assert.equal(posts,2);if(mockFailure)throw mockFailure;
+  start();await rpc('open',{path:projectFile});const p=(await rpc('state')).project;
+  assert.equal(p.segments[0].transcriptions.at(-1).status,'succeeded');assert.equal(p.segments[0].text,confirmed.segments[0].text);
+  postDelay=0;
  });
  if(realUrl)await check('指定した実TranscriptionServerへ合成WAVを送信',async()=>{
   const info=await rpc('asr_server_check',{url:realUrl});assert.equal(info.protocol,3);assert.ok(info.models.some(m=>m.id===realModel));report.realServerVersion=info.version;

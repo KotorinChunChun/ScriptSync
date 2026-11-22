@@ -33,7 +33,8 @@ fn idle(app: &App, timeout: u64) -> Result<Value, String> {
     loop {
         let busy = {
             let state = app.0.lock().map_err(|_| "状態を取得できません")?;
-            state.busy || state.auto_asr_running || !state.auto_asr_queue.is_empty()
+            state.busy || state.stop.is_some() || state.queue_stop.is_some()
+                || state.auto_asr_running || !state.auto_asr_queue.is_empty()
                 || state.machine_settings.setup.running
         };
         if !busy { return Ok(json!({"idle":true})); }
@@ -45,6 +46,7 @@ fn idle(app: &App, timeout: u64) -> Result<Value, String> {
 fn execute(app: &App, request: &Request) -> Result<Value, String> {
     let action = request.action.as_str();
     if matches!(action, "wait_idle" | "shutdown") {
+        if action == "shutdown" { app.dispatch("stop", json!({}))?; }
         return idle(app, request.payload["timeout_ms"].as_u64().unwrap_or(MAX_WAIT));
     }
     if matches!(action, "open_settings_link" | "open_export_folder") || action.starts_with("ui_") {
