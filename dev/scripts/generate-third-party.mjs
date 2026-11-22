@@ -82,7 +82,7 @@ for(const p of [...seen].map(id=>packages.get(id)).filter(p=>p.source || path.re
   entry.checksum=origin.upstreamSha256;
   entry.modified=true;
   entry.modifications='heapless 0.9.4への依存更新とVecエラー型の互換修正';
-  entry.correspondingSource='https://github.com/KotorinChunChun/ScriptSync/tree/v0.0.6.6/vendor/flacenc';
+  entry.correspondingSource='https://github.com/KotorinChunChun/ScriptSync/tree/6de5d75bcf08d5889bba324568f8b1b1f12fc806/vendor/flacenc';
  }
  if(!entry.checksum)throw new Error('Cargo.lockのchecksumがありません: '+p.name);
  if(/MPL-/.test(license)){

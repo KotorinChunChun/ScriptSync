@@ -37,6 +37,9 @@ try {
     $layout = Join-Path $output ('layout-' + [guid]::NewGuid().ToString('N'))
     New-Item -ItemType Directory -Path (Join-Path $layout 'Assets') -Force | Out-Null
     Copy-Item -LiteralPath $exe -Destination (Join-Path $layout 'scriptsync.exe')
+    $cli=Join-Path (Split-Path $exe) 'scriptsync-cli.exe'
+    if(!(Test-Path -LiteralPath $cli)){throw '配布用CLIがありません。scriptsync-cliを同じ構成でビルドしてください。'}
+    Copy-Item -LiteralPath $cli -Destination (Join-Path $layout 'scriptsync-cli.exe')
     Copy-Item -LiteralPath (Join-Path $source 'LICENSE') -Destination (Join-Path $layout 'LICENSE.txt')
     Copy-Item -LiteralPath (Join-Path $source 'THIRD-PARTY-NOTICES.md') -Destination (Join-Path $layout 'THIRD-PARTY-NOTICES.md')
     Copy-Item -LiteralPath (Join-Path $source 'licenses/third-party') -Destination (Join-Path $layout 'licenses') -Recurse

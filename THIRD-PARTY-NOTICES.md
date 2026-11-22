@@ -8,7 +8,7 @@ ScriptSyncと、権利者本人が作成した録音基盤はMITです。依存�
 
 Symphonia等のMPL-2.0部分は、アーカイブ内の元ソース・著作権表示・ライセンスを維持します。実行形式の受領者は、同梱アーカイブを展開して対応するソースを取得できます。取得元の公開URLもmanifestへ記載します。第三者部分について、元ライセンスが認める改変・再配布等の権利を本体の条件で制限しません。
 
-flacenc 0.5.1（Apache-2.0）はheapless 0.9.4との互換修正を加えています。元のライセンスを同梱し、生成manifestに未変更アーカイブのSHA-256と修正ソースの公開URLを記録します。[取得元と変更内容](https://github.com/KotorinChunChun/ScriptSync/blob/v0.0.6.6/vendor/flacenc/SCRIPTSYNC-CHANGES.md)を参照してください。
+flacenc 0.5.1（Apache-2.0）はheapless 0.9.4との互換修正を加えています。元のライセンスを同梱し、生成manifestに未変更アーカイブのSHA-256と修正ソースの公開URLを記録します。[取得元と変更内容](https://github.com/KotorinChunChun/ScriptSync/blob/6de5d75bcf08d5889bba324568f8b1b1f12fc806/vendor/flacenc/SCRIPTSYNC-CHANGES.md)を参照してください。
 
 4つのUI効果音はKenneyのInterface Sounds 1.0、CC0です。元の[表示](public/sounds/Kenney-LICENSE.txt)を維持し、生成した配布用文書にも含めます。
 

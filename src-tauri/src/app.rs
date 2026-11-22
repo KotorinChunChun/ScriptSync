@@ -137,7 +137,8 @@ impl App {
         }
         if action == "exchange_export" {
             let project={let a=self.0.lock().map_err(|e|e.to_string())?;let project=&a.store.as_ref().ok_or("プロジェクトを開いてください")?.project;crate::exchange::validate_export_request(project,&v)?;project.clone()};
-            let Some(path)=rfd::FileDialog::new().add_filter("Web交換ZIP",&["zip"]).set_file_name("台本.zip").save_file()else{return Ok(Value::Null)};
+            let path=if v.get("path").is_some(){explicit_path(&v,&["zip"])?}else{rfd::FileDialog::new().add_filter("Web交換ZIP",&["zip"]).set_file_name("台本.zip").save_file()};
+            let Some(path)=path else{return Ok(Value::Null)};
             crate::exchange::export_script(&project,&string(&v,"source_id")?,&path,&string(&v,"exported_at")?)?;
             return Ok(json!({"path":path}));
         }
@@ -179,11 +180,15 @@ impl App {
             };
             let from=safe(&root,&take.file)?;
             if hash_file(&from)?!=take.hash {return Err("音声が変更されています".into());}
-            if let Some(to)=rfd::FileDialog::new().add_filter("WAV",&["wav"]).set_file_name("テイク.wav").save_file(){
+            let destination=if v.get("path").is_some(){explicit_path(&v,&["wav"])?}else{rfd::FileDialog::new().add_filter("WAV",&["wav"]).set_file_name("テイク.wav").save_file()};
+            if let Some(to)=destination{
                 let parent=to.parent().ok_or("保存先が不正です")?.canonicalize().map_err(|e|e.to_string())?;
                 let canonical_root=root.canonicalize().map_err(|e|e.to_string())?;
                 if parent.starts_with(&canonical_root) || (to.exists() && to.canonicalize().map_err(|e|e.to_string())?.starts_with(&canonical_root)) {return Err("プロジェクト外の保存先を選んでください".into());}
-                std::fs::copy(from,to).map_err(|e|e.to_string())?;
+                if v.get("path").is_some(){
+                    let mut output=std::fs::OpenOptions::new().write(true).create_new(true).open(to).map_err(|e|e.to_string())?;
+                    std::io::copy(&mut std::fs::File::open(from).map_err(|e|e.to_string())?,&mut output).map_err(|e|e.to_string())?;
+                }else{std::fs::copy(from,to).map_err(|e|e.to_string())?;}
             }
             return Ok(Value::Null);
         }
@@ -208,6 +213,10 @@ impl App {
             return crate::markdown::read_dropped_files(&paths);
         }
         if action == "markdown_import" {
+            if v.get("paths").is_some(){
+                let paths: Vec<String>=serde_json::from_value(v["paths"].clone()).map_err(|_|"ファイル一覧が必要です")?;
+                return crate::markdown::read_dropped_files(&paths);
+            }
             let Some(paths) = rfd::FileDialog::new()
                 .add_filter("台本", &["md", "txt"])
                 .pick_files()
@@ -540,9 +549,10 @@ impl App {
             return crate::talk_project::export(store, &v);
         }
         if action == "talk_inspect" {
-            let Some(path) = rfd::FileDialog::new()
+            let chosen=if v.get("path").is_some(){explicit_path(&v,&["tstprj"])?}else{rfd::FileDialog::new()
                 .add_filter("Talkプロジェクト", &["tstprj"])
-                .pick_file()
+                .pick_file()};
+            let Some(path) = chosen
             else {
                 return Ok(Value::Null);
             };

@@ -5,6 +5,11 @@ description = "人間音声と合成音声の読みを照合する制作支援�
 authors = ["amekoro"]
 license = "MIT"
 edition = "2024"
+default-run = "scriptsync"
+
+[[bin]]
+name = "scriptsync-cli"
+path = "src/cli_main.rs"
 
 [lib]
 name = "scriptsync_lib"

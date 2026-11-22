@@ -1,3 +1,4 @@
+pub mod cli;
 mod machine_settings;
 mod services;
 mod text_improvement;

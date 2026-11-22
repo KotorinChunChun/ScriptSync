@@ -4,5 +4,5 @@ const releaseVersion = JSON.parse(releaseVersionJson) as {applicationVersion:str
 export const appInfo = {
   name: '読みあわせ (ScriptSync)',
   version: import.meta.env.MODE==='web'?'0.0.8-web':`${releaseVersion.applicationVersion}.${releaseVersion.revision}`,
-  updatedAt: '2026-10-24',
+  updatedAt: '2026-11-22',
 } as const;

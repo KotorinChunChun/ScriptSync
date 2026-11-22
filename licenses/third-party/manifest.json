@@ -1415,7 +1415,7 @@
       ],
       "modified": true,
       "modifications": "heapless 0.9.4への依存更新とVecエラー型の互換修正",
-      "correspondingSource": "https://github.com/KotorinChunChun/ScriptSync/tree/v0.0.6.6/vendor/flacenc"
+      "correspondingSource": "https://github.com/KotorinChunChun/ScriptSync/tree/6de5d75bcf08d5889bba324568f8b1b1f12fc806/vendor/flacenc"
     },
     {
       "name": "flate2",

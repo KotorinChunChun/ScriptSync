@@ -32,7 +32,8 @@
     "test:services": "node --test tools/services/server.test.mjs",
     "build:web": "tsc && vite build --mode web --base=/test/scriptsync/ --outDir dist-web && node dev/scripts/prepare-web.mjs",
     "test:web": "vitest run tests/ui/webBackend.test.ts",
-    "test:web:e2e": "node dev/scripts/test-web.mjs"
+    "test:web:e2e": "node dev/scripts/test-web.mjs",
+    "test:cli": "node dev/scripts/test-cli.mjs"
   },
   "dependencies": {
     "@huggingface/transformers": "4.3.1",
