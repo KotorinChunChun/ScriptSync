@@ -9,19 +9,28 @@ import {createInterface} from 'node:readline';
 import {once} from 'node:events';
 
 const root=process.cwd(),args=process.argv.slice(2);
-let exe=path.join(root,'src-tauri/target/debug/scriptsync-cli.exe'),realUrl,realModel='whisper/base',realWav;
+let exe=path.join(root,'src-tauri/target/debug/scriptsync-cli.exe'),realUrl,realModel='whisper/base',realWav,installed=false;
 for(let i=0;i<args.length;i++){
  if(args[i]==='--exe')exe=path.resolve(args[++i]);
+ else if(args[i]==='--installed')installed=true;
  else if(args[i]==='--asr-url')realUrl=args[++i];
  else if(args[i]==='--asr-model')realModel=args[++i];
  else if(args[i]==='--asr-wav')realWav=path.resolve(args[++i]);
- else throw Error('使い方: test-cli.mjs [--exe EXE] [--asr-url URL --asr-model ID --asr-wav 合成WAV]');
+ else throw Error('使い方: test-cli.mjs [--exe EXE | --installed] [--asr-url URL --asr-model ID --asr-wav 合成WAV]');
 }
 assert.equal(Boolean(realUrl),Boolean(realWav),'実接続はURLと合成WAVを一緒に指定してください');
 const version=JSON.parse(fs.readFileSync('dev/msix-version.json','utf8'));
+let payloadExe=exe;
+if(installed){
+ const metadata=spawnSync('pwsh',['-NoProfile','-Command',"$p=Get-AppxPackage -Name jp.kotorinchunchun.scriptsync; if(!$p){exit 2}; @{path=$p.InstallLocation;version=[string]$p.Version}|ConvertTo-Json -Compress"],{windowsHide:true,encoding:'utf8'});
+ assert.equal(metadata.status,0,'導入済みMSIXを確認できません');
+ const info=JSON.parse(metadata.stdout);assert.equal(info.version,`${version.applicationVersion}.${version.revision}`,'導入版と検証元が一致しません');
+ payloadExe=path.join(info.path,'scriptsync-cli.exe');
+ exe=path.join(process.env.LOCALAPPDATA,'Microsoft/WindowsApps/scriptsync-cli.exe');
+}
 const run=path.join(root,`dev/history/v${version.applicationVersion}.${version.revision}/logs/cli-${new Date().toISOString().replaceAll(':','-')}`);
 fs.mkdirSync(run,{recursive:true});
-const report={computerUse:false,webView:false,executableSha256:crypto.createHash('sha256').update(fs.readFileSync(exe)).digest('hex'),checks:[],outcome:'running'};
+const report={computerUse:false,webView:false,installed,executableSha256:crypto.createHash('sha256').update(fs.readFileSync(payloadExe)).digest('hex'),checks:[],outcome:'running'};
 const check=async(name,operation)=>{await operation();report.checks.push(name);console.log('成功: '+name);};
 const hash=bytes=>crypto.createHash('sha256').update(bytes).digest('hex');
 function wav(){

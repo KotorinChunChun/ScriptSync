@@ -17,7 +17,7 @@ npm run test:cli
 npm run test:cli -- --asr-url http://127.0.0.1:8769 --asr-model whisper/base --asr-wav C:/work/synthetic-ja.wav
 ```
 
-配布CLI自体の検証は `npm run test:cli -- --exe <scriptsync-cli.exeの絶対パス>`。実接続の指定も併用できます。
+MSIX導入後は、Windowsが登録する `scriptsync-cli.exe` の実行エイリアスを使います。`scriptsync-cli --help` で確認できます。WindowsApps配下の実体を直接起動する方式にはしません。配布CLI自体の検証は `npm run test:cli -- --installed`。版・実体のハッシュを確認して正規のエイリアスから実行し、実接続の指定も併用できます。ソースからビルドしたEXEを選ぶ場合は `--exe <絶対パス>` です。
 
 CLIの入力と出力は1行1JSONのJSON Linesです。起動には `--settings-dir <専用設定の絶対パス>` が必須で、既定の利用者設定へ自動で接続しません。出力の `ok` がfalseならそのコマンドは失敗です。通信が正常に完了した場合、個々の操作エラーはJSONで返し、その後のコマンドを受け付けます。
 
